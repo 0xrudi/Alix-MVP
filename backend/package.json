@@ -1,0 +1,25 @@
+{
+  "name": "web3-artifact-management-platform-backend",
+  "version": "1.0.0",
+  "description": "Backend for the Web3 Artifact Management Platform",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@prisma/client": "^4.16.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "ethers": "^5.7.2",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "moralis": "^2.22.4"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0",
+    "nodemon": "^2.0.22",
+    "prisma": "^4.16.2"
+  }
+}
