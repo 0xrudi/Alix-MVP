@@ -1,37 +1,42 @@
-import React, { useState } from 'react';
-import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
-import NFTViewer from './NFTViewer';
-import AuthOnboarding from './AuthOnboarding';
+import React, { useState, useEffect } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
+import { ethers } from 'ethers';
 import ProfileSetup from './ProfileSetup';
+import Web3DataSelectionScreen from './Web3DataSelectionScreen';
+import NFTGallery from './NFTGallery';
 
-const PRIVY_APP_ID = 'your-privy-app-id';
-
-function AppContent() {
-  const { ready, authenticated, user } = usePrivy();
-  const [profileComplete, setProfileComplete] = useState(false);
-
-  if (!ready) {
-    return <div>Loading...</div>;
-  }
-
-  if (!authenticated) {
-    return <AuthOnboarding />;
-  }
-
-  if (!profileComplete && !user.name) {
-    return <ProfileSetup onComplete={() => setProfileComplete(true)} />;
-  }
-
-  return <NFTViewer />;
-}
+// ... (keep the existing imports and constants)
 
 function App() {
+  // ... (keep existing state variables)
+
+  const handleWeb3DataImport = (data) => {
+    setSelectedWeb3Data(data);
+    // Combine the main wallet with selected delegations
+    const wallets = [
+      { address: user.wallet.address },
+      ...data.selectedDelegations.map(d => ({ address: d.vault }))
+    ];
+    setConnectedWallets(wallets);
+  };
+
+  // ... (keep existing render logic)
+
   return (
-    <PrivyProvider appId={PRIVY_APP_ID}>
-      <div className="App">
-        <AppContent />
-      </div>
-    </PrivyProvider>
+    <div className="min-h-screen bg-gray-100">
+      <header className="p-4 bg-white shadow-md flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-blue-600">NFT Dashboard</h1>
+        <button
+          onClick={logout}
+          className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition duration-300"
+        >
+          Log out
+        </button>
+      </header>
+      <main className="p-4">
+        <NFTGallery connectedWallets={connectedWallets} />
+      </main>
+    </div>
   );
 }
 
