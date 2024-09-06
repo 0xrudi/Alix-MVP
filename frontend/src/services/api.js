@@ -24,7 +24,7 @@ export const updateUserProfile = async (userData) => {
   }
 };
 
-export const fetchArtifacts = async (userId, page = 1, limit = 20) => {
+export const fetchUserArtifacts = async (userId, page = 1, limit = 20) => {
   try {
     const response = await api.get(`/artifacts/${userId}`, { params: { page, limit } });
     return response.data;
@@ -33,7 +33,5 @@ export const fetchArtifacts = async (userId, page = 1, limit = 20) => {
     throw error;
   }
 };
-
-// Add more API calls as needed
 
 export default api;
