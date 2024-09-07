@@ -1,141 +1,93 @@
-# Web3 Artifact Management Platform: Technical README
+# Alix: Web3 Artifact Management Platform
 
-## Overview
-This document outlines the technical design and architecture of the Web3 Artifact Management Platform, a full-stack application for managing digital artifacts (NFTs) and Web3 identities.
+## Project Vision
+
+Alix is envisioned as an Oasis in the digital realm, designed to inspire mindful interactions with the internet. It empowers users to effortlessly organize, access, and derive value from their digital collections across various web3 publishing platforms. Alix serves as a central hub for users to browse, collect, and engage with onchain content, fostering a more intentional and enriching digital experience.
+
+## Key Objectives
+
+1. Simplify the management of diverse digital collections (NFTs, subscriptions, memberships, etc.)
+2. Provide a unified browsing experience for content from multiple web3 publishing platforms
+3. Enhance the utility and accessibility of users' digital assets
+4. Foster mindful engagement with digital content
+5. Create a seamless bridge between various forms of web3 content
+
+## Core Features and Functionality
+
+1. Universal Web3 Content Browser:
+   - Integrate with multiple web3 publishing platforms (e.g., pods.media, mirror, zora, sound.xyz, paragraph, shibuya, Alexandria labs)
+   - Provide a unified interface to discover and consume diverse content types (podcasts, blogs, music, articles, etc.)
+   - Implement advanced search and filtering options across all integrated platforms
+
+2. Multi-media NFT Viewer and Organizer:
+   - Support display and playback of various media types (audio, video, text, images) directly within the platform
+   - Enable users to create custom collections, playlists, and reading lists
+   - Implement a tagging and categorization system for efficient content organization
+
+3. Wallet and ENS Management:
+   - Manage multiple Ethereum wallets and ENS domains
+   - Resolve ENS domains and integrate ENS avatars
+   - Provide an overview of digital assets across all connected wallets
+
+4. NFT Utility Center:
+   - Centralize access to benefits and utilities tied to owned NFTs (e.g., event access, exclusive content, governance rights)
+   - Implement a calendar for NFT-related events and expiring benefits
+   - Facilitate easy access to subscription-based content through relevant NFTs
+
+5. Content Discovery and Community Features:
+   - Curate personalized content recommendations based on user preferences and collecting habits
+   - Allow users to share curated collections and playlists
+   - Implement a discovery section for trending content and popular creators across integrated platforms
+
+## Use Cases
+
+1. Digital Collectors: Easily manage and enjoy diverse NFT collections, including music, podcasts, articles, and artwork.
+2. Content Enthusiasts: Discover and engage with a wide range of web3 content from various publishing platforms in one place.
+3. Web3 Users: Maximize the utility of their digital assets, from accessing exclusive content to managing subscriptions and memberships.
+4. Mindful Internet Users: Cultivate intentional digital habits by organizing and curating their online experiences.
 
 ## Architecture
 
-The project is divided into two main parts: frontend and backend.
+The project is built on a React frontend, integrating with various Web3 services and content platforms:
 
-### Frontend
-- **Framework**: React.js
-- **Key Libraries**:
-  - `ethers.js` for Ethereum interactions
-  - `@privy-io/react-auth` for Web3 authentication
-  - `axios` for API requests
-- **File Structure**:
-  ```
-  /frontend
-  ├── /public
-  ├── /src
-  │   ├── /components
-  │   │   ├── ArtifactGallery.js
-  │   │   ├── ProfileSetup.js
-  │   │   ├── TransactionHistory.js
-  │   │   └── Web3DataSelectionScreen.js
-  │   ├── /services
-  │   │   ├── api.js
-  │   │   └── web3.js
-  │   ├── /utils
-  │   │   └── helpers.js
-  │   ├── App.js
-  │   └── index.js
-  ├── .env
-  └── package.json
-  ```
+- React: Frontend framework
+- Chakra UI: UI component library
+- ethers.js: Ethereum wallet and ENS interaction
+- Integration with web3 publishing platforms' APIs
+- IPFS: For content storage and retrieval
 
-### Backend
-- **Framework**: Node.js with Express
-- **Database**: PostgreSQL
-- **ORM**: Prisma
-- **Key Libraries**:
-  - `ethers.js` for Ethereum interactions
-  - `cors` for Cross-Origin Resource Sharing
-  - `jsonwebtoken` for authentication
-- **File Structure**:
-  ```
-  /backend
-  ├── /prisma
-  │   └── schema.prisma
-  ├── /src
-  │   ├── /controllers
-  │   │   ├── userController.js
-  │   │   └── artifactController.js
-  │   ├── /routes
-  │   │   ├── userRoutes.js
-  │   │   └── artifactRoutes.js
-  │   ├── /services
-  │   │   └── web3Service.js
-  │   ├── /utils
-  │   │   └── helpers.js
-  │   └── server.js
-  ├── .env
-  └── package.json
-  ```
+## File Structure and Descriptions
 
-### External Services
-- Moralis API for fetching transaction history
-- Infura for Ethereum network interactions
+```
+/src
+  /components
+    WalletManager.js       # Manages wallet and ENS domain connections
+    ContentBrowser.js      # Universal content browser and viewer
+    NFTOrganizer.js        # NFT and digital asset organization tools
+    UtilityCenter.js       # NFT utility and benefit management
+    DiscoveryFeed.js       # Content discovery and community features
+  /utils
+    web3Utils.js           # Utility functions for Web3 interactions
+    contentUtils.js        # Utilities for content fetching and display
+  /services
+    platformIntegrations/  # Integrations with various web3 publishing platforms
+  App.js                   # Main application component
+  index.js                 # Entry point of the React application
+/public
+  index.html               # HTML template
+.env                       # Environment variables (API keys, etc.)
+package.json               # Project dependencies and scripts
+README.md                  # Project documentation
+```
 
-## Key Components
+## Future Development
 
-1. **App.js**: Main component handling routing and global state.
-2. **ProfileSetup.js**: Handles user onboarding and Web3 data import.
-3. **Web3DataSelectionScreen.js**: Allows users to select ENS domains and delegations to import.
-4. **ArtifactGallery.js**: Displays user's artifacts and manages catalogs.
-5. **TransactionHistory.js**: Displays transaction history for connected wallets.
+As Alix evolves, focus will be placed on:
 
-## Database Schema
-Defined in `/backend/prisma/schema.prisma`, including models for:
-- User
-- Wallet
-- EnsName
-- Delegation
-- Artifact
-- ArtifactCatalog
-- ArtifactCatalogAssignment
+1. Expanding integrations with more web3 publishing platforms
+2. Enhancing the content discovery algorithm to provide more personalized recommendations
+3. Implementing advanced content organization tools (e.g., AI-assisted tagging, content summarization)
+4. Developing features to track and encourage mindful digital habits
+5. Creating tools for users to easily onboard to web3 platforms and start collecting digital artifacts
 
-## Setup Instructions
-
-### Frontend
-1. Navigate to the frontend directory: `cd frontend`
-2. Install dependencies: `npm install`
-3. Set up environment variables in `.env`:
-   ```
-   REACT_APP_API_URL=http://localhost:3001/api
-   REACT_APP_INFURA_PROJECT_ID=your_infura_project_id
-   REACT_APP_PRIVY_APP_ID=your_privy_app_id
-   ```
-4. Start the development server: `npm start`
-
-### Backend
-1. Navigate to the backend directory: `cd backend`
-2. Install dependencies: `npm install`
-3. Set up a PostgreSQL database
-4. Set up environment variables in `.env`:
-   ```
-   DATABASE_URL="postgresql://username:password@localhost:5432/your_database_name?schema=public"
-   JWT_SECRET=your_jwt_secret
-   INFURA_PROJECT_ID=your_infura_project_id
-   MORALIS_API_KEY=your_moralis_api_key
-   ```
-5. Set up Prisma:
-   ```
-   npx prisma generate
-   npx prisma migrate dev
-   ```
-6. Start the server: `npm start` (or `npm run dev` for development with nodemon)
-
-## API Endpoints
-- `POST /api/users`: Create or update user
-- `GET /api/users/:userId`: Get user data
-- `POST /api/artifacts`: Create artifact
-- `GET /api/artifacts/:userId`: Get user's artifacts
-- `POST /api/artifact-catalogs`: Create artifact catalog
-- `POST /api/artifact-catalog-assignments`: Add artifact to catalog
-- `DELETE /api/artifact-catalog-assignments`: Remove artifact from catalog
-
-## Security Considerations
-- JWT-based authentication implemented
-- Environment variables used for sensitive information
-- Input validation and sanitization implemented in backend controllers
-- CORS configured for API security
-
-## Future Improvements
-- Implement real-time updates using WebSockets
-- Add support for more blockchain networks
-- Enhance error handling and user feedback
-- Implement caching for improved performance
-- Add comprehensive test suite
-
-This README provides an overview of the technical aspects of the Web3 Artifact Management Platform. For detailed implementation guidelines, refer to the source code and inline comments.
+Alix aims to become the go-to platform for mindful digital collectors and content enthusiasts in the web3 space, providing a seamless, organized, and enriching experience for engaging with the decentralized internet.

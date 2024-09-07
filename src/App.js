@@ -1,34 +1,39 @@
 import React, { useState } from 'react';
-import Header from './components/Header';
-import Footer from './components/Footer';
-import LandingPage from './pages/LandingPage';
-import ArtifactGallery from './pages/ArtifactGallery';
-import CreateArtifact from './pages/CreateArtifact';
+import { ChakraProvider, Box, Heading, Flex } from "@chakra-ui/react";
+import WalletManager from './components/WalletManager';
+import NFTCollections from './components/NFTCollections';
+import UserProfile from './components/UserProfile';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('landing');
-
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'landing':
-        return <LandingPage onComplete={() => setCurrentPage('gallery')} />;
-      case 'gallery':
-        return <ArtifactGallery />;
-      case 'create':
-        return <CreateArtifact onArtifactCreated={() => setCurrentPage('gallery')} />;
-      default:
-        return <LandingPage onComplete={() => setCurrentPage('gallery')} />;
-    }
-  };
+  const [wallets, setWallets] = useState([]);
+  const [nfts, setNfts] = useState({});
+  const [spamNfts, setSpamNfts] = useState({});
 
   return (
-    <div className="app">
-      <Header onNavigate={setCurrentPage} />
-      <main className="container mx-auto px-4 py-8">
-        {renderPage()}
-      </main>
-      <Footer />
-    </div>
+    <ChakraProvider>
+      <Box maxWidth="container.xl" margin="auto" padding={8}>
+        <Heading as="h1" size="xl" marginBottom={6}>Alix</Heading>
+        <Flex>
+          <Box flex="2" mr={8}>
+            <WalletManager 
+              wallets={wallets} 
+              setWallets={setWallets} 
+              setNfts={setNfts} 
+            />
+          </Box>
+          <Box flex="1">
+            <UserProfile wallets={wallets} />
+          </Box>
+        </Flex>
+        <NFTCollections 
+          wallets={wallets}
+          nfts={nfts}
+          setNfts={setNfts}
+          spamNfts={spamNfts}
+          setSpamNfts={setSpamNfts}
+        />
+      </Box>
+    </ChakraProvider>
   );
 }
 
