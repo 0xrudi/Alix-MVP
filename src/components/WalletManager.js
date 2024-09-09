@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, 
   Button, 
@@ -19,19 +19,26 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { networks, resolveENS, fetchNFTs, isValidAddress, fetchENSAvatar } from '../utils/web3Utils';
+import handleSaveProfile from'../components/UserProfile.js'
 
-const WalletManager = ({ wallets, setWallets, setNfts }) => {
+const WalletManager = ({ wallets, setWallets, setNfts, onOrganizeNFTs }) => {
   const [input, setInput] = useState('');
   const [selectedNetwork, setSelectedNetwork] = useState('mainnet');
   const [error, setError] = useState('');
   const toast = useToast();
 
-  useEffect(() => {
+  
+
+  const loadStoredWallets = useCallback(() => {
     const storedWallets = localStorage.getItem('wallets');
     if (storedWallets) {
       setWallets(JSON.parse(storedWallets));
     }
-  }, []);
+  }, [setWallets]);
+
+  useEffect(() => {
+    loadStoredWallets();
+  }, [loadStoredWallets]);
 
   useEffect(() => {
     localStorage.setItem('wallets', JSON.stringify(wallets));
@@ -89,12 +96,13 @@ const WalletManager = ({ wallets, setWallets, setNfts }) => {
     setInput('');
     toast({
       title: "Wallet Added",
-      description: "The wallet has been successfully added to your list.",
+      description: "The wallet has been successfully added to your list and its NFTs have been fetched.",
       status: "success",
       duration: 3000,
       isClosable: true,
     });
   };
+
 
   const handleNicknameChange = (address, nickname) => {
     setWallets(prevWallets => 
@@ -210,6 +218,14 @@ const WalletManager = ({ wallets, setWallets, setNfts }) => {
           ))}
         </Tbody>
       </Table>
+      <Flex justify="space-between" align="center" mt={8}>
+        <Button onClick={handleSaveProfile} colorScheme="green">
+          Save Profile
+        </Button>
+        <Button onClick={onOrganizeNFTs} colorScheme="blue">
+          Organize NFTs
+        </Button>
+      </Flex>
     </Box>
   );
 };

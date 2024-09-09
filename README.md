@@ -1,93 +1,102 @@
 # Alix: Web3 Artifact Management Platform
 
-## Project Vision
+Alix is a web application designed to simplify the management and organization of digital assets, such as NFTs (Non-Fungible Tokens), across multiple web3 wallets. It provides a user-friendly interface for users to connect their wallets, view their NFT collections, and create custom catalogs for easy organization and access.
 
-Alix is envisioned as an Oasis in the digital realm, designed to inspire mindful interactions with the internet. It empowers users to effortlessly organize, access, and derive value from their digital collections across various web3 publishing platforms. Alix serves as a central hub for users to browse, collect, and engage with onchain content, fostering a more intentional and enriching digital experience.
+## Features
 
-## Key Objectives
+- **Wallet Management**: Users can connect multiple Ethereum wallets to their Alix account, including support for ENS (Ethereum Name Service) resolution and avatar integration.
+- **NFT Viewing**: Alix fetches and displays NFTs from all connected wallets, providing a unified view of a user's entire NFT collection.
+- **Catalog Creation**: Users can create custom catalogs to organize their NFTs based on their preferences, making it easier to manage and access specific subsets of their collection.
+- **Spam Filtering**: Alix allows users to mark NFTs as spam, helping to keep their collection clean and organized.
+- **User Profile**: Users can set up a profile with their preferred display name and avatar, which is associated with their connected wallets.
 
-1. Simplify the management of diverse digital collections (NFTs, subscriptions, memberships, etc.)
-2. Provide a unified browsing experience for content from multiple web3 publishing platforms
-3. Enhance the utility and accessibility of users' digital assets
-4. Foster mindful engagement with digital content
-5. Create a seamless bridge between various forms of web3 content
+## Installation
 
-## Core Features and Functionality
+To run the Alix application locally, follow these steps:
 
-1. Universal Web3 Content Browser:
-   - Integrate with multiple web3 publishing platforms (e.g., pods.media, mirror, zora, sound.xyz, paragraph, shibuya, Alexandria labs)
-   - Provide a unified interface to discover and consume diverse content types (podcasts, blogs, music, articles, etc.)
-   - Implement advanced search and filtering options across all integrated platforms
+1. Clone the repository:
+git clone https://github.com/yourusername/Alix-MVP.git
+2. Navigate to the project directory:
+cd Alix-MVP
+3. Install the dependencies:
+npm install
+or if you're using Yarn:
+yarn install
+4. Set up the environment variables:
 
-2. Multi-media NFT Viewer and Organizer:
-   - Support display and playback of various media types (audio, video, text, images) directly within the platform
-   - Enable users to create custom collections, playlists, and reading lists
-   - Implement a tagging and categorization system for efficient content organization
+- Create a `.env` file in the project root.
+- Add the necessary environment variables:
 
-3. Wallet and ENS Management:
-   - Manage multiple Ethereum wallets and ENS domains
-   - Resolve ENS domains and integrate ENS avatars
-   - Provide an overview of digital assets across all connected wallets
+  ```
+  REACT_APP_ALCHEMY_API_KEY=your_alchemy_api_key
+  ```
 
-4. NFT Utility Center:
-   - Centralize access to benefits and utilities tied to owned NFTs (e.g., event access, exclusive content, governance rights)
-   - Implement a calendar for NFT-related events and expiring benefits
-   - Facilitate easy access to subscription-based content through relevant NFTs
+5. Start the development server:
+npm start
+or if you're using Yarn:
+yarn start
 
-5. Content Discovery and Community Features:
-   - Curate personalized content recommendations based on user preferences and collecting habits
-   - Allow users to share curated collections and playlists
-   - Implement a discovery section for trending content and popular creators across integrated platforms
+6. Open your browser and visit `http://localhost:3000` to access the Alix application.
 
-## Use Cases
+## Technologies Used
 
-1. Digital Collectors: Easily manage and enjoy diverse NFT collections, including music, podcasts, articles, and artwork.
-2. Content Enthusiasts: Discover and engage with a wide range of web3 content from various publishing platforms in one place.
-3. Web3 Users: Maximize the utility of their digital assets, from accessing exclusive content to managing subscriptions and memberships.
-4. Mindful Internet Users: Cultivate intentional digital habits by organizing and curating their online experiences.
+- React: JavaScript library for building user interfaces
+- Chakra UI: UI component library for React
+- Ethers.js: Library for interacting with the Ethereum blockchain
+- Alchemy API: API service for fetching NFT data
+- Axios: Promise-based HTTP client for making API requests
 
-## Architecture
+## Project Structure
 
-The project is built on a React frontend, integrating with various Web3 services and content platforms:
+The project structure is as follows:
+  src/
+    components/
+      CatalogPage.js
+      NFTCard.js
+      NFTGrid.js
+      UserProfile.js
+      WalletManager.js
+      WelcomePage.js
+    utils/
+      web3Utils.js
+  App.js
+  index.js
+  index.css
+  public/
+    index.html
+  .env
+  package.json
+README.md
 
-- React: Frontend framework
-- Chakra UI: UI component library
-- ethers.js: Ethereum wallet and ENS interaction
-- Integration with web3 publishing platforms' APIs
-- IPFS: For content storage and retrieval
+- `src/components`: Contains the React components used in the application.
+- `src/utils`: Contains utility functions for interacting with web3 and the Alchemy API.
+- `src/App.js`: The main component that manages the application state and renders the appropriate pages.
+- `src/index.js`: The entry point of the application.
+- `public/index.html`: The HTML template for the application.
+- `.env`: Environment variables configuration file.
+- `package.json`: Project dependencies and scripts.
+- `README.md`: Project documentation.
 
-## File Structure and Descriptions
+## Contributing
 
-```
-/src
-  /components
-    WalletManager.js       # Manages wallet and ENS domain connections
-    ContentBrowser.js      # Universal content browser and viewer
-    NFTOrganizer.js        # NFT and digital asset organization tools
-    UtilityCenter.js       # NFT utility and benefit management
-    DiscoveryFeed.js       # Content discovery and community features
-  /utils
-    web3Utils.js           # Utility functions for Web3 interactions
-    contentUtils.js        # Utilities for content fetching and display
-  /services
-    platformIntegrations/  # Integrations with various web3 publishing platforms
-  App.js                   # Main application component
-  index.js                 # Entry point of the React application
-/public
-  index.html               # HTML template
-.env                       # Environment variables (API keys, etc.)
-package.json               # Project dependencies and scripts
-README.md                  # Project documentation
-```
+Contributions to the Alix project are welcome! If you find any bugs, have feature requests, or want to contribute improvements, please open an issue or submit a pull request on the GitHub repository.
 
-## Future Development
+When contributing, please follow the existing code style and conventions, and make sure to test your changes thoroughly.
 
-As Alix evolves, focus will be placed on:
+## License
 
-1. Expanding integrations with more web3 publishing platforms
-2. Enhancing the content discovery algorithm to provide more personalized recommendations
-3. Implementing advanced content organization tools (e.g., AI-assisted tagging, content summarization)
-4. Developing features to track and encourage mindful digital habits
-5. Creating tools for users to easily onboard to web3 platforms and start collecting digital artifacts
+This project is licensed under the [MIT License](LICENSE).
 
-Alix aims to become the go-to platform for mindful digital collectors and content enthusiasts in the web3 space, providing a seamless, organized, and enriching experience for engaging with the decentralized internet.
+## Acknowledgements
+
+- [Alchemy](https://www.alchemy.com/) for providing the NFT data API.
+- [Chakra UI](https://chakra-ui.com/) for the UI component library.
+- [Ethers.js](https://docs.ethers.io/) for Ethereum blockchain interaction.
+
+## Contact
+
+If you have any questions, suggestions, or feedback, please feel free to reach out to the project maintainer:
+
+- Name: Rudini
+- Email: 0xrudini@gmail.com
+- GitHub: [0xrudi](https://github.com/0xrudini)

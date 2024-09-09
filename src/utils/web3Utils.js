@@ -81,3 +81,7 @@ export const fetchENSAvatar = async (ensName) => {
     return null;
   }
 };
+
+export const isNftSpam = (tokenId, contractAddress, spamNfts) => {
+  return Object.values(spamNfts).flat().some(spam => spam.tokenId === tokenId && spam.contractAddress === contractAddress);
+};
