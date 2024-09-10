@@ -1,6 +1,8 @@
 import { ethers } from 'ethers';
 import axios from 'axios';
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const networks = [
   { id: 'mainnet', name: 'Ethereum Mainnet', chainId: 1, rpcUrl: 'https://eth-mainnet.g.alchemy.com/v2/' },
   { id: 'sepolia', name: 'Ethereum Sepolia', chainId: 11155111, rpcUrl: 'https://eth-sepolia.g.alchemy.com/v2/' },
@@ -45,27 +47,43 @@ export const resolveENS = async (ensName, networkId) => {
   }
 };
 
-export const fetchNFTs = async (address) => {
+export const fetchNFTs = async (address, retries = 3, initialDelay = 1000) => {
   const alchemyApiKey = process.env.REACT_APP_ALCHEMY_API_KEY;
   if (!alchemyApiKey) {
     console.error('Alchemy API Key is not set');
     return [];
   }
 
-  try {
-    const response = await axios.get(`https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}/getNFTs/`, {
-      params: {
-        owner: address,
-        withMetadata: true,
-        pageSize: 100
-      }
-    });
+  let currentDelay = initialDelay;
 
-    return response.data.ownedNfts;
-  } catch (error) {
-    console.error('Error fetching NFTs:', error);
-    return [];
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await axios.get(`https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}/getNFTs/`, {
+        params: {
+          owner: address,
+          withMetadata: true,
+          pageSize: 100
+        }
+      });
+
+      return response.data.ownedNfts;
+    } catch (error) {
+      console.error(`Error fetching NFTs for ${address} (Attempt ${attempt + 1}/${retries}):`, error);
+      
+      if (error.response && error.response.status === 429) {
+        console.log(`Rate limited. Waiting for ${currentDelay}ms before retrying...`);
+        await delay(currentDelay);
+        currentDelay *= 2; // Exponential backoff
+      } else if (attempt === retries - 1) {
+        console.error(`Failed to fetch NFTs for ${address} after ${retries} attempts.`);
+        return [];
+      } else {
+        await delay(currentDelay);
+      }
+    }
   }
+
+  return [];
 };
 
 export const isValidAddress = (address) => {

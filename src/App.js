@@ -8,6 +8,7 @@ function App() {
   const [wallets, setWallets] = useState([]);
   const [nfts, setNfts] = useState({});
   const [spamNfts, setSpamNfts] = useState({});
+  const [catalogs, setCatalogs] = useState([]);
   const [page, setPage] = useState('welcome');
 
   const handleStart = () => {
@@ -34,16 +35,16 @@ function App() {
           </>
         )}
         {page === 'catalog' && (
-          <>
-            <CatalogPage 
-              wallets={wallets}
-              nfts={nfts}
-              setNfts={setNfts}
-              spamNfts={spamNfts}
-              setSpamNfts={setSpamNfts}
-              onUpdateProfile={() => setPage('account')}
-            />
-          </>
+          <CatalogPage 
+            wallets={wallets}
+            nfts={nfts}
+            setNfts={setNfts}
+            spamNfts={spamNfts}
+            setSpamNfts={setSpamNfts}
+            catalogs={catalogs}
+            setCatalogs={setCatalogs}
+            onUpdateProfile={() => setPage('account')}
+          />
         )}
       </Box>
     </ChakraProvider>

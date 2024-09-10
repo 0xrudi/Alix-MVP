@@ -1,7 +1,7 @@
 import React from 'react';
-import { Box, Image, Checkbox, Text, Button } from "@chakra-ui/react";
+import { Box, Image, Checkbox, Text, Button, VStack } from "@chakra-ui/react";
 
-const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam }) => {
+const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, onRemove }) => {
   return (
     <Box borderWidth={1} borderRadius="lg" overflow="hidden" position="relative">
       <Image src={nft.media[0]?.gateway || 'https://via.placeholder.com/200'} alt={nft.title} />
@@ -14,9 +14,18 @@ const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam }) => {
       />
       <Box p={2}>
         <Text fontWeight="bold" isTruncated>{nft.title || `Token ID: ${nft.id.tokenId}`}</Text>
-        <Button size="sm" onClick={onMarkAsSpam}>
-          Mark as Spam
-        </Button>
+        <VStack mt={2}>
+          {onMarkAsSpam && (
+            <Button size="sm" onClick={onMarkAsSpam} width="100%">
+              Mark as Spam
+            </Button>
+          )}
+          {onRemove && (
+            <Button size="sm" onClick={onRemove} width="100%" colorScheme="red">
+              Remove from Catalog
+            </Button>
+          )}
+        </VStack>
       </Box>
     </Box>
   );
