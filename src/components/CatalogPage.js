@@ -24,7 +24,10 @@ import {
   ModalBody,
   ModalCloseButton,
   useDisclosure,
-  Progress
+  Progress,
+  Container,
+  SimpleGrid,
+  useColorModeValue
 } from "@chakra-ui/react";
 import { fetchNFTs } from '../utils/web3Utils';
 import NFTGrid from './NFTGrid';
@@ -44,6 +47,10 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
   const [contractNames, setContractNames] = useState({});
   const [viewingCatalog, setViewingCatalog] = useState(null);
   const toast = useToast();
+
+  // Color mode values
+  const newCatalogBg = useColorModeValue('gray.100', 'gray.700');
+  const catalogItemBg = useColorModeValue('white', 'gray.700');
 
   useEffect(() => {
     // Initialize the "Spam" catalog
@@ -98,17 +105,15 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
       setContractNames(names);
     } catch (error) {
       console.error('Error processing NFT data:', error);
-      // Optionally, you could show a toast notification here
     }
   }, [nfts]);
-  
+
   const handleWalletCollapse = (address) => {
     setCollapsedWallets(prev => ({
       ...prev,
       [address]: !prev[address]
     }));
   };
-
 
   const handleRefreshNFTs = async () => {
     setIsRefreshing(true);
@@ -138,8 +143,6 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
       }
     }
 
-    console.log('Fetched NFTs:', JSON.stringify(fetchedNfts, null, 2));
-
     setNfts(fetchedNfts);
     setIsRefreshing(false);
     toast({
@@ -152,7 +155,6 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
   };
 
   const handleMarkAsSpam = (address, network, nft) => {
-    // Remove the NFT from the main nfts state
     setNfts(prevNfts => {
       const updatedNfts = { ...prevNfts };
       updatedNfts[address][network] = updatedNfts[address][network].filter(
@@ -161,7 +163,6 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
       return updatedNfts;
     });
 
-    // Add the NFT to the Spam catalog
     setCatalogs(prevCatalogs => {
       const updatedCatalogs = prevCatalogs.map(catalog => {
         if (catalog.name === "Spam") {
@@ -192,22 +193,20 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
     );
   };
 
-  const handleContractToggle = (contractName) => {
+  const handleContractToggle = (contractAddress) => {
     setSelectedContracts(prev =>
-      prev.includes(contractName)
-        ? prev.filter(name => name !== contractName)
-        : [...prev, contractName]
+      prev.includes(contractAddress)
+        ? prev.filter(address => address !== contractAddress)
+        : [...prev, contractAddress]
     );
   };
 
   const handleNFTSelect = (nft) => {
-    if (selectedNFTs.some(selected => selected.id.tokenId === nft.id.tokenId && selected.contract.address === nft.contract.address)) {
-      setSelectedNFTs(selectedNFTs.filter(selected => 
-        !(selected.id.tokenId === nft.id.tokenId && selected.contract.address === nft.contract.address)
-      ));
-    } else {
-      setSelectedNFTs([...selectedNFTs, nft]);
-    }
+    setSelectedNFTs(prev => 
+      prev.some(selected => selected.id.tokenId === nft.id.tokenId && selected.contract.address === nft.contract.address)
+        ? prev.filter(selected => !(selected.id.tokenId === nft.id.tokenId && selected.contract.address === nft.contract.address))
+        : [...prev, nft]
+    );
   };
 
   const handleCreateCatalog = () => {
@@ -239,7 +238,7 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
       nfts: selectedNFTs,
     };
 
-    setCatalogs([...catalogs, newCatalog]);
+    setCatalogs(prev => [...prev, newCatalog]);
     setCatalogName('');
     setSelectedNFTs([]);
 
@@ -271,13 +270,13 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
       return;
     }
 
-    const updatedCatalogs = catalogs.map(cat => 
-      cat.id === selectedCatalog.id 
-        ? { ...cat, name: catalogName, nfts: selectedNFTs }
-        : cat
+    setCatalogs(prevCatalogs => 
+      prevCatalogs.map(cat => 
+        cat.id === selectedCatalog.id 
+          ? { ...cat, name: catalogName, nfts: selectedNFTs }
+          : cat
+      )
     );
-
-    setCatalogs(updatedCatalogs);
     onClose();
     setCatalogName('');
     setSelectedNFTs([]);
@@ -293,7 +292,7 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
   };
 
   const handleDeleteCatalog = (catalogId) => {
-    setCatalogs(catalogs.filter(cat => cat.id !== catalogId));
+    setCatalogs(prevCatalogs => prevCatalogs.filter(cat => cat.id !== catalogId));
     toast({
       title: "Catalog Deleted",
       description: "The catalog has been deleted successfully.",
@@ -318,9 +317,6 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
       }
     }),
   }));
-
-
-  // const contractAddresses = Array.from(new Set(Object.values(nfts).flat().map(nft => nft.contract.address)));
 
   const handleOpenCatalog = (catalog) => {
     setViewingCatalog(catalog);
@@ -369,14 +365,16 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
   }
 
   return (
-    <Box>
+    <Container maxW="container.xl" py={8}>
       <Flex justify="space-between" align="center" mb={6}>
         <Heading as="h2" size="xl">NFT Catalogs</Heading>
-        <Button onClick={onUpdateProfile}>Update Profile</Button>
+        <Button colorScheme="blue" onClick={onUpdateProfile}>Update Profile</Button>
       </Flex>
-      <HStack alignItems="flex-start" spacing={8}>
-        <Box flex={3}>
+      
+      <Flex direction={{ base: "column", lg: "row" }} spacing={8}>
+        <Box flex={3} mr={{ base: 0, lg: 8 }} mb={{ base: 8, lg: 0 }}>
           <Button 
+            colorScheme="blue"
             onClick={handleRefreshNFTs} 
             isLoading={isRefreshing}
             loadingText="Refreshing NFTs"
@@ -388,7 +386,7 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
             <Progress value={refreshProgress} mb={4} />
           )}
   
-          <Accordion allowMultiple>
+          <Accordion allowMultiple mb={4}>
             <AccordionItem>
               <AccordionButton>
                 <Box flex="1" textAlign="left">
@@ -423,8 +421,8 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
                   {Object.entries(contractNames).map(([address, name]) => (
                     <Checkbox
                       key={address}
-                      isChecked={selectedContracts.includes(name)}
-                      onChange={() => handleContractToggle(name)}
+                      isChecked={selectedContracts.includes(address)}
+                      onChange={() => handleContractToggle(address)}
                     >
                       {name || address}
                     </Checkbox>
@@ -433,7 +431,6 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
               </AccordionPanel>
             </AccordionItem>
           </Accordion>
-
   
           {filteredNfts.map(({ address, nfts }) => (
             <Box key={address} mb={8}>
@@ -460,38 +457,44 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
             </Box>
           ))}
         </Box>
-        <VStack flex={1} alignItems="stretch" spacing={4}>
-          <Heading as="h3" size="md">Create New Catalog</Heading>
-          <Input 
-            placeholder="Catalog Name" 
-            value={catalogName}
-            onChange={(e) => setCatalogName(e.target.value)}
-          />
-          <Text>{selectedNFTs.length} NFTs selected</Text>
-          <Button colorScheme="blue" onClick={handleCreateCatalog}>
-            Create Catalog
-          </Button>
-          <VStack alignItems="stretch" mt={8}>
-            <Heading as="h3" size="md">Your Catalogs</Heading>
-            {catalogs.map((catalog) => (
-              <Box key={catalog.id} p={4} borderWidth={1} borderRadius="md">
-                <Heading as="h4" size="sm">{catalog.name}</Heading>
-                <Text>{catalog.nfts.length} NFTs</Text>
-                <HStack mt={2}>
-                  <Button size="sm" onClick={() => handleOpenCatalog(catalog)}>View</Button>
-                  {catalog.name !== "Spam" && (
-                    <>
-                      <Button size="sm" onClick={() => handleEditCatalog(catalog)}>Edit</Button>
-                      <Button size="sm" colorScheme="red" onClick={() => handleDeleteCatalog(catalog.id)}>Delete</Button>
-                    </>
-                  )}
-                </HStack>
-              </Box>
-            ))}
-          </VStack>
+        
+        <VStack flex={1} align="stretch" spacing={4}>
+          <Box bg={newCatalogBg} p={4} borderRadius="md">
+            <Heading as="h3" size="md" mb={4}>Create New Catalog</Heading>
+            <Input 
+              placeholder="Catalog Name" 
+              value={catalogName}
+              onChange={(e) => setCatalogName(e.target.value)}
+              mb={2}
+            />
+            <Text mb={2}>{selectedNFTs.length} NFTs selected</Text>
+            <Button colorScheme="blue" onClick={handleCreateCatalog} isFullWidth>
+              Create Catalog
+            </Button>
+          </Box>
+  
+          <Box>
+            <Heading as="h3" size="md" mb={4}>Your Catalogs</Heading>
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+              {catalogs.map((catalog) => (
+                <Box key={catalog.id} p={4} borderWidth={1} borderRadius="md" bg={catalogItemBg}>
+                  <Heading as="h4" size="sm">{catalog.name}</Heading>
+                  <Text>{catalog.nfts.length} NFTs</Text>
+                  <HStack mt={2}>
+                    <Button size="sm" onClick={() => handleOpenCatalog(catalog)}>View</Button>
+                    {catalog.name !== "Spam" && (
+                      <>
+                        <Button size="sm" onClick={() => handleEditCatalog(catalog)}>Edit</Button>
+                        <Button size="sm" colorScheme="red" onClick={() => handleDeleteCatalog(catalog.id)}>Delete</Button>
+                      </>
+                    )}
+                  </HStack>
+                </Box>
+              ))}
+            </SimpleGrid>
+          </Box>
         </VStack>
-      </HStack>
-
+      </Flex>
   
       <Modal isOpen={isOpen} onClose={onClose}>
         <ModalOverlay />
@@ -520,7 +523,7 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
           </ModalFooter>
         </ModalContent>
       </Modal>
-    </Box>
+    </Container>
   );
 };
 
