@@ -15,27 +15,35 @@ Alix is a web application designed to simplify the management and organization o
 To run the Alix application locally, follow these steps:
 
 1. Clone the repository:
-git clone https://github.com/yourusername/Alix-MVP.git
+   ```
+   git clone https://github.com/yourusername/Alix-MVP.git
+   ```
 2. Navigate to the project directory:
-cd Alix-MVP
+   ```
+   cd Alix-MVP
+   ```
 3. Install the dependencies:
-npm install
-or if you're using Yarn:
-yarn install
+   ```
+   npm install
+   ```
+   or if you're using Yarn:
+   ```
+   yarn install
+   ```
 4. Set up the environment variables:
-
-- Create a `.env` file in the project root.
-- Add the necessary environment variables:
-
-  ```
-  REACT_APP_ALCHEMY_API_KEY=your_alchemy_api_key
-  ```
-
+   - Create a `.env` file in the project root.
+   - Add the necessary environment variables:
+     ```
+     REACT_APP_ALCHEMY_API_KEY=your_alchemy_api_key
+     ```
 5. Start the development server:
-npm start
-or if you're using Yarn:
-yarn start
-
+   ```
+   npm start
+   ```
+   or if you're using Yarn:
+   ```
+   yarn start
+   ```
 6. Open your browser and visit `http://localhost:3000` to access the Alix application.
 
 ## Technologies Used
@@ -49,33 +57,42 @@ yarn start
 ## Project Structure
 
 The project structure is as follows:
-  src/
-    components/
-      CatalogPage.js
-      NFTCard.js
-      NFTGrid.js
-      UserProfile.js
-      WalletManager.js
-      WelcomePage.js
-    utils/
-      web3Utils.js
-  App.js
-  index.js
-  index.css
-  public/
-    index.html
-  .env
-  package.json
+```
+src/
+  components/
+    CatalogPage.js
+    NFTCard.js
+    NFTGrid.js
+    UserProfile.js
+    WalletManager.js
+    WelcomePage.js
+    CatalogViewPage.js
+  utils/
+    web3Utils.js
+App.js
+index.js
+index.css
+public/
+  index.html
+.env
+package.json
 README.md
+```
 
-- `src/components`: Contains the React components used in the application.
-- `src/utils`: Contains utility functions for interacting with web3 and the Alchemy API.
-- `src/App.js`: The main component that manages the application state and renders the appropriate pages.
-- `src/index.js`: The entry point of the application.
-- `public/index.html`: The HTML template for the application.
-- `.env`: Environment variables configuration file.
-- `package.json`: Project dependencies and scripts.
-- `README.md`: Project documentation.
+## Component Breakdown
+
+- `App.js`: The main component that manages the application state and routing between different pages.
+- `WelcomePage.js`: Displays the initial welcome screen and onboarding process for new users.
+- `WalletManager.js`: Handles the connection and management of user wallets, including ENS resolution.
+- `UserProfile.js`: Allows users to set up and edit their profile information, including avatar and nickname.
+- `CatalogPage.js`: The main page for viewing and managing NFT catalogs. It includes filtering options and catalog creation.
+- `NFTGrid.js`: Displays a grid of NFTs, used within the CatalogPage component.
+- `NFTCard.js`: Represents an individual NFT card within the NFTGrid, showing NFT details and actions.
+- `CatalogViewPage.js`: Displays the contents of a specific catalog and allows for NFT management within that catalog.
+
+## Utils
+
+- `web3Utils.js`: Contains utility functions for interacting with web3, including NFT fetching and ENS resolution.
 
 ## Contributing
 
@@ -92,6 +109,7 @@ This project is licensed under the [MIT License](LICENSE).
 - [Alchemy](https://www.alchemy.com/) for providing the NFT data API.
 - [Chakra UI](https://chakra-ui.com/) for the UI component library.
 - [Ethers.js](https://docs.ethers.io/) for Ethereum blockchain interaction.
+- [Anthropic](https://www.anthropic.com) and their AI assistant Claude for providing technical guidance and contributions throughout the development process.
 
 ## Contact
 
