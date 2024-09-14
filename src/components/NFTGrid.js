@@ -2,7 +2,7 @@ import React from 'react';
 import { SimpleGrid } from "@chakra-ui/react";
 import NFTCard from './NFTCard';
 
-const NFTGrid = ({ nfts, selectedNFTs, onNFTSelect, onMarkAsSpam }) => {
+const NFTGrid = React.memo(({ nfts, selectedNFTs, onNFTSelect, onMarkAsSpam, walletAddress }) => {
   return (
     <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={4}>
       {nfts.map((nft) => (
@@ -14,11 +14,11 @@ const NFTGrid = ({ nfts, selectedNFTs, onNFTSelect, onMarkAsSpam }) => {
             selectedNFT.contract.address === nft.contract.address
           )}
           onSelect={() => onNFTSelect(nft)}
-          onMarkAsSpam={() => onMarkAsSpam(nft)}
+          onMarkAsSpam={() => onMarkAsSpam(walletAddress, nft.network, nft)}
         />
       ))}
     </SimpleGrid>
   );
-};
+});
 
 export default NFTGrid;

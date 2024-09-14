@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Box, 
   Heading, 
@@ -61,29 +61,6 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
       return prevCatalogs;
     });
   }, []);
-
-  useEffect(() => {
-    const fetchAllNFTs = async () => {
-      try {
-        const fetchedNfts = {};
-        for (const wallet of wallets) {
-          fetchedNfts[wallet.address] = await fetchNFTs(wallet.address);
-        }
-        setNfts(fetchedNfts);
-      } catch (error) {
-        console.error('Error fetching NFTs:', error);
-        toast({
-          title: "NFT Fetch Failed",
-          description: "There was an error fetching the NFTs. Please try again.",
-          status: "error",
-          duration: 3000,
-          isClosable: true,
-        });
-      }
-    };
-
-    fetchAllNFTs();
-  }, [wallets, setNfts, toast]);
 
   useEffect(() => {
     try {
@@ -154,28 +131,73 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
     });
   };
 
+  useEffect(() => {
+    const fetchAllNFTs = async () => {
+      try {
+        const fetchedNfts = {};
+        for (const wallet of wallets) {
+          fetchedNfts[wallet.address] = {};
+          for (const network of wallet.networks) {
+            fetchedNfts[wallet.address][network] = await fetchNFTs(wallet.address, network);
+          }
+        }
+        setNfts(fetchedNfts);
+      } catch (error) {
+        console.error('Error fetching NFTs:', error);
+        // Handle error...
+      }   
+    };
+
+    fetchAllNFTs();
+  }, [wallets, setNfts]);
+
   const handleMarkAsSpam = (address, network, nft) => {
+    // Remove the NFT from the main nfts state
     setNfts(prevNfts => {
       const updatedNfts = { ...prevNfts };
-      updatedNfts[address][network] = updatedNfts[address][network].filter(
-        item => item.id.tokenId !== nft.id.tokenId || item.contract.address !== nft.contract.address
-      );
+      if (updatedNfts[address] && updatedNfts[address][network]) {
+        updatedNfts[address][network] = updatedNfts[address][network].filter(
+          item => !(item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
+        );
+        // If the network array is empty, remove it
+        if (updatedNfts[address][network].length === 0) {
+          delete updatedNfts[address][network];
+        }
+        // If the address object is empty, remove it
+        if (Object.keys(updatedNfts[address]).length === 0) {
+          delete updatedNfts[address];
+        }
+      }
       return updatedNfts;
     });
-
+  
+    // Add the NFT to the Spam catalog if it's not already there
     setCatalogs(prevCatalogs => {
       const updatedCatalogs = prevCatalogs.map(catalog => {
         if (catalog.name === "Spam") {
-          return {
-            ...catalog,
-            nfts: [...catalog.nfts, { ...nft, walletAddress: address, network }]
-          };
+          const isAlreadyInSpam = catalog.nfts.some(
+            spamNft => spamNft.id?.tokenId === nft.id?.tokenId && spamNft.contract?.address === nft.contract?.address
+          );
+          if (!isAlreadyInSpam) {
+            return {
+              ...catalog,
+              nfts: [...catalog.nfts, {
+                ...nft,
+                walletAddress: address,
+                network,
+                media: nft.media || [],
+                id: nft.id || {},
+                contract: nft.contract || {},
+                title: nft.title || `Unknown NFT`
+              }]
+            };
+          }
         }
         return catalog;
       });
       return updatedCatalogs;
     });
-
+  
     toast({
       title: "Marked as Spam",
       description: "The NFT has been moved to the Spam catalog.",
@@ -302,21 +324,26 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
     });
   };
 
-  const filteredNfts = Object.entries(nfts).filter(([address, walletNfts]) =>
-    selectedWallets.length === 0 || selectedWallets.includes(address)
-  ).map(([address, walletNfts]) => ({
-    address,
-    nfts: Object.entries(walletNfts).flatMap(([network, networkNfts]) => {
-      if (Array.isArray(networkNfts)) {
-        return networkNfts.filter(nft =>
-          selectedContracts.length === 0 || selectedContracts.includes(nft.contract.address)
-        );
-      } else {
-        console.warn(`Unexpected data structure for NFTs in wallet ${address}, network ${network}`);
-        return [];
-      }
-    }),
-  }));
+  const filteredNfts = useMemo(() => {
+    return Object.entries(nfts)
+      .filter(([address, walletNfts]) =>
+        selectedWallets.length === 0 || selectedWallets.includes(address)
+      )
+      .map(([address, walletNfts]) => ({
+        address,
+        nfts: Object.entries(walletNfts).flatMap(([network, networkNfts]) => {
+          if (Array.isArray(networkNfts)) {
+            return networkNfts.filter(nft =>
+              selectedContracts.length === 0 || selectedContracts.includes(nft.contract?.address)
+            );
+          } else {
+            console.warn(`Unexpected data structure for NFTs in wallet ${address}, network ${network}`);
+            return [];
+          }
+        }),
+      }))
+      .filter(({ nfts }) => nfts.length > 0);
+  }, [nfts, selectedWallets, selectedContracts]);
 
   const handleOpenCatalog = (catalog) => {
     setViewingCatalog(catalog);
@@ -442,16 +469,16 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
                   {collapsedWallets[address] ? 'Expand' : 'Collapse'}
                 </Button>
               </Flex>
-              {!collapsedWallets[address] && Array.isArray(nfts) && nfts.length > 0 && (
+              {!collapsedWallets[address] && nfts.length > 0 && (
                 <NFTGrid 
                   nfts={nfts}
-                  spamNfts={spamNfts}
                   selectedNFTs={selectedNFTs}
                   onNFTSelect={handleNFTSelect}
-                  onMarkAsSpam={(nft) => handleMarkAsSpam(address, nft)}
+                  onMarkAsSpam={(nft) => handleMarkAsSpam(address, nft.network, nft)}
+                  walletAddress={address}
                 />
               )}
-              {!collapsedWallets[address] && (!Array.isArray(nfts) || nfts.length === 0) && (
+              {(!nfts.length || collapsedWallets[address]) && (
                 <Text>No NFTs found for this wallet.</Text>
               )}
             </Box>
@@ -524,7 +551,7 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
         </ModalContent>
       </Modal>
     </Container>
-  );
+  ); 
 };
 
 export default CatalogPage;

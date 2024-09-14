@@ -29,8 +29,8 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose }) => {
 
   const handleNFTSelect = (nft) => {
     setSelectedNFTs(prev => 
-      prev.some(item => item.id.tokenId === nft.id.tokenId && item.contract.address === nft.contract.address)
-        ? prev.filter(item => item.id.tokenId !== nft.id.tokenId || item.contract.address !== nft.contract.address)
+      prev.some(item => item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
+        ? prev.filter(item => item.id?.tokenId !== nft.id?.tokenId || item.contract?.address !== nft.contract?.address)
         : [...prev, nft]
     );
   };
@@ -114,10 +114,10 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose }) => {
         <VStack align="stretch" spacing={2}>
           {catalog.nfts.map((nft) => (
             <ListViewItem
-              key={`${nft.contract.address}-${nft.id.tokenId}`}
+              key={`${nft.contract?.address}-${nft.id?.tokenId}`}
               nft={nft}
               isSelected={selectedNFTs.some(item => 
-                item.id.tokenId === nft.id.tokenId && item.contract.address === nft.contract.address
+                item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address
               )}
               onSelect={() => handleNFTSelect(nft)}
               onRemove={() => onRemoveNFTs([nft])}
@@ -128,10 +128,10 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose }) => {
         <SimpleGrid columns={Math.floor(1200 / cardSize)} spacing={4}>
           {catalog.nfts.map((nft) => (
             <NFTCard
-              key={`${nft.contract.address}-${nft.id.tokenId}`}
+              key={`${nft.contract?.address}-${nft.id?.tokenId}`}
               nft={nft}
               isSelected={selectedNFTs.some(item => 
-                item.id.tokenId === nft.id.tokenId && item.contract.address === nft.contract.address
+                item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address
               )}
               onSelect={() => handleNFTSelect(nft)}
               onRemove={() => onRemoveNFTs([nft])}

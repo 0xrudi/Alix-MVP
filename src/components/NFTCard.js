@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Image, Checkbox, Text, Button, Flex, useColorModeValue } from "@chakra-ui/react";
 
-const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam }) => {
+const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, walletAddress }) => {
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
