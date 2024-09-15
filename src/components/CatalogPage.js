@@ -1,21 +1,25 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Box, 
-  Heading, 
-  Button, 
-  Input, 
-  VStack, 
+import {
+  Box,
+  VStack,
   HStack,
-  useToast,
-  Accordion,
-  AccordionItem,
-  AccordionButton,
-  AccordionPanel,
-  AccordionIcon,
-  Stack,
-  Checkbox,
+  Heading,
   Text,
-  Flex,
+  Button,
+  Input,
+  useToast,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+  useColorModeValue,
+  Container,
+  SimpleGrid,
+  Stat,
+  StatLabel,
+  StatNumber,
+  StatGroup,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -25,15 +29,15 @@ import {
   ModalCloseButton,
   useDisclosure,
   Progress,
-  Container,
-  SimpleGrid,
-  useColorModeValue
+  Checkbox,
+  Flex
 } from "@chakra-ui/react";
-import { fetchNFTs } from '../utils/web3Utils';
+import { FaPlus, FaSync } from 'react-icons/fa';
 import NFTGrid from './NFTGrid';
 import CatalogViewPage from './CatalogViewPage';
+import { fetchNFTs } from '../utils/web3Utils';
 
-const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdateProfile }) => {
+const CatalogPage = ({ wallets, nfts, setNfts, onUpdateProfile }) => {
   const [selectedNFTs, setSelectedNFTs] = useState([]);
   const [catalogName, setCatalogName] = useState('');
   const [catalogs, setCatalogs] = useState([]);
@@ -48,9 +52,8 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
   const [viewingCatalog, setViewingCatalog] = useState(null);
   const toast = useToast();
 
-  // Color mode values
-  const newCatalogBg = useColorModeValue('gray.100', 'gray.700');
-  const catalogItemBg = useColorModeValue('white', 'gray.700');
+  const bgColor = useColorModeValue('gray.50', 'gray.900');
+  const cardBg = useColorModeValue('white', 'gray.800');
 
   useEffect(() => {
     // Initialize the "Spam" catalog
@@ -152,32 +155,31 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
   }, [wallets, setNfts]);
 
   const handleMarkAsSpam = (address, network, nft) => {
-    // Remove the NFT from the main nfts state
+    console.log("handleMarkAsSpam called with:", { address, network, nft });
+  
     setNfts(prevNfts => {
-      const updatedNfts = { ...prevNfts };
+      console.log("Previous nfts state:", prevNfts);
+      const updatedNfts = JSON.parse(JSON.stringify(prevNfts)); // Deep clone
       if (updatedNfts[address] && updatedNfts[address][network]) {
-        updatedNfts[address][network] = updatedNfts[address][network].filter(
-          item => !(item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
-        );
-        // If the network array is empty, remove it
-        if (updatedNfts[address][network].length === 0) {
-          delete updatedNfts[address][network];
-        }
-        // If the address object is empty, remove it
-        if (Object.keys(updatedNfts[address]).length === 0) {
-          delete updatedNfts[address];
-        }
+        updatedNfts[address][network] = updatedNfts[address][network].map(item => {
+          if (item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address) {
+            console.log("Marking NFT as spam:", item);
+            return { ...item, isSpam: true };
+          }
+          return item;
+        });
       }
+      console.log("Updated nfts state:", updatedNfts);
       return updatedNfts;
     });
   
-    // Add the NFT to the Spam catalog if it's not already there
     setCatalogs(prevCatalogs => {
-      const updatedCatalogs = prevCatalogs.map(catalog => {
+      const newCatalogs = prevCatalogs.map(catalog => {
         if (catalog.name === "Spam") {
           const isAlreadyInSpam = catalog.nfts.some(
             spamNft => spamNft.id?.tokenId === nft.id?.tokenId && spamNft.contract?.address === nft.contract?.address
           );
+          console.log("Is NFT already in Spam?", isAlreadyInSpam);
           if (!isAlreadyInSpam) {
             return {
               ...catalog,
@@ -185,22 +187,24 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
                 ...nft,
                 walletAddress: address,
                 network,
-                media: nft.media || [],
-                id: nft.id || {},
-                contract: nft.contract || {},
-                title: nft.title || `Unknown NFT`
+                isSpam: true,
+                spamInfo: {
+                  dateMarked: new Date().toISOString(),
+                  markedBy: 'user',
+                }
               }]
             };
           }
         }
         return catalog;
       });
-      return updatedCatalogs;
+      console.log("Updated catalogs:", newCatalogs);
+      return newCatalogs;
     });
   
     toast({
       title: "Marked as Spam",
-      description: "The NFT has been moved to the Spam catalog.",
+      description: "The NFT has been moved to the Spam folder.",
       status: "info",
       duration: 2000,
       isClosable: true,
@@ -326,23 +330,25 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
 
   const filteredNfts = useMemo(() => {
     return Object.entries(nfts)
-      .filter(([address, walletNfts]) =>
+      .filter(([address]) => 
         selectedWallets.length === 0 || selectedWallets.includes(address)
       )
-      .map(([address, walletNfts]) => ({
-        address,
-        nfts: Object.entries(walletNfts).flatMap(([network, networkNfts]) => {
-          if (Array.isArray(networkNfts)) {
-            return networkNfts.filter(nft =>
-              selectedContracts.length === 0 || selectedContracts.includes(nft.contract?.address)
-            );
-          } else {
-            console.warn(`Unexpected data structure for NFTs in wallet ${address}, network ${network}`);
-            return [];
+      .reduce((acc, [address, networkNfts]) => {
+        const filteredNetworkNfts = Object.entries(networkNfts).reduce((netAcc, [network, nftArray]) => {
+          const filteredNftArray = nftArray.filter(nft =>
+            selectedContracts.length === 0 || selectedContracts.includes(nft.contract?.address)
+          );
+          if (filteredNftArray.length > 0) {
+            netAcc[network] = filteredNftArray;
           }
-        }),
-      }))
-      .filter(({ nfts }) => nfts.length > 0);
+          return netAcc;
+        }, {});
+  
+        if (Object.keys(filteredNetworkNfts).length > 0) {
+          acc[address] = filteredNetworkNfts;
+        }
+        return acc;
+      }, {});
   }, [nfts, selectedWallets, selectedContracts]);
 
   const handleOpenCatalog = (catalog) => {
@@ -391,137 +397,166 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
     );
   }
 
+  const totalNFTs = Object.values(nfts).reduce((acc, wallet) => 
+    acc + Object.values(wallet).reduce((sum, network) => sum + network.length, 0), 0
+  );
+
+  const spamNFTs = catalogs.find(cat => cat.name === "Spam")?.nfts.length || 0;
+
   return (
-    <Container maxW="container.xl" py={8}>
-      <Flex justify="space-between" align="center" mb={6}>
-        <Heading as="h2" size="xl">NFT Catalogs</Heading>
-        <Button colorScheme="blue" onClick={onUpdateProfile}>Update Profile</Button>
-      </Flex>
-      
-      <Flex direction={{ base: "column", lg: "row" }} spacing={8}>
-        <Box flex={3} mr={{ base: 0, lg: 8 }} mb={{ base: 8, lg: 0 }}>
-          <Button 
-            colorScheme="blue"
-            onClick={handleRefreshNFTs} 
-            isLoading={isRefreshing}
-            loadingText="Refreshing NFTs"
-            mb={4}
-          >
+    <Container maxW="container.xl" py={8} bg={bgColor}>
+      <VStack spacing={8} align="stretch">
+        <HStack justify="space-between">
+          <Heading as="h1" size="xl">NFT Catalogs</Heading>
+          <Button leftIcon={<FaSync />} onClick={handleRefreshNFTs} isLoading={isRefreshing}>
             Refresh NFTs
           </Button>
-          {isRefreshing && (
-            <Progress value={refreshProgress} mb={4} />
-          )}
+        </HStack>
   
-          <Accordion allowMultiple mb={4}>
-            <AccordionItem>
-              <AccordionButton>
-                <Box flex="1" textAlign="left">
-                  Filter by Wallet
-                </Box>
-                <AccordionIcon />
-              </AccordionButton>
-              <AccordionPanel pb={4}>
-                <Stack>
-                  {wallets.map(wallet => (
-                    <Checkbox
-                      key={wallet.address}
-                      isChecked={selectedWallets.includes(wallet.address)}
-                      onChange={() => handleWalletToggle(wallet.address)}
-                    >
-                      {wallet.nickname || wallet.address}
-                    </Checkbox>
-                  ))}
-                </Stack>
-              </AccordionPanel>
-            </AccordionItem>
-  
-            <AccordionItem>
-              <AccordionButton>
-                <Box flex="1" textAlign="left">
-                  Filter by Contract
-                </Box>
-                <AccordionIcon />
-              </AccordionButton>
-              <AccordionPanel pb={4}>
-                <Stack>
-                  {Object.entries(contractNames).map(([address, name]) => (
-                    <Checkbox
-                      key={address}
-                      isChecked={selectedContracts.includes(address)}
-                      onChange={() => handleContractToggle(address)}
-                    >
-                      {name || address}
-                    </Checkbox>
-                  ))}
-                </Stack>
-              </AccordionPanel>
-            </AccordionItem>
-          </Accordion>
-  
-          {filteredNfts.map(({ address, nfts }) => (
-            <Box key={address} mb={8}>
-              <Flex align="center" mb={4}>
-                <Heading as="h3" size="md">
-                  {wallets.find(wallet => wallet.address === address)?.nickname || address}
-                </Heading>
-                <Button ml={2} size="sm" onClick={() => handleWalletCollapse(address)}>
-                  {collapsedWallets[address] ? 'Expand' : 'Collapse'}
-                </Button>
-              </Flex>
-              {!collapsedWallets[address] && nfts.length > 0 && (
-                <NFTGrid 
-                  nfts={nfts}
-                  selectedNFTs={selectedNFTs}
-                  onNFTSelect={handleNFTSelect}
-                  onMarkAsSpam={(nft) => handleMarkAsSpam(address, nft.network, nft)}
-                  walletAddress={address}
-                />
-              )}
-              {(!nfts.length || collapsedWallets[address]) && (
-                <Text>No NFTs found for this wallet.</Text>
-              )}
-            </Box>
-          ))}
-        </Box>
-        
-        <VStack flex={1} align="stretch" spacing={4}>
-          <Box bg={newCatalogBg} p={4} borderRadius="md">
-            <Heading as="h3" size="md" mb={4}>Create New Catalog</Heading>
-            <Input 
-              placeholder="Catalog Name" 
-              value={catalogName}
-              onChange={(e) => setCatalogName(e.target.value)}
-              mb={2}
-            />
-            <Text mb={2}>{selectedNFTs.length} NFTs selected</Text>
-            <Button colorScheme="blue" onClick={handleCreateCatalog} isFullWidth>
-              Create Catalog
-            </Button>
-          </Box>
-  
+        {isRefreshing && (
           <Box>
-            <Heading as="h3" size="md" mb={4}>Your Catalogs</Heading>
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-              {catalogs.map((catalog) => (
-                <Box key={catalog.id} p={4} borderWidth={1} borderRadius="md" bg={catalogItemBg}>
-                  <Heading as="h4" size="sm">{catalog.name}</Heading>
-                  <Text>{catalog.nfts.length} NFTs</Text>
-                  <HStack mt={2}>
-                    <Button size="sm" onClick={() => handleOpenCatalog(catalog)}>View</Button>
-                    {catalog.name !== "Spam" && (
-                      <>
-                        <Button size="sm" onClick={() => handleEditCatalog(catalog)}>Edit</Button>
-                        <Button size="sm" colorScheme="red" onClick={() => handleDeleteCatalog(catalog.id)}>Delete</Button>
-                      </>
-                    )}
-                  </HStack>
+            <Text>Refreshing NFTs: {Math.round(refreshProgress)}%</Text>
+            <Progress value={refreshProgress} size="sm" colorScheme="blue" />
+          </Box>
+        )}
+  
+        <StatGroup>
+          <Stat>
+            <StatLabel>Total NFTs</StatLabel>
+            <StatNumber>{totalNFTs}</StatNumber>
+          </Stat>
+          <Stat>
+            <StatLabel>Catalogs</StatLabel>
+            <StatNumber>{catalogs.length}</StatNumber>
+          </Stat>
+          <Stat>
+            <StatLabel>Spam NFTs</StatLabel>
+            <StatNumber>{spamNFTs}</StatNumber>
+          </Stat>
+        </StatGroup>
+  
+        <Tabs variant="enclosed">
+          <TabList>
+            <Tab>NFTs</Tab>
+            <Tab>Catalogs</Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel>
+              <Box mb={4}>
+                <Heading as="h3" size="md" mb={2}>Filters</Heading>
+                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                  <Box>
+                    <Text fontWeight="bold">Wallets:</Text>
+                    {wallets.map(wallet => (
+                      <Checkbox
+                        key={wallet.address}
+                        isChecked={selectedWallets.includes(wallet.address)}
+                        onChange={() => handleWalletToggle(wallet.address)}
+                      >
+                        {wallet.nickname || wallet.address}
+                      </Checkbox>
+                    ))}
+                  </Box>
+                  <Box>
+                    <Text fontWeight="bold">Contracts:</Text>
+                    {Object.entries(contractNames).map(([address, name]) => (
+                      <Checkbox
+                        key={address}
+                        isChecked={selectedContracts.includes(address)}
+                        onChange={() => handleContractToggle(address)}
+                      >
+                        {name}
+                      </Checkbox>
+                    ))}
+                  </Box>
+                </SimpleGrid>
+              </Box>
+  
+              {Object.entries(filteredNfts).map(([address, networkNfts]) => (
+                <Box key={address} mb={8}>
+                  <Flex align="center" mb={4}>
+                    <Heading as="h3" size="md">
+                      {wallets.find(wallet => wallet.address === address)?.nickname || address}
+                    </Heading>
+                    <Button ml={2} size="sm" onClick={() => handleWalletCollapse(address)}>
+                      {collapsedWallets[address] ? 'Expand' : 'Collapse'}
+                    </Button>
+                  </Flex>
+                  {!collapsedWallets[address] && (
+                    <VStack spacing={4} align="stretch">
+                      {Object.entries(networkNfts).map(([network, nftArray]) => (
+                        <Box key={network}>
+                          <Heading as="h4" size="sm" mb={2}>{network}</Heading>
+                          <NFTGrid 
+                            nfts={nftArray}
+                            selectedNFTs={selectedNFTs}
+                            onNFTSelect={handleNFTSelect}
+                            onMarkAsSpam={handleMarkAsSpam}
+                            walletAddress={address}
+                            network={network}
+                            cardSize={270}
+                            isSpamFolder={false}
+                          />
+                        </Box>
+                      ))}
+                    </VStack>
+                  )}
                 </Box>
               ))}
-            </SimpleGrid>
-          </Box>
-        </VStack>
-      </Flex>
+            </TabPanel>
+  
+            <TabPanel>
+              <VStack spacing={4} align="stretch">
+                <Box bg={cardBg} p={4} borderRadius="md" boxShadow="md">
+                  <Heading as="h3" size="md" mb={2}>Create New Catalog</Heading>
+                  <HStack>
+                    <Input 
+                      placeholder="Catalog Name" 
+                      value={catalogName}
+                      onChange={(e) => setCatalogName(e.target.value)}
+                    />
+                    <Button leftIcon={<FaPlus />} onClick={handleCreateCatalog} colorScheme="blue">
+                      Create
+                    </Button>
+                  </HStack>
+                  <Text mt={2} fontSize="sm" color="gray.500">
+                    {selectedNFTs.length} NFTs selected
+                  </Text>
+                </Box>
+                <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                  {catalogs.map((catalog) => (
+                    <Box key={catalog.id} p={4} borderWidth={1} borderRadius="md" bg={cardBg}>
+                      <Heading as="h4" size="sm">{catalog.name}</Heading>
+                      <Text>{catalog.nfts.length} NFTs</Text>
+                      <HStack mt={2}>
+                        <Button size="sm" onClick={() => handleOpenCatalog(catalog)}>View</Button>
+                        {catalog.name !== "Spam" && (
+                          <>
+                            <Button size="sm" onClick={() => handleEditCatalog(catalog)}>Edit</Button>
+                            <Button size="sm" colorScheme="red" onClick={() => handleDeleteCatalog(catalog.id)}>Delete</Button>
+                          </>
+                        )}
+                      </HStack>
+                    </Box>
+                  ))}
+                </SimpleGrid>
+              </VStack>
+  
+              <Box mt={4}>
+                <Heading as="h3" size="md" mb={2}>Known Contracts</Heading>
+                <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                  {Object.entries(contractNames).map(([address, name]) => (
+                    <Box key={address} p={2} borderWidth={1} borderRadius="md">
+                      <Text fontWeight="bold">{name}</Text>
+                      <Text fontSize="sm">{address}</Text>
+                    </Box>
+                  ))}
+                </SimpleGrid>
+              </Box>
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
+      </VStack>
   
       <Modal isOpen={isOpen} onClose={onClose}>
         <ModalOverlay />
@@ -551,7 +586,7 @@ const CatalogPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, onUpdatePr
         </ModalContent>
       </Modal>
     </Container>
-  ); 
+  );
 };
 
 export default CatalogPage;

@@ -20,7 +20,7 @@ import { FaList, FaThLarge, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import NFTCard from './NFTCard';
 import ListViewItem from './ListViewItem';
 
-const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose }) => {
+const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam }) => {
   const [selectedNFTs, setSelectedNFTs] = useState([]);
   const [cardSize, setCardSize] = useState(270);
   const [isListView, setIsListView] = useState(true);
@@ -46,6 +46,8 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose }) => {
       isClosable: true,
     });
   };
+
+  const isSpamCatalog = catalog.name === "Spam";
 
   return (
     <Box>
@@ -120,7 +122,8 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose }) => {
                 item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address
               )}
               onSelect={() => handleNFTSelect(nft)}
-              onRemove={() => onRemoveNFTs([nft])}
+              onRemove={isSpamCatalog ? () => onUnmarkSpam(nft) : () => onRemoveNFTs([nft])}
+              isSpamCatalog={isSpamCatalog}
             />
           ))}
         </VStack>
@@ -134,8 +137,9 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose }) => {
                 item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address
               )}
               onSelect={() => handleNFTSelect(nft)}
-              onRemove={() => onRemoveNFTs([nft])}
+              onRemove={isSpamCatalog ? () => onUnmarkSpam(nft) : () => onRemoveNFTs([nft])}
               cardSize={cardSize}
+              isSpamCatalog={isSpamCatalog}
             />
           ))}
         </SimpleGrid>
