@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChakraProvider, Box, Flex } from "@chakra-ui/react";
+import { ChakraProvider, Box } from "@chakra-ui/react";
 import WelcomePage from './components/WelcomePage';
 import ProfilePage from './components/ProfilePage';
 import LibraryPage from './components/LibraryPage';
@@ -13,6 +13,10 @@ function App() {
     { address: '0x123...', nickname: 'Main Wallet', networks: ['ethereum', 'polygon'] },
     { address: '0x456...', nickname: 'Secondary Wallet', networks: ['ethereum', 'optimism'] },
   ]);
+  const [userProfile, setUserProfile] = useState({
+    nickname: '',
+    avatarUrl: '',
+  });
   const [nfts, setNfts] = useState({});
   const [spamNfts, setSpamNfts] = useState({});
   const [catalogs, setCatalogs] = useState([]);
@@ -26,21 +30,18 @@ function App() {
     setPage(newPage);
   };
 
+  const updateGlobalState = ({ wallets: newWallets, userProfile: newUserProfile }) => {
+    setWallets(newWallets);
+    setUserProfile(newUserProfile);
+    // You might want to trigger other actions here, like saving to a backend
+  };
+
   return (
     <ErrorBoundary>
       <ChakraProvider theme={theme}>
-        <Flex direction="row" minHeight="100vh">
-          {page !== 'welcome' && (
-            <Box width={{ base: "60px", md: "200px" }} flexShrink={0}>
-              <MenuModal onNavigate={handleNavigate} currentPage={page} />
-            </Box>
-          )}
-          <Box 
-            flexGrow={1} 
-            p={{ base: 4, md: 8 }}
-            fontSize={{ base: "sm", md: "md" }}
-            overflowY="auto"
-          >
+        <Box>
+          {page !== 'welcome' && <MenuModal onNavigate={handleNavigate} />}
+          <Box marginLeft={page !== 'welcome' ? "200px" : "0"} padding={8}>
             {page === 'welcome' && <WelcomePage onStart={handleStart} />}
             {page === 'home' && <HomePage />}
             {page === 'library' && (
@@ -56,13 +57,13 @@ function App() {
             )}
             {page === 'profile' && (
               <ProfilePage 
-                wallets={wallets}
-                setWallets={setWallets}
-                setNfts={setNfts}
+                initialWallets={wallets}
+                initialUserProfile={userProfile}
+                updateGlobalState={updateGlobalState}
               />
             )}
           </Box>
-        </Flex>
+        </Box>
       </ChakraProvider>
     </ErrorBoundary>
   );

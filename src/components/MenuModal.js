@@ -3,10 +3,10 @@ import { Box, VStack, Button, Text, useColorModeValue } from "@chakra-ui/react";
 import { FaHome, FaBookOpen, FaUser } from 'react-icons/fa';
 
 const MenuModal = ({ onNavigate, currentPage }) => {
-  const bgColor = useColorModeValue('gray.900', 'gray.900');
-  const textColor = useColorModeValue('gray.100', 'gray.100');
-  const hoverColor = useColorModeValue('gray.700', 'gray.700');
-  const activeColor = useColorModeValue('gray.700', 'gray.700');
+  const bgColor = useColorModeValue('gray.100', 'gray.800');
+  const textColor = useColorModeValue('gray.800', 'gray.100');
+  const hoverColor = useColorModeValue('gray.200', 'gray.700');
+  const activeColor = useColorModeValue('blue.500', 'blue.300');
 
   const menuItems = [
     { name: 'Home', icon: FaHome, path: 'home' },
@@ -20,28 +20,29 @@ const MenuModal = ({ onNavigate, currentPage }) => {
       left={0}
       top={0}
       bottom={0}
-      width="200px"
+      width={{ base: "60px", md: "200px" }}
       bg={bgColor}
       p={4}
       zIndex={1000}
       color={textColor}
     >
-      <Text fontSize="2xl" fontWeight="bold" mb={8}>Alix</Text>
+      <Text fontSize="2xl" fontWeight="bold" mb={8} display={{ base: "none", md: "block" }}>Alix</Text>
       <VStack spacing={2} align="stretch">
         {menuItems.map((item) => (
           <Button
             key={item.path}
             onClick={() => onNavigate(item.path)}
             variant="ghost"
-            justifyContent="flex-start"
+            justifyContent={{ base: "center", md: "flex-start" }}
             leftIcon={<item.icon />}
-            bg={currentPage === item.path ? activeColor : 'transparent'}
+            color={currentPage === item.path ? activeColor : textColor}
+            bg={currentPage === item.path ? hoverColor : 'transparent'}
             _hover={{ bg: hoverColor }}
             w="100%"
             borderRadius="md"
             py={3}
           >
-            {item.name}
+            <Text display={{ base: "none", md: "block" }}>{item.name}</Text>
           </Button>
         ))}
       </VStack>

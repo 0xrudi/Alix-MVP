@@ -1,27 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
   VStack,
-  Heading,
-  Text,
   Image,
-  Button,
   Input,
   Select,
   useToast,
 } from "@chakra-ui/react";
-import { fetchENSAvatar } from '../utils/web3Utils';
+import { fetchENSAvatar, getAvailableENS } from '../utils/web3Utils';
 
-const UserProfile = ({ wallets }) => {
+const UserProfile = ({ wallets, updateUserProfile }) => {
   const [nickname, setNickname] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [availableENS, setAvailableENS] = useState([]);
   const toast = useToast();
 
   useEffect(() => {
-    const ensDomains = wallets
-      .filter(wallet => wallet.nickname && wallet.nickname.endsWith('.eth'))
-      .map(wallet => wallet.nickname);
+    const ensDomains = getAvailableENS(wallets);
     setAvailableENS(ensDomains);
 
     if (ensDomains.length > 0) {
@@ -32,11 +26,7 @@ const UserProfile = ({ wallets }) => {
 
   const fetchAndSetAvatar = async (ensName) => {
     const avatarData = await fetchENSAvatar(ensName);
-    if (avatarData) {
-      setAvatarUrl(avatarData);
-    } else {
-      setAvatarUrl(`https://via.placeholder.com/150?text=${ensName}`);
-    }
+    setAvatarUrl(avatarData || `https://via.placeholder.com/150?text=${ensName}`);
   };
 
   const handleNicknameChange = (event) => {
@@ -60,39 +50,26 @@ const UserProfile = ({ wallets }) => {
     await fetchAndSetAvatar(selectedENS);
   };
 
-  const handleSaveProfile = () => {
-    // Here you would save the profile to your backend
-    toast({
-      title: "Profile Saved",
-      description: "Your profile has been updated successfully.",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
-  };
-
   return (
-    <Box>
-      <Heading as="h2" size="lg" marginBottom={4}>User Profile</Heading>
-      <VStack spacing={4} align="start">
-        <Image
-          src={avatarUrl || 'https://via.placeholder.com/150'}
-          alt="User Avatar"
-          borderRadius="full"
-          boxSize="150px"
-        />
-        <Input type="file" accept="image/*" onChange={handleAvatarUpload} />
-        <Text>Or select an ENS avatar:</Text>
-        <Select onChange={handleENSSelect} placeholder="Select ENS domain">
-          {availableENS.map(ens => (
-            <option key={ens} value={ens}>{ens}</option>
-          ))}
-        </Select>
-        <Text>Nickname:</Text>
-        <Input value={nickname} onChange={handleNicknameChange} placeholder="Enter nickname" />
-        <Button onClick={handleSaveProfile} colorScheme="blue">Save Profile</Button>
-      </VStack>
-    </Box>
+    <VStack spacing={4} align="start">
+      <Image
+        src={avatarUrl || 'https://via.placeholder.com/150'}
+        alt="User Avatar"
+        borderRadius="full"
+        boxSize="150px"
+      />
+      <Input type="file" accept="image/*" onChange={handleAvatarUpload} />
+      <Select onChange={handleENSSelect} placeholder="Select ENS domain">
+        {availableENS.map(ens => (
+          <option key={ens} value={ens}>{ens}</option>
+        ))}
+      </Select>
+      <Input 
+        value={nickname} 
+        onChange={handleNicknameChange} 
+        placeholder="Enter nickname" 
+      />
+    </VStack>
   );
 };
 

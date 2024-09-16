@@ -1,7 +1,20 @@
 import { ethers } from 'ethers';
 import axios from 'axios';
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+export const networks = [
+  { value: "ethereum", label: "Ethereum" },
+  { value: "polygon", label: "Polygon PoS" },
+  { value: "optimism", label: "Optimism" },
+  { value: "arbitrum", label: "Arbitrum" },
+  { value: "zksync", label: "ZKSync" },
+  { value: "starknet", label: "Starknet" },
+  { value: "mantle", label: "Mantle" },
+  { value: "linea", label: "Linea" },
+  { value: "base", label: "Base" },
+  { value: "zora", label: "Zora" },
+  { value: "polygon_zkevm", label: "Polygon zkEVM" },
+  { value: "solana", label: "Solana" },
+];
 
 const networkEndpoints = {
   ethereum: "https://eth-mainnet.g.alchemy.com/v2/",
@@ -17,6 +30,8 @@ const networkEndpoints = {
   polygon_zkevm: "https://polygonzkevm-mainnet.g.alchemy.com/v2/",
   solana: "https://solana-mainnet.g.alchemy.com/v2/"
 };
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 class NFTFetchQueue {
   constructor(concurrency = 2) {
@@ -77,8 +92,14 @@ export const fetchNFTs = async (address, network, retries = 3, initialDelay = 10
             pageSize: 100
           }
         });
-
-        return response.data.ownedNfts;
+  
+        return response.data.ownedNfts.map(nft => ({
+          ...nft,
+          title: nft.title || `Token ID: ${nft.id?.tokenId || 'Unknown'}`,
+          contractName: nft.contract?.name || 'Unknown Contract',
+          imageUrl: nft.media[0]?.gateway || 'https://via.placeholder.com/150?text=No+Image'
+        }));
+  
       } catch (error) {
         console.error(`Error fetching NFTs for ${address} on ${network} (Attempt ${attempt + 1}/${retries}):`, error);
         
@@ -148,4 +169,10 @@ export const fetchENSAvatar = async (ensName) => {
 
 export const isNftSpam = (tokenId, contractAddress, spamNfts) => {
   return Object.values(spamNfts).flat().some(spam => spam.tokenId === tokenId && spam.contractAddress === contractAddress);
+};
+
+export const getAvailableENS = (wallets) => {
+  return wallets
+    .filter(wallet => wallet.nickname && wallet.nickname.endsWith('.eth'))
+    .map(wallet => wallet.nickname);
 };

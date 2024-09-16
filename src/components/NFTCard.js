@@ -33,8 +33,8 @@ const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSi
       position="relative"
     >
       <Image
-        src={nft.media[0]?.gateway || 'https://via.placeholder.com/300?text=No+Image'}
-        alt={nft.title || 'NFT'}
+        src={nft.imageUrl}
+        alt={nft.title}
         width="100%"
         height={`${cardSize}px`}
         objectFit="cover"
@@ -42,10 +42,10 @@ const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSi
       <VStack p={4} spacing={2} align="stretch" height={`${cardSize * 0.4}px`} justify="space-between">
         <VStack align="stretch" spacing={1}>
           <Text fontWeight="bold" fontSize="sm" isTruncated color={textColor}>
-            {nft.title || `Token ID: ${nft.id?.tokenId}`}
+            {nft.title}
           </Text>
           <Text fontSize="xs" color={mutedTextColor} isTruncated>
-            {nft.contract?.name || 'Unknown Contract'}
+            {nft.contractName}
           </Text>
         </VStack>
         <HStack justify="space-between">

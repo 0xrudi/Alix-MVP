@@ -9,6 +9,7 @@ Alix is a web application designed to simplify the management and organization o
 - **Catalog Creation**: Users can create custom catalogs to organize their NFTs based on their preferences, making it easier to manage and access specific subsets of their collection.
 - **Spam Filtering**: Alix allows users to mark NFTs as spam, helping to keep their collection clean and organized.
 - **User Profile**: Users can set up a profile with their preferred display name and avatar, which is associated with their connected wallets.
+- **Responsive Design**: The application is designed to be responsive, providing a consistent experience across various device sizes.
 
 ## Installation
 
@@ -61,8 +62,12 @@ The project structure is as follows:
 src/
   components/
     CatalogPage.js
+    HomePage.js
+    LibraryPage.js
+    MenuModal.js
     NFTCard.js
     NFTGrid.js
+    ProfilePage.js
     UserProfile.js
     WalletManager.js
     WelcomePage.js
@@ -83,10 +88,13 @@ README.md
 
 - `App.js`: The main component that manages the application state and routing between different pages.
 - `WelcomePage.js`: Displays the initial welcome screen and onboarding process for new users.
-- `WalletManager.js`: Handles the connection and management of user wallets, including ENS resolution.
-- `UserProfile.js`: Allows users to set up and edit their profile information, including avatar and nickname.
-- `CatalogPage.js`: The main page for viewing and managing NFT catalogs. It includes filtering options and catalog creation.
-- `NFTGrid.js`: Displays a grid of NFTs, used within the CatalogPage component.
+- `HomePage.js`: Shows a dashboard with quick actions and overview of the user's NFTs and catalogs.
+- `MenuModal.js`: Provides navigation between different pages of the application.
+- `LibraryPage.js`: The main page for viewing and managing NFT catalogs. It includes filtering options and catalog creation.
+- `ProfilePage.js`: Allows users to manage their profile and connected wallets.
+- `UserProfile.js`: Handles user profile information, including avatar and nickname.
+- `WalletManager.js`: Manages the connection and configuration of user wallets, including ENS resolution.
+- `NFTGrid.js`: Displays a grid of NFTs, used within the LibraryPage component.
 - `NFTCard.js`: Represents an individual NFT card within the NFTGrid, showing NFT details and actions.
 - `CatalogViewPage.js`: Displays the contents of a specific catalog and allows for NFT management within that catalog.
 
