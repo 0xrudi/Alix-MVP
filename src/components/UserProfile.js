@@ -3,8 +3,7 @@ import {
   VStack,
   Image,
   Input,
-  Select,
-  useToast,
+  Select
 } from "@chakra-ui/react";
 import { fetchENSAvatar, getAvailableENS } from '../utils/web3Utils';
 
@@ -12,7 +11,6 @@ const UserProfile = ({ wallets, updateUserProfile }) => {
   const [nickname, setNickname] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [availableENS, setAvailableENS] = useState([]);
-  const toast = useToast();
 
   useEffect(() => {
     const ensDomains = getAvailableENS(wallets);

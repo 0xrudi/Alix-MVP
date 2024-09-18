@@ -7,6 +7,7 @@ import HomePage from './components/HomePage';
 import MenuModal from './components/MenuModal';
 import theme from './styles';
 import ErrorBoundary from './components/ErrorBoundary';
+import './global.css';
 
 function App() {
   const [wallets, setWallets] = useState([

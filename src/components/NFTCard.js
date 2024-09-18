@@ -13,6 +13,7 @@ import {
 import { FaExclamationTriangle } from 'react-icons/fa';
 
 const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSize }) => {
+  console.log("NFT Card props:", { nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSize });
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
   const textColor = useColorModeValue('gray.800', 'white');
@@ -33,8 +34,8 @@ const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSi
       position="relative"
     >
       <Image
-        src={nft.imageUrl}
-        alt={nft.title}
+        src={nft.media?.[0]?.gateway || nft.imageUrl || 'https://via.placeholder.com/150?text=No+Image'}
+        alt={nft.title || 'NFT'}
         width="100%"
         height={`${cardSize}px`}
         objectFit="cover"

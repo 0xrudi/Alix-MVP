@@ -27,7 +27,7 @@ const WelcomePage = ({ onStart }) => {
           py={[4, 6, 8]}
           px={[8, 10, 12]}
         >
-          Begin Onboarding
+          Begin
         </Button>
       </VStack>
     </Box>

@@ -92,14 +92,16 @@ export const fetchNFTs = async (address, network, retries = 3, initialDelay = 10
             pageSize: 100
           }
         });
-  
+
+        console.log(`Successfully fetched NFTs for ${address} on ${network}`);
+        
         return response.data.ownedNfts.map(nft => ({
           ...nft,
           title: nft.title || `Token ID: ${nft.id?.tokenId || 'Unknown'}`,
           contractName: nft.contract?.name || 'Unknown Contract',
           imageUrl: nft.media[0]?.gateway || 'https://via.placeholder.com/150?text=No+Image'
         }));
-  
+
       } catch (error) {
         console.error(`Error fetching NFTs for ${address} on ${network} (Attempt ${attempt + 1}/${retries}):`, error);
         

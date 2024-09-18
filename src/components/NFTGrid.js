@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
   SimpleGrid, 
-  Box, 
   VStack, 
   HStack, 
   Text, 
@@ -15,13 +14,14 @@ import { FaSearch } from 'react-icons/fa';
 import NFTCard from './NFTCard';
 
 const NFTGrid = React.memo(({ nfts, selectedNFTs, onNFTSelect, onMarkAsSpam, walletAddress, network, cardSize, isSpamFolder = false }) => {
+  console.log("Rendering NFTGrid", { walletAddress, network, nftsCount: nfts.length });
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState('title');
 
   const bgColor = useColorModeValue('gray.50', 'gray.900');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
 
-  const filteredAndSortedNFTs = nfts
+  const filteredAndSortedNFTs = Array.isArray(nfts) ? nfts
     .filter(nft => !nft.isSpam || isSpamFolder)
     .filter(nft => 
       nft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -34,7 +34,7 @@ const NFTGrid = React.memo(({ nfts, selectedNFTs, onNFTSelect, onMarkAsSpam, wal
         return (a.contract?.name || '').localeCompare(b.contract?.name || '');
       }
       return 0;
-    });
+    }) : [];
 
   return (
     <VStack spacing={6} align="stretch" w="100%" bg={bgColor} p={6} borderRadius="lg" borderWidth={1} borderColor={borderColor}>
@@ -70,6 +70,7 @@ const NFTGrid = React.memo(({ nfts, selectedNFTs, onNFTSelect, onMarkAsSpam, wal
             cardSize={cardSize}
           />
         ))}
+        console.log("NFTs received in NFTGrid:", nfts);
       </SimpleGrid>
     </VStack>
   );
