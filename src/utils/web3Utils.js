@@ -1,37 +1,18 @@
-import { ethers } from 'ethers';
 import axios from 'axios';
 
+const MORALIS_API_KEY = process.env.REACT_APP_MORALIS_API_KEY;
+
 export const networks = [
-  { value: "ethereum", label: "Ethereum" },
+  { value: "eth", label: "Ethereum" },
   { value: "polygon", label: "Polygon PoS" },
   { value: "optimism", label: "Optimism" },
   { value: "arbitrum", label: "Arbitrum" },
-  { value: "zksync", label: "ZKSync" },
-  { value: "starknet", label: "Starknet" },
-  { value: "mantle", label: "Mantle" },
-  { value: "linea", label: "Linea" },
-  { value: "base", label: "Base" },
-  { value: "zora", label: "Zora" },
-  { value: "polygon_zkevm", label: "Polygon zkEVM" },
-  { value: "solana", label: "Solana" },
+  { value: "bsc", label: "BNB Chain" },
+  { value: "avalanche", label: "Avalanche" },
+  { value: "fantom", label: "Fantom" },
+  { value: "cronos", label: "Cronos" },
+  // Add more networks as needed
 ];
-
-const networkEndpoints = {
-  ethereum: "https://eth-mainnet.g.alchemy.com/v2/",
-  polygon: "https://polygon-mainnet.g.alchemy.com/v2/",
-  optimism: "https://opt-mainnet.g.alchemy.com/v2/",
-  arbitrum: "https://arb-mainnet.g.alchemy.com/v2/",
-  zksync: "https://zksync-mainnet.g.alchemy.com/v2/",
-  starknet: "https://starknet-mainnet.g.alchemy.com/v2/",
-  mantle: "https://mantle-mainnet.g.alchemy.com/v2/",
-  linea: "https://linea-mainnet.g.alchemy.com/v2/",
-  base: "https://base-mainnet.g.alchemy.com/v2/",
-  zora: "https://zora-mainnet.g.alchemy.com/v2/",
-  polygon_zkevm: "https://polygonzkevm-mainnet.g.alchemy.com/v2/",
-  solana: "https://solana-mainnet.g.alchemy.com/v2/"
-};
-
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 class NFTFetchQueue {
   constructor(concurrency = 2) {
@@ -67,16 +48,9 @@ class NFTFetchQueue {
 
 const fetchQueue = new NFTFetchQueue();
 
-export const fetchNFTs = async (address, network, retries = 3, initialDelay = 1000) => {
-  const alchemyApiKey = process.env.REACT_APP_ALCHEMY_API_KEY;
-  if (!alchemyApiKey) {
-    console.error('Alchemy API Key is not set');
-    return [];
-  }
-
-  const endpoint = networkEndpoints[network];
-  if (!endpoint) {
-    console.error(`Unsupported network: ${network}`);
+export const fetchNFTs = async (address, chain, retries = 3, initialDelay = 1000) => {
+  if (!MORALIS_API_KEY) {
+    console.error('Moralis API Key is not set');
     return [];
   }
 
@@ -85,34 +59,45 @@ export const fetchNFTs = async (address, network, retries = 3, initialDelay = 10
 
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
-        const response = await axios.get(`${endpoint}${alchemyApiKey}/getNFTs/`, {
+        const response = await axios.get(`https://deep-index.moralis.io/api/v2/${address}/nft`, {
           params: {
-            owner: address,
-            withMetadata: true,
-            pageSize: 100
-          }
+            chain: chain,
+            format: 'decimal',
+            limit: 100,
+          },
+          headers: {
+            'X-API-Key': MORALIS_API_KEY,
+          },
         });
 
-        console.log(`Successfully fetched NFTs for ${address} on ${network}`);
+        console.log(`Successfully fetched NFTs for ${address} on ${chain}`);
         
-        return response.data.ownedNfts.map(nft => ({
-          ...nft,
-          title: nft.title || `Token ID: ${nft.id?.tokenId || 'Unknown'}`,
-          contractName: nft.contract?.name || 'Unknown Contract',
-          imageUrl: nft.media[0]?.gateway || 'https://via.placeholder.com/150?text=No+Image'
+        return response.data.result.map(nft => ({
+          id: { tokenId: nft.token_id },
+          contract: { 
+            address: nft.token_address,
+            name: nft.name,
+            symbol: nft.symbol
+          },
+          title: nft.name || `Token ID: ${nft.token_id}`,
+          description: nft.metadata ? JSON.parse(nft.metadata).description : '',
+          media: [{
+            gateway: nft.token_uri || 'https://via.placeholder.com/150?text=No+Image'
+          }],
+          metadata: nft.metadata ? JSON.parse(nft.metadata) : {}
         }));
 
       } catch (error) {
-        console.error(`Error fetching NFTs for ${address} on ${network} (Attempt ${attempt + 1}/${retries}):`, error);
+        console.error(`Error fetching NFTs for ${address} on ${chain} (Attempt ${attempt + 1}/${retries}):`, error);
         
         if (error.response && error.response.status === 429) {
           console.log(`Rate limited. Waiting for ${currentDelay}ms before retrying...`);
-          await delay(currentDelay);
+          await new Promise(resolve => setTimeout(resolve, currentDelay));
           currentDelay *= 2; // Exponential backoff
         } else if (attempt === retries - 1) {
           throw error; // Rethrow the error if we've exhausted all retries
         } else {
-          await delay(currentDelay);
+          await new Promise(resolve => setTimeout(resolve, currentDelay));
         }
       }
     }
@@ -121,48 +106,56 @@ export const fetchNFTs = async (address, network, retries = 3, initialDelay = 10
   return fetchQueue.add(fetchTask);
 };
 
-
-export const resolveENS = async (ensName, network) => {
-  const alchemyApiKey = process.env.REACT_APP_ALCHEMY_API_KEY;
-  if (!alchemyApiKey) {
-    console.error('Alchemy API Key is not set');
-    return { success: false, message: 'Alchemy API Key is not set' };
-  }
-
-  const endpoint = networkEndpoints[network];
-  if (!endpoint) {
-    return { success: false, message: 'Invalid network selected' };
+export const resolveENS = async (ensName) => {
+  if (!MORALIS_API_KEY) {
+    console.error('Moralis API Key is not set');
+    return { success: false, message: 'Moralis API Key is not set' };
   }
 
   try {
-    const provider = new ethers.providers.JsonRpcProvider(
-      `${endpoint}${alchemyApiKey}`
-    );
+    const response = await axios.get(`https://deep-index.moralis.io/api/v2/resolve/ens/${ensName}`, {
+      headers: {
+        'X-API-Key': MORALIS_API_KEY,
+      },
+    });
 
-    const address = await provider.resolveName(ensName);
-
-    if (address) {
-      return { success: true, address };
+    if (response.data && response.data.address) {
+      return { success: true, address: response.data.address };
     } else {
-      return { success: false, message: `ENS name not found on ${network}` };
+      return { success: false, message: 'ENS name not found' };
     }
   } catch (error) {
     console.error('Error resolving ENS:', error);
     return { 
       success: false, 
-      message: `Error resolving ENS: ${error.message}. Please check your network connection and Alchemy API Key.` 
+      message: `Error resolving ENS: ${error.message}. Please check your network connection and Moralis API Key.` 
     };
   }
 };
 
 export const isValidAddress = (address) => {
-  return ethers.utils.isAddress(address);
+  // This is a simple regex check, you might want to use a more robust method
+  return /^0x[a-fA-F0-9]{40}$/.test(address);
 };
 
 export const fetchENSAvatar = async (ensName) => {
+  if (!MORALIS_API_KEY) {
+    console.error('Moralis API Key is not set');
+    return null;
+  }
+
   try {
-    const response = await axios.get(`https://metadata.ens.domains/mainnet/avatar/${ensName}`);
-    return response.data;
+    const response = await axios.get(`https://deep-index.moralis.io/api/v2/resolve/ens/${ensName}`, {
+      headers: {
+        'X-API-Key': MORALIS_API_KEY,
+      },
+    });
+
+    if (response.data && response.data.avatar) {
+      return response.data.avatar;
+    } else {
+      return null;
+    }
   } catch (error) {
     console.error('Error fetching ENS avatar:', error);
     return null;

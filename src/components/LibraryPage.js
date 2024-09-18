@@ -128,7 +128,7 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
         const fetchedNfts = {};
         let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
         let completedFetches = 0;
-  
+    
         for (const wallet of wallets) {
           fetchedNfts[wallet.address] = {};
           for (const network of wallet.networks) {
@@ -149,16 +149,16 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
             }
           }
         }
-  
-      setNfts(fetchedNfts);
-      setIsRefreshing(false);
-      toast({
-        title: "NFTs Refreshed",
-        description: "Your NFTs have been successfully refreshed.",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
+    
+        setNfts(fetchedNfts);
+        setIsRefreshing(false);
+        toast({
+          title: "NFTs Refreshed",
+          description: "Your NFTs have been successfully refreshed.",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
     };
   
     useEffect(() => {
@@ -453,6 +453,9 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
               >
                 Refresh Artifacts
               </Button>
+            {isRefreshing && (
+                <Progress value={refreshProgress} size="sm" colorScheme="blue" />
+            )}
             </Flex>
             
             {isRefreshing && (
