@@ -19,7 +19,7 @@ import { resolveENS, isValidAddress, networks } from '../utils/web3Utils';
 
 const WalletManager = ({ wallets = [], updateWallets }) => {
   const [input, setInput] = useState('');
-  const [selectedNetwork, setSelectedNetwork] = useState('ethereum');
+  const [selectedNetwork, setSelectedNetwork] = useState('eth');
   const [error, setError] = useState('');
   const toast = useToast();
 
@@ -28,35 +28,47 @@ const WalletManager = ({ wallets = [], updateWallets }) => {
     let address = input;
     let walletNickname = '';
 
-    if (input.endsWith('.eth')) {
-      const result = await resolveENS(input, selectedNetwork);
-      if (result.success) {
-        address = result.address;
-        walletNickname = input;
-      } else {
-        setError(result.message);
+    try {
+      if (input.endsWith('.eth')) {
+        console.log('Resolving ENS name:', input);
+        const result = await resolveENS(input);
+        console.log('ENS resolution result:', result);
+        if (result.success) {
+          address = result.address;
+          walletNickname = input;
+        } else {
+          setError(result.message);
+          return;
+        }
+      } else if (!isValidAddress(input)) {
+        setError('Invalid address format');
         return;
       }
-    } else if (!isValidAddress(input)) {
-      setError('Invalid address format');
-      return;
+
+      const newWallet = {
+        address,
+        nickname: walletNickname,
+        networks: [selectedNetwork],
+      };
+
+      console.log('New wallet object:', newWallet);
+
+      const updatedWallets = [...wallets, newWallet];
+      console.log('Updated wallets array:', updatedWallets);
+
+      updateWallets(updatedWallets);
+      setInput('');
+      toast({
+        title: "Wallet Added",
+        description: "The wallet has been successfully added to your list.",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error adding wallet:', error);
+      setError(`Error adding wallet: ${error.message}`);
     }
-
-    const newWallet = {
-      address,
-      nickname: walletNickname,
-      networks: [selectedNetwork],
-    };
-
-    updateWallets([...wallets, newWallet]);
-    setInput('');
-    toast({
-      title: "Wallet Added",
-      description: "The wallet has been successfully added to your list.",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
   };
 
   const handleNetworkChange = (address, selectedOptions) => {
@@ -124,13 +136,16 @@ const WalletManager = ({ wallets = [], updateWallets }) => {
                     onChange={(e) => handleNicknameChange(wallet.address, e.target.value)}
                     placeholder="Add nickname"
                   />
-                  {wallet.address}
+                  <Text>{wallet.address}</Text>
                 </Td>
                 <Td>
                   <MultiSelect
                     isMulti
                     options={networks}
-                    value={networks.filter(network => wallet.networks.includes(network.value))}
+                    value={wallet.networks.map(networkValue => ({
+                      value: networkValue,
+                      label: networks.find(n => n.value === networkValue)?.label || networkValue
+                    }))}
                     onChange={(selectedOptions) => handleNetworkChange(wallet.address, selectedOptions)}
                     placeholder="Select networks"
                   />

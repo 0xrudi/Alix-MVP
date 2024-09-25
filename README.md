@@ -1,14 +1,15 @@
 # Alix: Web3 Artifact Management Platform
 
-Alix is a web application designed to simplify the management and organization of digital assets, such as NFTs (Non-Fungible Tokens), across multiple web3 wallets. It provides a user-friendly interface for users to connect their wallets, view their NFT collections, and create custom catalogs for easy organization and access.
+Alix is a web application designed to simplify the management and organization of digital assets, such as NFTs (Non-Fungible Tokens), across multiple web3 wallets and blockchain networks. It provides a user-friendly interface for users to connect their wallets, view their NFT collections, and create custom catalogs for easy organization and access.
 
 ## Features
 
-- **Wallet Management**: Users can connect multiple Ethereum wallets to their Alix account, including support for ENS (Ethereum Name Service) resolution and avatar integration.
-- **NFT Viewing**: Alix fetches and displays NFTs from all connected wallets, providing a unified view of a user's entire NFT collection.
+- **Multi-Chain Wallet Management**: Users can connect multiple wallets across various blockchain networks, including Ethereum, Polygon, Binance Smart Chain, and more.
+- **NFT Viewing**: Alix fetches and displays NFTs from all connected wallets and supported networks, providing a unified view of a user's entire NFT collection.
 - **Catalog Creation**: Users can create custom catalogs to organize their NFTs based on their preferences, making it easier to manage and access specific subsets of their collection.
 - **Spam Filtering**: Alix allows users to mark NFTs as spam, helping to keep their collection clean and organized.
 - **User Profile**: Users can set up a profile with their preferred display name and avatar, which is associated with their connected wallets.
+- **ENS Integration**: Support for Ethereum Name Service (ENS) resolution and avatar integration.
 - **Responsive Design**: The application is designed to be responsive, providing a consistent experience across various device sizes.
 
 ## Installation
@@ -27,23 +28,15 @@ To run the Alix application locally, follow these steps:
    ```
    npm install
    ```
-   or if you're using Yarn:
-   ```
-   yarn install
-   ```
 4. Set up the environment variables:
    - Create a `.env` file in the project root.
    - Add the necessary environment variables:
      ```
-     REACT_APP_ALCHEMY_API_KEY=your_alchemy_api_key
+     REACT_APP_MORALIS_API_KEY=your_moralis_api_key
      ```
 5. Start the development server:
    ```
    npm start
-   ```
-   or if you're using Yarn:
-   ```
-   yarn start
    ```
 6. Open your browser and visit `http://localhost:3000` to access the Alix application.
 
@@ -51,9 +44,9 @@ To run the Alix application locally, follow these steps:
 
 - React: JavaScript library for building user interfaces
 - Chakra UI: UI component library for React
-- Ethers.js: Library for interacting with the Ethereum blockchain
-- Alchemy API: API service for fetching NFT data
+- Moralis: Web3 development platform for blockchain data access and user authentication
 - Axios: Promise-based HTTP client for making API requests
+- react-app-rewired: Tool for customizing Create React App configurations without ejecting
 
 ## Project Structure
 
@@ -72,14 +65,16 @@ src/
     WalletManager.js
     WelcomePage.js
     CatalogViewPage.js
+    ErrorBoundary.js
   utils/
     web3Utils.js
-App.js
-index.js
-index.css
+  App.js
+  index.js
+  polyfills.js
 public/
   index.html
 .env
+config-overrides.js
 package.json
 README.md
 ```
@@ -97,10 +92,41 @@ README.md
 - `NFTGrid.js`: Displays a grid of NFTs, used within the LibraryPage component.
 - `NFTCard.js`: Represents an individual NFT card within the NFTGrid, showing NFT details and actions.
 - `CatalogViewPage.js`: Displays the contents of a specific catalog and allows for NFT management within that catalog.
+- `ErrorBoundary.js`: Provides error handling for the entire application.
 
 ## Utils
 
-- `web3Utils.js`: Contains utility functions for interacting with web3, including NFT fetching and ENS resolution.
+- `web3Utils.js`: Contains utility functions for interacting with web3, including NFT fetching, ENS resolution, and network management.
+
+## Configuration
+
+- `config-overrides.js`: Contains webpack configuration overrides for handling polyfills and environment variables.
+- `polyfills.js`: Provides necessary polyfills for browser compatibility.
+
+## Moralis API Integration
+
+This project uses the Moralis API for fetching NFTs and resolving ENS domains. To set up the Moralis API:
+
+1. Sign up for a Moralis account at [https://moralis.io/](https://moralis.io/)
+2. Create a new API key in your Moralis dashboard
+3. Add the API key to your `.env` file:
+
+```
+REACT_APP_MORALIS_API_KEY=your_moralis_api_key
+```
+
+## Supported Networks
+
+The application supports multiple blockchain networks, including but not limited to:
+
+- Ethereum (eth)
+- Polygon (polygon)
+- Binance Smart Chain (bsc)
+- Arbitrum (arbitrum)
+- Optimism (optimism)
+- Avalanche (avalanche)
+
+Additional networks can be added by updating the `networks` array in `src/utils/web3Utils.js`.
 
 ## Contributing
 
@@ -114,9 +140,8 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Acknowledgements
 
-- [Alchemy](https://www.alchemy.com/) for providing the NFT data API.
+- [Moralis](https://moralis.io/) for providing the Web3 API and development platform.
 - [Chakra UI](https://chakra-ui.com/) for the UI component library.
-- [Ethers.js](https://docs.ethers.io/) for Ethereum blockchain interaction.
 - [Anthropic](https://www.anthropic.com) and their AI assistant Claude for providing technical guidance and contributions throughout the development process.
 
 ## Contact

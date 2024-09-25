@@ -32,7 +32,7 @@ import {
   Progress,
   useDisclosure,
 } from "@chakra-ui/react";
-import { FaPlus, FaSync } from 'react-icons/fa';
+import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaChevronLeft, FaChevronUp } from 'react-icons/fa';
 import NFTGrid from './NFTGrid';
 import CatalogViewPage from './CatalogViewPage';
 import { fetchNFTs } from '../utils/web3Utils';
@@ -46,11 +46,15 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
         const allContracts = new Set();
         Object.values(nfts).forEach(walletNfts => {
           Object.values(walletNfts).forEach(networkNfts => {
-            networkNfts.forEach(nft => {
-              if (nft.contract?.address) {
-                allContracts.add(nft.contract.address);
-              }
-            });
+            if (Array.isArray(networkNfts)) {
+              networkNfts.forEach(nft => {
+                if (nft.contract?.address) {
+                  allContracts.add(nft.contract.address);
+                }
+              });
+            } else {
+              console.warn('Expected networkNfts to be an array, but got:', networkNfts);
+            }
           });
         });
         return Array.from(allContracts);
@@ -59,6 +63,7 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
     const [refreshProgress, setRefreshProgress] = useState(0);
     const { isOpen, onOpen, onClose } = useDisclosure();
     const [collapsedWallets, setCollapsedWallets] = useState({});
+    const [collapsedNetworks, setCollapsedNetworks] = useState({});
     const [contractNames, setContractNames] = useState({});
     const [viewingCatalog, setViewingCatalog] = useState(null);
     const [selectedCatalog, setSelectedCatalog] = useState(null);
@@ -116,13 +121,21 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
     }, [nfts]);
   
     const handleWalletCollapse = (address) => {
-      setCollapsedWallets(prev => ({
-        ...prev,
-        [address]: !prev[address]
-      }));
+        setCollapsedWallets(prev => ({
+          ...prev,
+          [address]: !prev[address]
+        }));
+     };
+  
+    const handleNetworkCollapse = (address, network) => {
+        setCollapsedNetworks(prev => ({
+          ...prev,
+          [`${address}-${network}`]: !prev[`${address}-${network}`]
+        }));
     };
   
-    const handleRefreshNFTs = async () => {
+  
+    const handleRefreshNFTs = useCallback(async () => {
         setIsRefreshing(true);
         setRefreshProgress(0);
         const fetchedNfts = {};
@@ -131,17 +144,18 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
     
         for (const wallet of wallets) {
           fetchedNfts[wallet.address] = {};
-          for (const network of wallet.networks) {
+          for (const networkValue of wallet.networks) {
             try {
-              const networkNfts = await fetchNFTs(wallet.address, network);
-              fetchedNfts[wallet.address][network] = networkNfts;
+              const { nfts: networkNfts } = await fetchNFTs(wallet.address, networkValue);
+              fetchedNfts[wallet.address][networkValue] = { nfts: networkNfts };
               completedFetches++;
               setRefreshProgress((completedFetches / totalFetches) * 100);
             } catch (error) {
-              console.error(`Error fetching NFTs for ${wallet.address} on ${network}:`, error);
+              console.error(`Error fetching NFTs for ${wallet.address} on ${networkValue}:`, error);
+              fetchedNfts[wallet.address][networkValue] = { nfts: [] };
               toast({
                 title: "NFT Fetch Error",
-                description: `Failed to fetch NFTs for ${wallet.nickname || wallet.address} on ${network}. Please try again later.`,
+                description: `Failed to fetch NFTs for ${wallet.nickname || wallet.address} on ${networkValue}. Please try again later.`,
                 status: "error",
                 duration: 5000,
                 isClosable: true,
@@ -150,16 +164,17 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
           }
         }
     
+        console.log('Fetched NFTs:', fetchedNfts);
         setNfts(fetchedNfts);
         setIsRefreshing(false);
         toast({
           title: "NFTs Refreshed",
-          description: "Your NFTs have been successfully refreshed.",
-          status: "success",
+          description: "Your NFTs have been refreshed. Some networks may have encountered errors.",
+          status: "info",
           duration: 3000,
           isClosable: true,
         });
-    };
+    }, [wallets, setNfts, toast]);
   
     useEffect(() => {
         const fetchAllNFTs = async () => {
@@ -356,33 +371,54 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
     };
   
     const filteredNfts = useMemo(() => {
-        console.log("Selected Wallets:", selectedWallets);
-        console.log("Selected Contracts:", selectedContracts);
-        const filtered = Object.entries(nfts)
-          .filter(([address]) => {
-            console.log("Checking wallet:", address, "Is selected:", selectedWallets.includes(address));
-            return selectedWallets.includes(address);
-          })
-          .reduce((acc, [address, networkNfts]) => {
-            const filteredNetworkNfts = Object.entries(networkNfts).reduce((netAcc, [network, nftArray]) => {
-              const filteredNftArray = nftArray.filter(nft => {
-                console.log("Checking NFT:", nft.id?.tokenId, "Contract:", nft.contract?.address, "Is selected:", selectedContracts.includes(nft.contract?.address));
-                return selectedContracts.includes(nft.contract?.address);
-              });
-              if (filteredNftArray.length > 0) {
-                netAcc[network] = filteredNftArray;
-              }
-              return netAcc;
-            }, {});
+      console.log("Filtering NFTs. Input data:", { nfts, selectedWallets, selectedContracts });
       
-            if (Object.keys(filteredNetworkNfts).length > 0) {
-              acc[address] = filteredNetworkNfts;
-            }
+      return Object.entries(nfts).reduce((acc, [address, walletData]) => {
+        console.log(`Processing wallet: ${address}`, walletData);
+        
+        if (selectedWallets.includes(address)) {
+          if (typeof walletData !== 'object' || walletData === null) {
+            console.warn(`Invalid wallet data for address ${address}:`, walletData);
             return acc;
+          }
+          
+          acc[address] = Object.entries(walletData).reduce((networkAcc, [network, networkData]) => {
+            console.log(`Processing network: ${network}`, networkData);
+            
+            if (typeof networkData !== 'object' || networkData === null) {
+              console.warn(`Invalid network data for ${address} on ${network}:`, networkData);
+              return networkAcc;
+            }
+            
+            const nftArray = networkData.nfts || [];
+            if (!Array.isArray(nftArray)) {
+              console.warn(`Invalid NFT array for ${address} on ${network}:`, nftArray);
+              return networkAcc;
+            }
+            
+            const filteredNftArray = nftArray.filter(nft => {
+              if (typeof nft !== 'object' || nft === null) {
+                console.warn(`Invalid NFT object:`, nft);
+                return false;
+              }
+              const isSelected = selectedContracts.length === 0 || selectedContracts.includes(nft.contract?.address);
+              const isNotSpam = !nft.isSpam;
+              return isSelected && isNotSpam;
+            });
+            
+            if (filteredNftArray.length > 0) {
+              networkAcc[network] = filteredNftArray;
+            }
+            
+            return networkAcc;
           }, {});
-        console.log("Filtered NFTs:", filtered);
-        return filtered;
+        }
+        
+        return acc;
+      }, {});
     }, [nfts, selectedWallets, selectedContracts]);
+  
+    console.log("Filtered NFTs result:", filteredNfts);
   
     const handleOpenCatalog = (catalog) => {
       setViewingCatalog(catalog);
@@ -462,20 +498,26 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
               <Progress value={refreshProgress} size="sm" colorScheme="blue" />
             )}
           
-            <StatGroup>
-              <Stat>
-                <StatLabel fontSize="1rem">Total NFTs</StatLabel>
-                <StatNumber fontSize="1.5rem">{totalNFTs}</StatNumber>
-              </Stat>
-              <Stat>
-                <StatLabel fontSize="1rem">Catalogs</StatLabel>
-                <StatNumber fontSize="1.5rem">{localCatalogs.length}</StatNumber>
-              </Stat>
-              <Stat>
-                <StatLabel fontSize="1rem">Spam NFTs</StatLabel>
-                <StatNumber fontSize="1.5rem">{spamNFTs}</StatNumber>
-              </Stat>
-            </StatGroup>
+          <StatGroup>
+            <Stat>
+              <StatLabel fontSize="1rem">Total NFTs</StatLabel>
+              <StatNumber fontSize="1.5rem">
+                {Object.values(nfts).reduce((total, wallet) => 
+                  total + Object.values(wallet).reduce((walletTotal, network) => 
+                    walletTotal + (network.nfts ? network.nfts.length : 0), 0
+                  ), 0
+                ) || 0}
+              </StatNumber>
+            </Stat>
+            <Stat>
+              <StatLabel fontSize="1rem">Catalogs</StatLabel>
+              <StatNumber fontSize="1.5rem">{localCatalogs.length}</StatNumber>
+            </Stat>
+            <Stat>
+              <StatLabel fontSize="1rem">Spam NFTs</StatLabel>
+              <StatNumber fontSize="1.5rem">{spamNFTs}</StatNumber>
+            </Stat>
+          </StatGroup>
           
             <Tabs variant="enclosed">
               <TabList>
@@ -520,7 +562,7 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
                     console.log("Rendering wallet:", address);
                     console.log("networkNfts:", networkNfts);
                     return (
-                        <Box key={address} mb="2rem">
+                        <Box className="container" key={address} mb="2rem">
                         <Flex align="center" mb="1rem">
                             <Heading as="h3" size="md">
                             {wallets.find(wallet => wallet.address === address)?.nickname || address}
@@ -530,23 +572,49 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
                             </Button>
                         </Flex>
                         {!collapsedWallets[address] && (
-                            <VStack spacing="1rem" align="stretch">
-                            {Object.entries(networkNfts).map(([network, nftArray]) => (
-                                <Box key={network}>
-                                <Heading as="h4" size="sm" mb="0.5rem">{network}</Heading>
-                                <NFTGrid 
-                                    nfts={nftArray}
-                                    selectedNFTs={selectedNFTs}
-                                    onNFTSelect={handleNFTSelect}
-                                    onMarkAsSpam={(nft) => handleMarkAsSpam(address, network, nft)}
-                                    walletAddress={address}
-                                    network={network}
-                                    cardSize={270}
-                                    isSpamFolder={false}
-                                />
+                          <VStack spacing={6} align="stretch">
+                          {Object.entries(filteredNfts).map(([address, networkNfts]) => (
+                            <Box key={address} mb="2rem">
+                              <Flex align="center" mb="1rem">
+                                <Button 
+                                  leftIcon={collapsedWallets[address] ? <FaChevronRight /> : <FaChevronDown />}
+                                  variant="ghost" 
+                                  onClick={() => handleWalletCollapse(address)}
+                                >
+                                  <Heading as="h3" size="md">
+                                    {wallets.find(wallet => wallet.address === address)?.nickname || address}
+                                  </Heading>
+                                </Button>
+                              </Flex>
+                              {!collapsedWallets[address] && Object.entries(networkNfts).map(([network, nftArray]) => (
+                                <Box key={`${address}-${network}`} ml={4} mb={4}>
+                                  <Flex align="center" mb="0.5rem">
+                                    <Button 
+                                      leftIcon={collapsedNetworks[`${address}-${network}`] ? <FaChevronRight /> : <FaChevronDown />}
+                                      variant="ghost" 
+                                      size="sm"
+                                      onClick={() => handleNetworkCollapse(address, network)}
+                                    >
+                                      <Heading as="h4" size="sm">{network}</Heading>
+                                    </Button>
+                                  </Flex>
+                                  {!collapsedNetworks[`${address}-${network}`] && (
+                                    <NFTGrid 
+                                      nfts={nftArray}
+                                      selectedNFTs={selectedNFTs}
+                                      onNFTSelect={handleNFTSelect}
+                                      onMarkAsSpam={(nft) => handleMarkAsSpam(address, network, nft)}
+                                      walletAddress={address}
+                                      network={network}
+                                      cardSize={270}
+                                      isSpamFolder={false}
+                                    />
+                                  )}
                                 </Box>
-                            ))}
-                            </VStack>
+                              ))}
+                            </Box>
+                          ))}
+                        </VStack>
                         )}
                         </Box>
                     );
