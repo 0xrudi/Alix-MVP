@@ -1,23 +1,45 @@
 import React from 'react';
-import { 
-  Box, 
-  Image, 
-  Text, 
-  Button, 
-  VStack, 
-  HStack, 
-  Badge, 
-  useColorModeValue,
-  Tooltip
-} from "@chakra-ui/react";
+import { Box, Image, Text, Button, VStack, HStack, Badge, useColorModeValue } from "@chakra-ui/react";
 import { FaExclamationTriangle } from 'react-icons/fa';
 
 const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSize }) => {
-  console.log("NFT Card props:", { nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSize });
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
-  const textColor = useColorModeValue('gray.800', 'white');
-  const mutedTextColor = useColorModeValue('gray.600', 'gray.400');
+
+  const getImageUrl = (nft) => {
+    // Check various possible image sources
+    const possibleSources = [
+      nft.media?.[0]?.gateway,
+      nft.imageUrl,
+      nft.metadata?.image,
+      nft.metadata?.image_url,
+      nft.metadata?.external_url
+    ];
+
+    for (let source of possibleSources) {
+      if (source) {
+        // Handle IPFS
+        if (source.startsWith('ipfs://')) {
+          const hash = source.replace('ipfs://', '');
+          return `https://ipfs.io/ipfs/${hash}`;
+        }
+        // Handle Arweave
+        if (source.startsWith('ar://')) {
+          const hash = source.replace('ar://', '');
+          return `https://arweave.net/${hash}`;
+        }
+        // Handle regular URLs
+        if (source.startsWith('http://') || source.startsWith('https://')) {
+          return source;
+        }
+      }
+    }
+
+    // If no valid source is found, return a placeholder
+    return 'https://via.placeholder.com/150?text=No+Image';
+  };
+
+  const imageUrl = getImageUrl(nft);
 
   return (
     <Box
@@ -34,35 +56,27 @@ const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSi
       position="relative"
     >
       <Image
-        src={nft.media?.[0]?.gateway || nft.imageUrl || 'https://via.placeholder.com/150?text=No+Image'}
+        src={imageUrl}
         alt={nft.title || 'NFT'}
         width="100%"
         height={`${cardSize}px`}
         objectFit="cover"
+        fallbackSrc="https://via.placeholder.com/150?text=Loading..."
       />
       <VStack p={4} spacing={2} align="stretch" height={`${cardSize * 0.4}px`} justify="space-between">
-        <VStack align="stretch" spacing={1}>
-          <Text fontWeight="bold" fontSize="sm" isTruncated color={textColor}>
-            {nft.title}
-          </Text>
-          <Text fontSize="xs" color={mutedTextColor} isTruncated>
-            {nft.contractName}
-          </Text>
-        </VStack>
+        <Text fontWeight="bold" fontSize="sm" isTruncated>{nft.title || `Token ID: ${nft.id.tokenId}`}</Text>
         <HStack justify="space-between">
-          <Tooltip label={isSpamFolder ? "Remove from Spam" : "Mark as Spam"}>
-            <Button
-              size="sm"
-              colorScheme={isSpamFolder ? "green" : "red"}
-              variant="outline"
-              onClick={onMarkAsSpam}
-              leftIcon={<FaExclamationTriangle />}
-            >
-              {isSpamFolder ? "Unmark" : "Spam"}
-            </Button>
-          </Tooltip>
-          <Badge colorScheme="blue" variant="subtle" fontSize="xs">
-            {nft.contract?.symbol || 'NFT'}
+          <Button
+            size="sm"
+            colorScheme={isSpamFolder ? "green" : "red"}
+            variant="outline"
+            onClick={onMarkAsSpam}
+            leftIcon={<FaExclamationTriangle />}
+          >
+            {isSpamFolder ? "Unmark" : "Spam"}
+          </Button>
+          <Badge colorScheme="purple" variant="subtle" fontSize="xs">
+            {nft.network.toUpperCase()}
           </Badge>
         </HStack>
       </VStack>

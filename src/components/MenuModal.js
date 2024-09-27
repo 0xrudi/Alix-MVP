@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, VStack, Button, Text, useColorModeValue } from "@chakra-ui/react";
-import { FaHome, FaBookOpen, FaUser } from 'react-icons/fa';
+import { FaHome, FaBookOpen, FaUser, FaCog } from 'react-icons/fa';
 
 const MenuModal = ({ onNavigate, currentPage }) => {
   const bgColor = useColorModeValue('gray.100', 'gray.800');
@@ -12,6 +12,7 @@ const MenuModal = ({ onNavigate, currentPage }) => {
     { name: 'Home', icon: FaHome, path: 'home' },
     { name: 'Library', icon: FaBookOpen, path: 'library' },
     { name: 'Profile', icon: FaUser, path: 'profile' },
+    { name: 'Admin', icon: FaCog, path: 'admin' },
   ];
 
   return (

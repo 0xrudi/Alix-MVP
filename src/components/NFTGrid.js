@@ -12,6 +12,7 @@ import {
 } from "@chakra-ui/react";
 import { FaSearch } from 'react-icons/fa';
 import NFTCard from './NFTCard';
+import { logger } from '../utils/logger';
 
 const NFTGrid = ({ nfts = [], selectedNFTs, onNFTSelect, onMarkAsSpam, walletAddress, network, cardSize, isSpamFolder = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -20,7 +21,7 @@ const NFTGrid = ({ nfts = [], selectedNFTs, onNFTSelect, onMarkAsSpam, walletAdd
   const bgColor = useColorModeValue('gray.50', 'gray.900');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
 
-  console.log("NFTGrid received nfts:", nfts);
+  logger.log("NFTGrid received nfts:", nfts);
 
   const filteredAndSortedNFTs = (nfts || [])
     .filter(nft => !nft.isSpam || isSpamFolder)

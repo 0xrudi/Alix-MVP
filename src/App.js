@@ -8,6 +8,7 @@ import MenuModal from './components/MenuModal';
 import theme from './styles';
 import ErrorBoundary from './components/ErrorBoundary';
 import { fetchNFTs } from './utils/web3Utils';
+import AdminPage from './components/AdminPage';
 import './global.css';
 
 function App() {
@@ -65,6 +66,7 @@ function App() {
           <Box marginLeft={page !== 'welcome' ? { base: "60px", md: "200px" } : "0"} padding={8}>
             {page === 'welcome' && <WelcomePage onStart={handleStart} />}
             {page === 'home' && <HomePage />}
+            {page === 'admin' && <AdminPage />}
             {page === 'library' && (
               <LibraryPage 
                 wallets={wallets}

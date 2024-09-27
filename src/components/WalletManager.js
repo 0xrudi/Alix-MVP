@@ -16,6 +16,7 @@ import {
 } from "@chakra-ui/react";
 import { Select as MultiSelect } from "chakra-react-select";
 import { resolveENS, isValidAddress, networks } from '../utils/web3Utils';
+import { logger } from '../utils/logger';
 
 const WalletManager = ({ wallets = [], updateWallets }) => {
   const [input, setInput] = useState('');
@@ -30,9 +31,9 @@ const WalletManager = ({ wallets = [], updateWallets }) => {
 
     try {
       if (input.endsWith('.eth')) {
-        console.log('Resolving ENS name:', input);
+        logger.log('Resolving ENS name:', input);
         const result = await resolveENS(input);
-        console.log('ENS resolution result:', result);
+        logger.log('ENS resolution result:', result);
         if (result.success) {
           address = result.address;
           walletNickname = input;
@@ -51,10 +52,10 @@ const WalletManager = ({ wallets = [], updateWallets }) => {
         networks: [selectedNetwork],
       };
 
-      console.log('New wallet object:', newWallet);
+      logger.log('New wallet object:', newWallet);
 
       const updatedWallets = [...wallets, newWallet];
-      console.log('Updated wallets array:', updatedWallets);
+      logger.log('Updated wallets array:', updatedWallets);
 
       updateWallets(updatedWallets);
       setInput('');
@@ -66,7 +67,7 @@ const WalletManager = ({ wallets = [], updateWallets }) => {
         isClosable: true,
       });
     } catch (error) {
-      console.error('Error adding wallet:', error);
+      logger.error('Error adding wallet:', error);
       setError(`Error adding wallet: ${error.message}`);
     }
   };

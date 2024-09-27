@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Box, Heading, Tabs, TabList, TabPanels, Tab, TabPanel, useColorModeValue, Button, useToast, Text } from "@chakra-ui/react";
 import UserProfile from './UserProfile';
 import WalletManager from './WalletManager';
+import { logger } from '../utils/logger';
 
 const ProfilePage = ({ initialWallets = [], initialUserProfile = {}, updateGlobalState, onWalletsUpdate }) => {
   const [wallets, setWallets] = useState(initialWallets);
@@ -10,7 +11,7 @@ const ProfilePage = ({ initialWallets = [], initialUserProfile = {}, updateGloba
   const toast = useToast();
 
   const handleUpdateWallets = useCallback((newWallets) => {
-    console.log('Updating wallets:', newWallets);
+    logger.log('Updating wallets:', newWallets);
     setWallets(newWallets);
     // Ensure we're passing an array of wallet objects, not just addresses
     const newWalletAddresses = newWallets.filter(newWallet => 
