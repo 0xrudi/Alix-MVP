@@ -14,7 +14,18 @@ import { FaSearch } from 'react-icons/fa';
 import NFTCard from './NFTCard';
 import { logger } from '../utils/logger';
 
-const NFTGrid = ({ nfts = [], selectedNFTs, onNFTSelect, onMarkAsSpam, walletAddress, network, cardSize, isSpamFolder = false }) => {
+const NFTGrid = ({ 
+  nfts = [], 
+  selectedNFTs, 
+  onNFTSelect, 
+  onMarkAsSpam, 
+  walletAddress, 
+  network, 
+  cardSize, 
+  isSpamFolder = false,
+  isSelectMode,
+  onNFTClick
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState('title');
 
@@ -57,7 +68,11 @@ const NFTGrid = ({ nfts = [], selectedNFTs, onNFTSelect, onMarkAsSpam, walletAdd
       <Text fontSize="sm" color="gray.500">
         Showing {filteredAndSortedNFTs.length} of {nfts.length} NFTs
       </Text>
-      <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={6}>
+      <SimpleGrid 
+        columns={{ base: 1, sm: 2, md: 3, lg: 4, xl: 5 }} 
+        spacing={{ base: 2, md: 4 }}
+        width="100%"
+      >
         {filteredAndSortedNFTs.map((nft) => (
           <NFTCard
             key={`${nft.contract?.address}-${nft.id?.tokenId}`}
@@ -68,8 +83,12 @@ const NFTGrid = ({ nfts = [], selectedNFTs, onNFTSelect, onMarkAsSpam, walletAdd
             )}
             onSelect={() => onNFTSelect(nft)}
             onMarkAsSpam={() => onMarkAsSpam(nft)}
+            walletAddress={walletAddress}
+            network={network}
             isSpamFolder={isSpamFolder}
             cardSize={cardSize}
+            isSelectMode={isSelectMode}
+            onClick={() => onNFTClick(nft)}
           />
         ))}
       </SimpleGrid>

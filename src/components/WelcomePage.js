@@ -1,7 +1,14 @@
 import React from 'react';
 import { Box, Heading, Button, VStack } from "@chakra-ui/react";
+import { useNavigate } from 'react-router-dom';
 
-const WelcomePage = ({ onStart }) => {
+const WelcomePage = () => {
+  const navigate = useNavigate();
+
+  const handleBegin = () => {
+    navigate('/home');
+  };
+
   return (
     <Box 
       height="100vh" 
@@ -22,7 +29,7 @@ const WelcomePage = ({ onStart }) => {
         <Button 
           colorScheme="blue" 
           size="lg" 
-          onClick={onStart}
+          onClick={handleBegin}
           fontSize={["md", "lg", "xl"]}
           py={[4, 6, 8]}
           px={[8, 10, 12]}

@@ -14,11 +14,13 @@ import {
   Container,
   SimpleGrid,
   Stat,
+  Collapse,
   StatLabel,
   StatNumber,
   StatGroup,
   Button,
   Input,
+  Icon,
   HStack,
   Flex,
   Checkbox,
@@ -32,11 +34,13 @@ import {
   ModalCloseButton,
   Progress,
   useDisclosure,
+  useBreakpointValue
 } from "@chakra-ui/react";
-import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaChevronLeft, FaChevronUp } from 'react-icons/fa';
+import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaChevronLeft, FaChevronUp, FaTrash, FaTimes, FaCheck, FaFolderPlus } from 'react-icons/fa';
 import NFTGrid from './NFTGrid';
 import CatalogViewPage from './CatalogViewPage';
 import { fetchNFTs } from '../utils/web3Utils';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: initialCatalogs, setCatalogs: setInitialCatalogs }) => {
     const [selectedNFTs, setSelectedNFTs] = useState([]);
@@ -64,15 +68,30 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
     });
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [refreshProgress, setRefreshProgress] = useState(0);
-    const { isOpen, onOpen, onClose } = useDisclosure();
+    const { isOpen, onOpen, onClose, onToggle } = useDisclosure();
     const [collapsedWallets, setCollapsedWallets] = useState({});
     const [contractNames, setContractNames] = useState({});
     const [viewingCatalog, setViewingCatalog] = useState(null);
     const [selectedCatalog, setSelectedCatalog] = useState(null);
     const toast = useToast();
-  
-    // const bgColor = useColorModeValue('gray.50', 'gray.900');
+    const [activeTab, setActiveTab] = useState(0);
+    const location = useLocation();
+    const buttonSize = useBreakpointValue({ base: "sm", md: "md" });
+    const showButtonText = useBreakpointValue({ base: false, md: true });
+    const [isSelectMode, setIsSelectMode] = useState(false);
+    const { isOpen: isCreateCatalogOpen, onToggle: onCreateCatalogToggle, onClose: onCreateCatalogClose } = useDisclosure();
+    const { isOpen: isAddToCatalogOpen, onToggle: onAddToCatalogToggle, onClose: onAddToCatalogClose } = useDisclosure();
+    const [selectedCatalogs, setSelectedCatalogs] = useState([]);
+    const [catalogSearch, setCatalogSearch] = useState('');
     const cardBg = useColorModeValue('white', 'gray.800');
+  
+    useEffect(() => {
+      const params = new URLSearchParams(location.search);
+      const tab = params.get('tab');
+      if (tab === 'nfts') setActiveTab(0);
+      if (tab === 'catalogs') setActiveTab(1);
+    }, [location]);
+  
 
     logger.log("Initial nfts:", nfts);
 
@@ -130,6 +149,12 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
       const spam = localCatalogs.find(cat => cat.name === "Spam")?.nfts.length || 0;
       setSpamNFTs(spam);
     }, [nfts, localCatalogs]);
+
+    const navigate = useNavigate();
+
+    const handleNFTClick = (nft) => {
+      navigate('/artifact', { state: { nft } });
+    };
   
     const handleWalletCollapse = (address) => {
         setCollapsedWallets(prev => ({
@@ -218,62 +243,65 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
         fetchAllNFTs();
     }, [wallets, setNfts]);
   
-    const handleMarkAsSpam = (address, network, nft) => {
-      console.log("handleMarkAsSpam called with:", { address, network, nft });
-    
-      // Remove the NFT from the main library
+    const handleMarkAsSpam = useCallback((address, network, nfts) => {
+      const nftsToSpam = Array.isArray(nfts) ? nfts : [nfts];
+      
       setNfts(prevNfts => {
-        const updatedNfts = JSON.parse(JSON.stringify(prevNfts)); // Deep clone
-        if (updatedNfts[address] && updatedNfts[address][network]) {
-          updatedNfts[address][network].nfts = updatedNfts[address][network].nfts.filter(item => 
-            !(item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
-          );
-        }
-        console.log("Updated nfts state:", updatedNfts);
+        const updatedNfts = JSON.parse(JSON.stringify(prevNfts));
+        nftsToSpam.forEach(nft => {
+          if (updatedNfts[address] && updatedNfts[address][network]) {
+            updatedNfts[address][network].nfts = updatedNfts[address][network].nfts.filter(item => 
+              !(item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
+            );
+          }
+        });
         return updatedNfts;
       });
-    
-      // Add the NFT to the spam catalog
+  
       setCatalogs(prevCatalogs => {
         const newCatalogs = prevCatalogs.map(catalog => {
           if (catalog.name === "Spam") {
-            const isAlreadyInSpam = catalog.nfts.some(
-              spamNft => spamNft.id?.tokenId === nft.id?.tokenId && spamNft.contract?.address === nft.contract?.address
-            );
-            if (!isAlreadyInSpam) {
-              return {
-                ...catalog,
-                nfts: [...catalog.nfts, {
-                  ...nft,
-                  walletAddress: address,
-                  network,
-                  isSpam: true,
-                  spamInfo: {
-                    dateMarked: new Date().toISOString(),
-                    markedBy: 'user',
-                  }
-                }]
-              };
-            }
+            const newSpamNfts = nftsToSpam.filter(nft => 
+              !catalog.nfts.some(spamNft => 
+                spamNft.id?.tokenId === nft.id?.tokenId && 
+                spamNft.contract?.address === nft.contract?.address
+              )
+            ).map(nft => ({
+              ...nft,
+              walletAddress: address,
+              network,
+              isSpam: true,
+              spamInfo: {
+                dateMarked: new Date().toISOString(),
+                markedBy: 'user',
+              }
+            }));
+            return {
+              ...catalog,
+              nfts: [...catalog.nfts, ...newSpamNfts]
+            };
           }
           return catalog;
         });
-        console.log("Updated catalogs:", newCatalogs);
         return newCatalogs;
       });
-    
-      // Update the UI stats
-      setTotalNFTs(prevTotal => prevTotal - 1);
-      setSpamNFTs(prevSpam => prevSpam + 1);
-    
+  
+      setTotalNFTs(prevTotal => prevTotal - nftsToSpam.length);
+      setSpamNFTs(prevSpam => prevSpam + nftsToSpam.length);
+  
       toast({
-        title: "Marked as Spam",
-        description: "The NFT has been moved to the Spam folder.",
+        title: `Marked ${nftsToSpam.length} NFT${nftsToSpam.length > 1 ? 's' : ''} as Spam`,
+        description: "The NFT(s) have been moved to the Spam folder.",
         status: "info",
         duration: 2000,
         isClosable: true,
       });
-    };
+  
+      if (isSelectMode) {
+        setSelectedNFTs([]);
+        setIsSelectMode(false);
+      }
+    }, [setCatalogs, setNfts, setTotalNFTs, setSpamNFTs, toast, isSelectMode]);  
   
     const handleWalletToggle = (address) => {
         setSelectedWallets(prevSelectedWallets => 
@@ -439,6 +467,14 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
         return acc;
       }, {});
     }, [nfts, selectedWallets, selectedContracts]);
+
+    const filteredCatalogs = useMemo(() => 
+      localCatalogs.filter(catalog => 
+        catalog.name.toLowerCase().includes(catalogSearch.toLowerCase())
+      ),
+      [localCatalogs, catalogSearch]
+    );
+  
   
     logger.log("Filtered NFTs result:", filteredNfts);
 
@@ -501,19 +537,56 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
     logger.log("Rendering LibraryPage");
     logger.log("filteredNfts:", filteredNfts);
 
+    const handleSelectMode = () => {
+      setIsSelectMode(true);
+      setSelectedNFTs([]);
+    };
+
+    const handleCancelSelectMode = () => {
+      setIsSelectMode(false);
+      setSelectedNFTs([]);
+      onCreateCatalogClose();
+      onAddToCatalogClose();
+    };
+
+    const handleAddToExistingCatalog = () => {
+      const selectedCatalogIds = selectedCatalogs.map(cat => cat.id);
+      setCatalogs(prevCatalogs => 
+        prevCatalogs.map(catalog => 
+          selectedCatalogIds.includes(catalog.id)
+            ? { ...catalog, nfts: [...catalog.nfts, ...selectedNFTs] }
+            : catalog
+        )
+      );
+      setSelectedNFTs([]);
+      setSelectedCatalogs([]);
+      setIsSelectMode(false);
+      onAddToCatalogClose();
+      toast({
+        title: "NFTs Added to Catalogs",
+        description: `Added ${selectedNFTs.length} NFTs to ${selectedCatalogs.length} catalogs.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    };
+  
+
+
+
     return (
       <Box className="container">
         <VStack spacing="1.5rem" align="stretch">
           <Flex justify="space-between" align="center">
             <Heading as="h1" fontSize="2rem">Your NFT Library</Heading>
             <Button
-              leftIcon={<FaSync />}
+              leftIcon={<Icon as={FaSync} />}
               onClick={handleRefreshNFTs}
               isLoading={isRefreshing}
               loadingText="Refreshing..."
-              size="sm"
+              size={buttonSize}
             >
-              Refresh Artifacts
+              {showButtonText ? "Refresh Artifacts" : null}
             </Button>
           </Flex>
           
@@ -535,8 +608,30 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
               <StatNumber fontSize="1.5rem">{spamNFTs}</StatNumber>
             </Stat>
           </StatGroup>
-    
-          {/* Create Catalog Component */}
+
+          {!isSelectMode ? (
+          <Button onClick={handleSelectMode} colorScheme="blue" width="100%">
+            Select
+          </Button>
+        ) : (
+          <HStack>
+            <Button leftIcon={<Icon as={FaTrash} />} onClick={() => handleMarkAsSpam(null, null, selectedNFTs)} colorScheme="red">
+              Add to Spam
+            </Button>
+            <Button leftIcon={<Icon as={FaPlus} />} onClick={onCreateCatalogToggle} colorScheme="green">
+              Create Catalog
+            </Button>
+            <Button leftIcon={<Icon as={FaFolderPlus} />} onClick={onAddToCatalogToggle} colorScheme="blue">
+              Add to Existing Catalog
+            </Button>
+            <Button leftIcon={<Icon as={FaTimes} />} onClick={handleCancelSelectMode} colorScheme="gray">
+              Cancel
+            </Button>
+          </HStack>
+        )}
+
+        
+        <Collapse in={isCreateCatalogOpen} animateOpacity>
           <Box bg={cardBg} p="1rem" borderRadius="md" boxShadow="md">
             <Heading as="h3" size="md" mb="0.5rem">Create New Catalog</Heading>
             <HStack>
@@ -545,7 +640,7 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
                 value={catalogName}
                 onChange={(e) => setCatalogName(e.target.value)}
               />
-              <Button leftIcon={<FaPlus />} onClick={handleCreateCatalog} colorScheme="blue">
+              <Button leftIcon={<Icon as={FaCheck} />} onClick={handleCreateCatalog} colorScheme="blue">
                 Create
               </Button>
             </HStack>
@@ -553,8 +648,47 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
               {selectedNFTs.length} NFTs selected
             </Text>
           </Box>
+        </Collapse>
+
+        <Collapse in={isAddToCatalogOpen} animateOpacity>
+          <Box bg={cardBg} p="1rem" borderRadius="md" boxShadow="md">
+            <Heading as="h3" size="md" mb="0.5rem">Add to Existing Catalog</Heading>
+            <Input 
+              placeholder="Search catalogs" 
+              value={catalogSearch}
+              onChange={(e) => setCatalogSearch(e.target.value)}
+              mb="1rem"
+            />
+            <VStack align="stretch" maxHeight="200px" overflowY="auto">
+              {filteredCatalogs.map(catalog => (
+                <Checkbox 
+                  key={catalog.id} 
+                  isChecked={selectedCatalogs.some(c => c.id === catalog.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedCatalogs([...selectedCatalogs, catalog]);
+                    } else {
+                      setSelectedCatalogs(selectedCatalogs.filter(c => c.id !== catalog.id));
+                    }
+                  }}
+                >
+                  {catalog.name}
+                </Checkbox>
+              ))}
+            </VStack>
+            <Button 
+              mt="1rem" 
+              colorScheme="blue" 
+              onClick={handleAddToExistingCatalog}
+              isDisabled={selectedCatalogs.length === 0 || selectedNFTs.length === 0}
+            >
+              Add to Selected Catalogs
+            </Button>
+          </Box>
+        </Collapse>
+
           
-          <Tabs variant="enclosed">
+          <Tabs index={activeTab} onChange={setActiveTab} variant="enclosed">
             <TabList>
               <Tab fontSize="1rem">NFTs</Tab>
               <Tab fontSize="1rem">Catalogs</Tab>
@@ -611,10 +745,12 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
                         nfts={nfts}
                         selectedNFTs={selectedNFTs}
                         onNFTSelect={handleNFTSelect}
-                        onMarkAsSpam={(nft) => handleMarkAsSpam(address, nft)}
+                        onMarkAsSpam={(nft) => handleMarkAsSpam(address, nft.network, nft)}
                         walletAddress={address}
                         cardSize={270}
                         isSpamFolder={false}
+                        isSelectMode={isSelectMode}
+                        onNFTClick={handleNFTClick}
                       />
                     )}
                   </Box>
@@ -658,7 +794,7 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
           </Tabs>
         </VStack>
         
-        <Modal isOpen={isOpen} onClose={onClose}>
+        {/* <Modal isOpen={isOpen} onClose={onClose}>
           <ModalOverlay />
           <ModalContent>
             <ModalHeader>Edit Catalog</ModalHeader>
@@ -684,7 +820,7 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
               <Button variant="ghost" onClick={onClose}>Cancel</Button>
             </ModalFooter>
           </ModalContent>
-        </Modal>
+        </Modal> */}
       </Box>
     );
 };

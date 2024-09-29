@@ -1,45 +1,65 @@
 import React from 'react';
-import { Box, Image, Text, Button, VStack, HStack, Badge, useColorModeValue } from "@chakra-ui/react";
+import { Box, Image, Text, Button, VStack, HStack, Badge, useColorModeValue, AspectRatio, Checkbox } from "@chakra-ui/react";
 import { FaExclamationTriangle } from 'react-icons/fa';
 
-const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSize }) => {
+const NFTCard = ({ 
+  nft, 
+  isSelected, 
+  onSelect, 
+  onMarkAsSpam, 
+  isSpamFolder, 
+  cardSize,
+  isSelectMode,
+  onClick
+}) => {
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
   const getImageUrl = (nft) => {
-    // Check various possible image sources
     const possibleSources = [
+      nft.metadata?.image_url,
+      nft.metadata?.image,
       nft.media?.[0]?.gateway,
       nft.imageUrl,
-      nft.metadata?.image,
-      nft.metadata?.image_url,
       nft.metadata?.external_url
     ];
-
+  
     for (let source of possibleSources) {
       if (source) {
-        // Handle IPFS
+        // Check if the source is an SVG string
+        if (source.startsWith('data:image/svg+xml,')) {
+          return source;
+        }
+        // Check if it's already a valid URL (including IPFS gateways)
+        if (source.startsWith('http://') || source.startsWith('https://')) {
+          return source;
+        }
+        // Handle IPFS protocol
         if (source.startsWith('ipfs://')) {
           const hash = source.replace('ipfs://', '');
           return `https://ipfs.io/ipfs/${hash}`;
         }
-        // Handle Arweave
+        // Handle Arweave protocol
         if (source.startsWith('ar://')) {
           const hash = source.replace('ar://', '');
           return `https://arweave.net/${hash}`;
         }
-        // Handle regular URLs
-        if (source.startsWith('http://') || source.startsWith('https://')) {
-          return source;
-        }
       }
     }
-
-    // If no valid source is found, return a placeholder
-    return 'https://via.placeholder.com/150?text=No+Image';
+  
+    return 'https://via.placeholder.com/400?text=No+Image';
   };
 
   const imageUrl = getImageUrl(nft);
+
+  const handleCardClick = () => {
+    if (isSelectMode) {
+      onSelect(nft);
+    } else {
+      onClick(nft);
+    }
+  };
+
 
   return (
     <Box
@@ -51,30 +71,56 @@ const NFTCard = ({ nft, isSelected, onSelect, onMarkAsSpam, isSpamFolder, cardSi
       boxShadow={isSelected ? "0 0 0 2px #3182CE" : "md"}
       transition="all 0.2s"
       _hover={{ transform: 'translateY(-4px)', boxShadow: 'lg' }}
-      width={`${cardSize}px`}
-      height={`${cardSize * 1.4}px`}
+      width="100%"
+      height="100%"
       position="relative"
+      onClick={handleCardClick}
+      cursor={isSelectMode ? "pointer" : "default"}
     >
-      <Image
-        src={imageUrl}
-        alt={nft.title || 'NFT'}
-        width="100%"
-        height={`${cardSize}px`}
-        objectFit="cover"
-        fallbackSrc="https://via.placeholder.com/150?text=Loading..."
-      />
-      <VStack p={4} spacing={2} align="stretch" height={`${cardSize * 0.4}px`} justify="space-between">
-        <Text fontWeight="bold" fontSize="sm" isTruncated>{nft.title || `Token ID: ${nft.id.tokenId}`}</Text>
+      {isSelectMode && (
+        <Checkbox
+          position="absolute"
+          top={2}
+          left={2}
+          isChecked={isSelected}
+          onChange={() => onSelect(nft)}
+          zIndex={1}
+        />
+      )}
+      <AspectRatio ratio={1}>
+        {imageUrl.startsWith('data:image/svg+xml,') ? (
+          <Box 
+            dangerouslySetInnerHTML={{ __html: decodeURIComponent(imageUrl.split(',')[1]) }} 
+            width="100%"
+            height="100%"
+          />
+        ) : (
+          <Image
+            src={imageUrl}
+            alt={nft.title || 'NFT'}
+            objectFit="cover"
+            width="100%"
+            height="100%"
+          />
+        )}
+      </AspectRatio>
+      <VStack p={2} spacing={1} align="stretch">
+        <Text fontWeight="bold" fontSize="sm" noOfLines={1}>{nft.title || `Token ID: ${nft.id.tokenId}`}</Text>
         <HStack justify="space-between">
-          <Button
-            size="sm"
-            colorScheme={isSpamFolder ? "green" : "red"}
-            variant="outline"
-            onClick={onMarkAsSpam}
-            leftIcon={<FaExclamationTriangle />}
-          >
-            {isSpamFolder ? "Unmark" : "Spam"}
-          </Button>
+          {!isSelectMode && (
+            <Button
+              size="xs"
+              colorScheme={isSpamFolder ? "green" : "red"}
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMarkAsSpam();
+              }}
+              leftIcon={<FaExclamationTriangle />}
+            >
+              {isSpamFolder ? "Unmark" : "Spam"}
+            </Button>
+          )}
           <Badge colorScheme="purple" variant="subtle" fontSize="xs">
             {nft.network.toUpperCase()}
           </Badge>

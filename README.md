@@ -8,6 +8,7 @@ Alix is a web application designed to simplify the management and organization o
 - **NFT Viewing**: Alix fetches and displays NFTs from all connected wallets and supported networks, providing a unified view of a user's entire NFT collection.
 - **Catalog Creation**: Users can create custom catalogs to organize their NFTs based on their preferences, making it easier to manage and access specific subsets of their collection.
 - **Spam Filtering**: Alix allows users to mark NFTs as spam, helping to keep their collection clean and organized.
+- **Bulk Selection and Actions**: Users can select multiple NFTs at once for actions such as adding to catalogs or marking as spam.
 - **User Profile**: Users can set up a profile with their preferred display name and avatar, which is associated with their connected wallets.
 - **ENS Integration**: Support for Ethereum Name Service (ENS) resolution and avatar integration.
 - **Responsive Design**: The application is designed to be responsive, providing a consistent experience across various device sizes.
@@ -46,7 +47,8 @@ To run the Alix application locally, follow these steps:
 - Chakra UI: UI component library for React
 - Moralis: Web3 development platform for blockchain data access and user authentication
 - Axios: Promise-based HTTP client for making API requests
-- react-app-rewired: Tool for customizing Create React App configurations without ejecting
+- react-router-dom: Routing library for React applications
+- react-icons: Icon library for React applications
 
 ## Project Structure
 
@@ -54,9 +56,13 @@ The project structure is as follows:
 ```
 src/
   components/
+    AdminPage.js
     CatalogPage.js
+    CatalogViewPage.js
+    ErrorBoundary.js
     HomePage.js
     LibraryPage.js
+    ListViewPage.js
     MenuModal.js
     NFTCard.js
     NFTGrid.js
@@ -64,35 +70,43 @@ src/
     UserProfile.js
     WalletManager.js
     WelcomePage.js
-    CatalogViewPage.js
-    ErrorBoundary.js
   utils/
+    logger.js
     web3Utils.js
   App.js
+  global.css
+  global.js
+  index.css
   index.js
   polyfills.js
+  styles.js
 public/
   index.html
 .env
 config-overrides.js
 package.json
 README.md
+ROADMAP.md
 ```
 
 ## Component Breakdown
 
 - `App.js`: The main component that manages the application state and routing between different pages.
-- `WelcomePage.js`: Displays the initial welcome screen and onboarding process for new users.
 - `HomePage.js`: Shows a dashboard with quick actions and overview of the user's NFTs and catalogs.
-- `MenuModal.js`: Provides navigation between different pages of the application.
-- `LibraryPage.js`: The main page for viewing and managing NFT catalogs. It includes filtering options and catalog creation.
+- `LibraryPage.js`: The main page for viewing and managing NFT collections. It includes filtering options, catalog creation, and bulk actions.
 - `ProfilePage.js`: Allows users to manage their profile and connected wallets.
-- `UserProfile.js`: Handles user profile information, including avatar and nickname.
-- `WalletManager.js`: Manages the connection and configuration of user wallets, including ENS resolution.
 - `NFTGrid.js`: Displays a grid of NFTs, used within the LibraryPage component.
 - `NFTCard.js`: Represents an individual NFT card within the NFTGrid, showing NFT details and actions.
 - `CatalogViewPage.js`: Displays the contents of a specific catalog and allows for NFT management within that catalog.
-- `ErrorBoundary.js`: Provides error handling for the entire application.
+- `WalletManager.js`: Manages the connection and configuration of user wallets, including ENS resolution.
+
+## Recent Developments
+
+- Implemented a new selection mode for bulk actions on NFTs.
+- Added functionality to create new catalogs and add NFTs to existing catalogs in bulk.
+- Improved spam marking functionality to support both individual and bulk actions.
+- Enhanced the user interface for a more intuitive catalog management experience.
+- Optimized NFT fetching and display for improved performance.
 
 ## Utils
 
