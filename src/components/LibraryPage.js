@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { logger } from '../utils/logger';
 import {
   Box,
   VStack,
@@ -10,11 +9,8 @@ import {
   Tab,
   TabPanels,
   TabPanel,
-  useColorModeValue,
-  Container,
   SimpleGrid,
   Stat,
-  Collapse,
   StatLabel,
   StatNumber,
   StatGroup,
@@ -24,145 +20,148 @@ import {
   HStack,
   Flex,
   Checkbox,
-  useToast,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
   Progress,
-  useDisclosure,
-  useBreakpointValue
+  Collapse,
 } from "@chakra-ui/react";
-import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaChevronLeft, FaChevronUp, FaTrash, FaTimes, FaCheck, FaFolderPlus } from 'react-icons/fa';
+import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaTrash, FaTimes, FaCheck, FaFolderPlus } from 'react-icons/fa';
+import { useLocation, useNavigate } from 'react-router-dom';
 import NFTGrid from './NFTGrid';
 import CatalogViewPage from './CatalogViewPage';
 import { fetchNFTs } from '../utils/web3Utils';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { logger } from '../utils/logger';
+import { useAppContext } from '../context/AppContext';
+import { useCustomColorMode } from '../hooks/useColorMode';
+import { useCustomToast } from '../utils/toastUtils';
+import { useErrorHandler } from '../utils/errorUtils';
+import { useResponsive } from '../hooks/useResponsive';
+import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 
-const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: initialCatalogs, setCatalogs: setInitialCatalogs }) => {
-    const [selectedNFTs, setSelectedNFTs] = useState([]);
-    const [catalogName, setCatalogName] = useState('');
-    const [localCatalogs, setLocalCatalogs] = useState(initialCatalogs);
-    const [totalNFTs, setTotalNFTs] = useState(0);
-    const [spamNFTs, setSpamNFTs] = useState(0);
-    const [selectedWallets, setSelectedWallets] = useState(wallets.map(w => w.address));
-    const [selectedContracts, setSelectedContracts] = useState(() => {
-        const allContracts = new Set();
-        Object.values(nfts).forEach(walletNfts => {
-          Object.values(walletNfts).forEach(networkNfts => {
-            if (Array.isArray(networkNfts)) {
-              networkNfts.forEach(nft => {
-                if (nft.contract?.address) {
-                  allContracts.add(nft.contract.address);
-                }
-              });
-            } else {
-              logger.warn('Expected networkNfts to be an array, but got:', networkNfts);
-            }
-          });
-        });
-        return Array.from(allContracts);
-    });
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [refreshProgress, setRefreshProgress] = useState(0);
-    const { isOpen, onOpen, onClose, onToggle } = useDisclosure();
-    const [collapsedWallets, setCollapsedWallets] = useState({});
-    const [contractNames, setContractNames] = useState({});
-    const [viewingCatalog, setViewingCatalog] = useState(null);
-    const [selectedCatalog, setSelectedCatalog] = useState(null);
-    const toast = useToast();
-    const [activeTab, setActiveTab] = useState(0);
-    const location = useLocation();
-    const buttonSize = useBreakpointValue({ base: "sm", md: "md" });
-    const showButtonText = useBreakpointValue({ base: false, md: true });
-    const [isSelectMode, setIsSelectMode] = useState(false);
-    const { isOpen: isCreateCatalogOpen, onToggle: onCreateCatalogToggle, onClose: onCreateCatalogClose } = useDisclosure();
-    const { isOpen: isAddToCatalogOpen, onToggle: onAddToCatalogToggle, onClose: onAddToCatalogClose } = useDisclosure();
-    const [selectedCatalogs, setSelectedCatalogs] = useState([]);
-    const [catalogSearch, setCatalogSearch] = useState('');
-    const cardBg = useColorModeValue('white', 'gray.800');
+const LibraryPage = () => {
+  const {
+      wallets,
+      nfts,
+      updateNfts,
+      spamNfts,
+      updateSpamNfts,
+      catalogs,
+      updateCatalogs
+  } = useAppContext();
+
+  console.log('AppContext in LibraryPage:', { wallets, nfts, spamNfts, catalogs }); // Debug log
+
+  const { bgColor, cardBg, textColor, borderColor } = useCustomColorMode();
+  const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast();
+  const { handleError } = useErrorHandler();
+  const { buttonSize, headingSize, showFullText, gridColumns } = useResponsive();
   
+  const [selectedNFTs, setSelectedNFTs] = useState([]);
+  const [catalogName, setCatalogName] = useState('');
+  const [totalNFTs, setTotalNFTs] = useState(0);
+  const [selectedWallets, setSelectedWallets] = useState(wallets.map(w => w.address));
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState(0);
+  const [collapsedWallets, setCollapsedWallets] = useState({});
+  const [contractNames, setContractNames] = useState({});
+  const [viewingCatalog, setViewingCatalog] = useState(null);
+  const [activeTab, setActiveTab] = useState(0);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [isCreateCatalogOpen, setIsCreateCatalogOpen] = useState(false);
+  const [isAddToCatalogOpen, setIsAddToCatalogOpen] = useState(false);
+  const [selectedCatalogs, setSelectedCatalogs] = useState([]);
+  const [catalogSearch, setCatalogSearch] = useState('');
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+    const allContracts = useMemo(() => {
+      const contracts = new Set();
+      Object.values(nfts).forEach(walletNfts => {
+        Object.values(walletNfts).forEach(networkNfts => {
+          if (Array.isArray(networkNfts)) {
+            networkNfts.forEach(nft => {
+              if (nft.contract?.address) {
+                contracts.add(nft.contract.address);
+              }
+            });
+          }
+        });
+      });
+      return Array.from(contracts);
+    }, [nfts]);
+
+    const [selectedContracts, setSelectedContracts] = useState([]);
+
     useEffect(() => {
       const params = new URLSearchParams(location.search);
       const tab = params.get('tab');
       if (tab === 'nfts') setActiveTab(0);
       if (tab === 'catalogs') setActiveTab(1);
     }, [location]);
-  
-
-    logger.log("Initial nfts:", nfts);
 
     useEffect(() => {
-      setLocalCatalogs(initialCatalogs);
-    }, [initialCatalogs]);
-
-    const setCatalogs = useCallback((newCatalogs) => {
-        setLocalCatalogs(newCatalogs);
-        setInitialCatalogs(newCatalogs);
-    }, [setInitialCatalogs]);
+      setSelectedContracts(allContracts);
+    }, []); // Empty dependency array means this runs only once on mount
 
     useEffect(() => {
-        logger.log("Selected Contracts updated:", selectedContracts);
-      }, [selectedContracts]);
-
-    useEffect(() => {
-        // Initialize the "Spam" catalog
-        setCatalogs(prevCatalogs => {
-          if (!prevCatalogs.some(catalog => catalog.name === "Spam")) {
-            return [...prevCatalogs, { id: "spam", name: "Spam", nfts: [] }];
+      updateCatalogs(prevCatalogs => {
+          if (!prevCatalogs.some(cat => cat.name === "Spam")) {
+              return [...prevCatalogs, { id: "spam", name: "Spam", nfts: [] }];
           }
           return prevCatalogs;
-        });
-    }, [setCatalogs, setInitialCatalogs]);
-  
+      });
+    }, [updateCatalogs]);
+
+    const calculatedContractNames = useMemo(() => {
+      const names = {};
+      Object.values(nfts).forEach(walletNfts => {
+        if (typeof walletNfts === 'object' && walletNfts !== null) {
+          Object.values(walletNfts).forEach(networkNfts => {
+            if (Array.isArray(networkNfts)) {
+              networkNfts.forEach(nft => {
+                if (nft && nft.contract && nft.contract.name && nft.contract.address) {
+                  names[nft.contract.address] = nft.contract.name;
+                }
+              });
+            }
+          });
+        }
+      });
+      return names;
+    }, [nfts]);
+    
     useEffect(() => {
       try {
-        // Extract unique contract names from NFTs
-        const names = {};
-        Object.values(nfts).forEach(walletNfts => {
-          if (typeof walletNfts === 'object' && walletNfts !== null) {
-            Object.values(walletNfts).forEach(networkNfts => {
-              if (Array.isArray(networkNfts)) {
-                networkNfts.forEach(nft => {
-                  if (nft && nft.contract && nft.contract.name && nft.contract.address) {
-                    names[nft.contract.address] = nft.contract.name;
-                  }
-                });
-              }
-            });
+        setContractNames(prevNames => {
+          if (JSON.stringify(prevNames) !== JSON.stringify(calculatedContractNames)) {
+            return calculatedContractNames;
           }
+          return prevNames;
         });
-        setContractNames(names);
       } catch (error) {
-        logger.error('Error processing NFT data:', error);
+        handleError(error, 'processing NFT data');
       }
-    }, [nfts]);
+    }, [calculatedContractNames, handleError]);
 
     useEffect(() => {
       const total = Object.values(nfts).reduce((acc, wallet) => 
         acc + Object.values(wallet).reduce((sum, network) => sum + (network.nfts ? network.nfts.length : 0), 0), 0);
       setTotalNFTs(total);
     
-      const spam = localCatalogs.find(cat => cat.name === "Spam")?.nfts.length || 0;
-      setSpamNFTs(spam);
-    }, [nfts, localCatalogs]);
+      const spam = catalogs.find(cat => cat.name === "Spam")?.nfts.length || 0;
+      updateSpamNfts(spam);
+    }, [nfts, catalogs, updateSpamNfts]);
 
-    const navigate = useNavigate();
-
-    const handleNFTClick = (nft) => {
+    const handleNFTClick = useCallback((nft) => {
       navigate('/artifact', { state: { nft } });
-    };
-  
-    const handleWalletCollapse = (address) => {
-        setCollapsedWallets(prev => ({
-          ...prev,
-          [address]: !prev[address]
-        }));
-     };
-  
+    }, [navigate]);
+
+    const handleWalletCollapse = useCallback((address) => {
+      setCollapsedWallets(prev => ({
+        ...prev,
+        [address]: !prev[address]
+      }));
+    }, []);
+
     const handleRefreshNFTs = useCallback(async () => {
       setIsRefreshing(true);
       setRefreshProgress(0);
@@ -170,8 +169,7 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
       let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
       let completedFetches = 0;
     
-      // Get the current spam NFTs
-      const spamCatalog = localCatalogs.find(cat => cat.name === "Spam") || { nfts: [] };
+      const spamCatalog = catalogs.find(cat => cat.name === "Spam") || { nfts: [] };
       const spamNftIds = new Set(spamCatalog.nfts.map(nft => `${nft.contract.address}-${nft.id.tokenId}`));
     
       for (const wallet of wallets) {
@@ -180,7 +178,6 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
           try {
             const { nfts: networkNfts } = await fetchNFTs(wallet.address, networkValue);
             
-            // Filter out spam NFTs
             const filteredNfts = networkNfts.filter(nft => {
               const nftId = `${nft.contract.address}-${nft.id.tokenId}`;
               return !spamNftIds.has(nftId);
@@ -190,23 +187,15 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
             completedFetches++;
             setRefreshProgress((completedFetches / totalFetches) * 100);
           } catch (error) {
-            console.error(`Error fetching NFTs for ${wallet.address} on ${networkValue}:`, error);
+            handleError(error, `fetching NFTs for ${wallet.address} on ${networkValue}`);
             fetchedNfts[wallet.address][networkValue] = { nfts: [] };
-            toast({
-              title: "NFT Fetch Error",
-              description: `Failed to fetch NFTs for ${wallet.nickname || wallet.address} on ${networkValue}. Please try again later.`,
-              status: "error",
-              duration: 5000,
-              isClosable: true,
-            });
+            showErrorToast("NFT Fetch Error", `Failed to fetch NFTs for ${wallet.nickname || wallet.address} on ${networkValue}. Please try again later.`);
           }
         }
       }
     
-      console.log('Fetched NFTs:', fetchedNfts);
-      setNfts(fetchedNfts);
+      updateNfts(fetchedNfts);
     
-      // Update total NFTs count
       const totalNftsCount = Object.values(fetchedNfts).reduce(
         (total, wallet) => total + Object.values(wallet).reduce((sum, network) => sum + network.nfts.length, 0),
         0
@@ -214,244 +203,134 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
       setTotalNFTs(totalNftsCount);
     
       setIsRefreshing(false);
-      toast({
-        title: "NFTs Refreshed",
-        description: "Your NFTs have been refreshed, excluding spam NFTs.",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-    }, [wallets, setNfts, localCatalogs, toast, setTotalNFTs]);
-  
-    useEffect(() => {
-        const fetchAllNFTs = async () => {
-          try {
-            const fetchedNfts = {};
-            for (const wallet of wallets) {
-              fetchedNfts[wallet.address] = {};
-              for (const network of wallet.networks) {
-                fetchedNfts[wallet.address][network] = await fetchNFTs(wallet.address, network);
-              }
-            }
-            logger.log("Fetched NFTs:", fetchedNfts);
-            setNfts(fetchedNfts);
-          } catch (error) {
-            logger.error('Error fetching NFTs:', error);
-          }   
-        };
-      
-        fetchAllNFTs();
-    }, [wallets, setNfts]);
-  
+      showSuccessToast("NFTs Refreshed", "Your NFTs have been refreshed, excluding spam NFTs.");
+    }, [wallets, updateNfts, catalogs, showSuccessToast, showErrorToast, handleError]);
+
     const handleMarkAsSpam = useCallback((address, network, nfts) => {
+      console.log('handleMarkAsSpam called');
+      if (typeof updateNfts !== 'function' || typeof updateCatalogs !== 'function' || typeof updateSpamNfts !== 'function') {
+          console.error('Required update functions are not available');
+          return;
+      }
+  
       const nftsToSpam = Array.isArray(nfts) ? nfts : [nfts];
       
-      setNfts(prevNfts => {
-        const updatedNfts = JSON.parse(JSON.stringify(prevNfts));
-        nftsToSpam.forEach(nft => {
-          if (updatedNfts[address] && updatedNfts[address][network]) {
-            updatedNfts[address][network].nfts = updatedNfts[address][network].nfts.filter(item => 
-              !(item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
-            );
-          }
-        });
-        return updatedNfts;
+      updateNfts(prevNfts => {
+          const updatedNfts = JSON.parse(JSON.stringify(prevNfts));
+          nftsToSpam.forEach(nft => {
+              if (updatedNfts[address] && updatedNfts[address][network]) {
+                  updatedNfts[address][network].nfts = updatedNfts[address][network].nfts.filter(item => 
+                      !(item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
+                  );
+              }
+          });
+          return updatedNfts;
       });
   
-      setCatalogs(prevCatalogs => {
-        const newCatalogs = prevCatalogs.map(catalog => {
-          if (catalog.name === "Spam") {
-            const newSpamNfts = nftsToSpam.filter(nft => 
-              !catalog.nfts.some(spamNft => 
-                spamNft.id?.tokenId === nft.id?.tokenId && 
-                spamNft.contract?.address === nft.contract?.address
+      updateCatalogs(prevCatalogs => {
+          let spamCatalog = prevCatalogs.find(cat => cat.name === "Spam");
+          if (!spamCatalog) {
+              spamCatalog = { id: "spam", name: "Spam", nfts: [] };
+              prevCatalogs.push(spamCatalog);
+          }
+          
+          const newSpamNfts = nftsToSpam.filter(nft => 
+              !spamCatalog.nfts.some(spamNft => 
+                  spamNft.id?.tokenId === nft.id?.tokenId && 
+                  spamNft.contract?.address === nft.contract?.address
               )
-            ).map(nft => ({
+          ).map(nft => ({
               ...nft,
               walletAddress: address,
               network,
               isSpam: true,
               spamInfo: {
-                dateMarked: new Date().toISOString(),
-                markedBy: 'user',
+                  dateMarked: new Date().toISOString(),
+                  markedBy: 'user',
               }
-            }));
-            return {
-              ...catalog,
-              nfts: [...catalog.nfts, ...newSpamNfts]
-            };
-          }
-          return catalog;
-        });
-        return newCatalogs;
+          }));
+          
+          spamCatalog.nfts = [...spamCatalog.nfts, ...newSpamNfts];
+          
+          return [...prevCatalogs];
       });
+  
+      // Update spam NFT count
+      updateSpamNfts(prevSpamNfts => prevSpamNfts + nftsToSpam.length);
   
       setTotalNFTs(prevTotal => prevTotal - nftsToSpam.length);
-      setSpamNFTs(prevSpam => prevSpam + nftsToSpam.length);
   
-      toast({
-        title: `Marked ${nftsToSpam.length} NFT${nftsToSpam.length > 1 ? 's' : ''} as Spam`,
-        description: "The NFT(s) have been moved to the Spam folder.",
-        status: "info",
-        duration: 2000,
-        isClosable: true,
-      });
+      showInfoToast(`Marked ${nftsToSpam.length} NFT${nftsToSpam.length > 1 ? 's' : ''} as Spam`, "The NFT(s) have been moved to the Spam folder.");
   
       if (isSelectMode) {
-        setSelectedNFTs([]);
-        setIsSelectMode(false);
+          setSelectedNFTs([]);
+          setIsSelectMode(false);
       }
-    }, [setCatalogs, setNfts, setTotalNFTs, setSpamNFTs, toast, isSelectMode]);  
-  
-    const handleWalletToggle = (address) => {
-        setSelectedWallets(prevSelectedWallets => 
-          prevSelectedWallets.includes(address)
-            ? prevSelectedWallets.filter(wallet => wallet !== address)
-            : [...prevSelectedWallets, address]
-        );
-    };
-  
-    const handleContractToggle = (contractAddress) => {
-        setSelectedContracts(prev =>
-          prev.includes(contractAddress)
-            ? prev.filter(address => address !== contractAddress)
-            : [...prev, contractAddress]
-        );
-    };
-  
-    const handleNFTSelect = (nft) => {
+  }, [updateNfts, updateCatalogs, updateSpamNfts, showInfoToast, isSelectMode, setSelectedNFTs, setIsSelectMode, setTotalNFTs]);
+
+    const handleWalletToggle = useCallback((address) => {
+      setSelectedWallets(prevSelectedWallets => 
+        prevSelectedWallets.includes(address)
+          ? prevSelectedWallets.filter(wallet => wallet !== address)
+          : [...prevSelectedWallets, address]
+      );
+    }, []);
+
+    const handleContractToggle = useCallback((contractAddress) => {
+      setSelectedContracts(prevSelected => {
+        if (prevSelected.includes(contractAddress)) {
+          return prevSelected.filter(address => address !== contractAddress);
+        } else {
+          return [...prevSelected, contractAddress];
+        }
+      });
+    }, []);
+
+    const handleNFTSelect = useCallback((nft) => {
       setSelectedNFTs(prev => 
         prev.some(selected => selected.id.tokenId === nft.id.tokenId && selected.contract.address === nft.contract.address)
           ? prev.filter(selected => !(selected.id.tokenId === nft.id.tokenId && selected.contract.address === nft.contract.address))
           : [...prev, nft]
       );
-    };
-  
-    const handleCreateCatalog = () => {
+    }, []);
+
+    const handleCreateCatalog = useCallback(() => {
       if (catalogName.trim() === '') {
-        toast({
-          title: "Catalog Name Required",
-          description: "Please enter a name for your catalog.",
-          status: "warning",
-          duration: 3000,
-          isClosable: true,
-        });
+        showErrorToast("Catalog Name Required", "Please enter a name for your catalog.");
         return;
       }
-  
+
       if (selectedNFTs.length === 0) {
-        toast({
-          title: "No NFTs Selected",
-          description: "Please select at least one NFT for your catalog.",
-          status: "warning",
-          duration: 3000,
-          isClosable: true,
-        });
+        showErrorToast("No NFTs Selected", "Please select at least one NFT for your catalog.");
         return;
       }
-  
+
       const newCatalog = {
         id: Date.now().toString(),
         name: catalogName,
         nfts: selectedNFTs,
       };
-  
-      setCatalogs(prev => [...prev, newCatalog]);
+
+       updateCatalogs(prev => [...prev, newCatalog]);
       setCatalogName('');
       setSelectedNFTs([]);
-  
-      toast({
-        title: "Catalog Created",
-        description: `Your catalog "${catalogName}" has been created successfully.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-    };
-  
-    const handleEditCatalog = (catalog) => {
-      setSelectedCatalog(catalog);
-      setCatalogName(catalog.name);
-      setSelectedNFTs(catalog.nfts);
-      onOpen();
-    };
-  
-    const handleUpdateCatalog = () => {
-      if (catalogName.trim() === '') {
-        toast({
-          title: "Catalog Name Required",
-          description: "Please enter a name for your catalog.",
-          status: "warning",
-          duration: 3000,
-          isClosable: true,
-        });
-        return;
-      }
-  
-      setCatalogs(prevCatalogs => 
-        prevCatalogs.map(cat => 
-          cat.id === selectedCatalog.id 
-            ? { ...cat, name: catalogName, nfts: selectedNFTs }
-            : cat
-        )
-      );
-      onClose();
-      setCatalogName('');
-      setSelectedNFTs([]);
-      setSelectedCatalog(null);
-  
-      toast({
-        title: "Catalog Updated",
-        description: `Your catalog "${catalogName}" has been updated successfully.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-    };
-  
-    const handleDeleteCatalog = (catalogId) => {
-      setCatalogs(prevCatalogs => prevCatalogs.filter(cat => cat.id !== catalogId));
-      toast({
-        title: "Catalog Deleted",
-        description: "The catalog has been deleted successfully.",
-        status: "info",
-        duration: 3000,
-        isClosable: true,
-      });
-    };
-  
+
+      showSuccessToast("Catalog Created", `Your catalog "${catalogName}" has been created successfully.`);
+    }, [catalogName, selectedNFTs,  updateCatalogs, showErrorToast, showSuccessToast]);
+
+    const handleDeleteCatalog = useCallback((catalogId) => {
+       updateCatalogs(prevCatalogs => prevCatalogs.filter(cat => cat.id !== catalogId));
+      showInfoToast("Catalog Deleted", "The catalog has been deleted successfully.");
+    }, [ updateCatalogs, showInfoToast]);
+
     const filteredNfts = useMemo(() => {
-      logger.log("Filtering NFTs. Input data:", { nfts, selectedWallets, selectedContracts });
-      
+      const isAllSelected = selectedContracts.length === allContracts.length;
       return Object.entries(nfts).reduce((acc, [address, walletData]) => {
-        logger.log(`Processing wallet: ${address}`, walletData);
-        
         if (selectedWallets.includes(address)) {
-          if (typeof walletData !== 'object' || walletData === null) {
-            logger.warn(`Invalid wallet data for address ${address}:`, walletData);
-            return acc;
-          }
-          
           acc[address] = Object.entries(walletData).reduce((networkAcc, [network, networkData]) => {
-            logger.log(`Processing network: ${network}`, networkData);
-            
-            if (typeof networkData !== 'object' || networkData === null) {
-              logger.warn(`Invalid network data for ${address} on ${network}:`, networkData);
-              return networkAcc;
-            }
-            
             const nftArray = networkData.nfts || [];
-            if (!Array.isArray(nftArray)) {
-              logger.warn(`Invalid NFT array for ${address} on ${network}:`, nftArray);
-              return networkAcc;
-            }
-            
             const filteredNftArray = nftArray.filter(nft => {
-              if (typeof nft !== 'object' || nft === null) {
-                logger.warn(`Invalid NFT object:`, nft);
-                return false;
-              }
-              const isSelected = selectedContracts.length === 0 || selectedContracts.includes(nft.contract?.address);
+              const isSelected = isAllSelected || selectedContracts.includes(nft.contract?.address);
               const isNotSpam = !nft.isSpam;
               return isSelected && isNotSpam;
             });
@@ -463,20 +342,16 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
             return networkAcc;
           }, {});
         }
-        
         return acc;
       }, {});
-    }, [nfts, selectedWallets, selectedContracts]);
+    }, [nfts, selectedWallets, selectedContracts, allContracts]);
 
     const filteredCatalogs = useMemo(() => 
-      localCatalogs.filter(catalog => 
+      catalogs.filter(catalog => 
         catalog.name.toLowerCase().includes(catalogSearch.toLowerCase())
       ),
-      [localCatalogs, catalogSearch]
+      [catalogs, catalogSearch]
     );
-  
-  
-    logger.log("Filtered NFTs result:", filteredNfts);
 
     const consolidatedNfts = useMemo(() => {
       return Object.entries(filteredNfts).reduce((acc, [address, networkNfts]) => {
@@ -486,14 +361,13 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
         return acc;
       }, {});
     }, [filteredNfts]);
-    
-  
-    const handleOpenCatalog = (catalog) => {
+
+    const handleOpenCatalog = useCallback((catalog) => {
       setViewingCatalog(catalog);
-    };
+    }, []);
   
-    const handleRemoveNFTsFromCatalog = (catalogId, nftsToRemove) => {
-      setCatalogs(prevCatalogs => 
+    const handleRemoveNFTsFromCatalog = useCallback((catalogId, nftsToRemove) => {
+       updateCatalogs(prevCatalogs => 
         prevCatalogs.map(catalog => 
           catalog.id === catalogId
             ? {
@@ -508,9 +382,9 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
             : catalog
         )
       );
-    };
-  
-    const handleRemoveNFTsFromViewingCatalog = (nftsToRemove) => {
+    }, [ updateCatalogs]);
+
+    const handleRemoveNFTsFromViewingCatalog = useCallback((nftsToRemove) => {
       handleRemoveNFTsFromCatalog(viewingCatalog.id, nftsToRemove);
       setViewingCatalog(prev => ({
         ...prev,
@@ -521,8 +395,36 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
           )
         )
       }));
-    };
-  
+    }, [handleRemoveNFTsFromCatalog, viewingCatalog]);
+
+    const handleSelectMode = useCallback(() => {
+      setIsSelectMode(true);
+      setSelectedNFTs([]);
+    }, []);
+
+    const handleCancelSelectMode = useCallback(() => {
+      setIsSelectMode(false);
+      setSelectedNFTs([]);
+      setIsCreateCatalogOpen(false);
+      setIsAddToCatalogOpen(false);
+    }, []);
+
+    const handleAddToExistingCatalog = useCallback(() => {
+      const selectedCatalogIds = selectedCatalogs.map(cat => cat.id);
+       updateCatalogs(prevCatalogs => 
+        prevCatalogs.map(catalog => 
+          selectedCatalogIds.includes(catalog.id)
+            ? { ...catalog, nfts: [...catalog.nfts, ...selectedNFTs] }
+            : catalog
+        )
+      );
+      setSelectedNFTs([]);
+      setSelectedCatalogs([]);
+      setIsSelectMode(false);
+      setIsAddToCatalogOpen(false);
+      showSuccessToast("NFTs Added to Catalogs", `Added ${selectedNFTs.length} NFTs to ${selectedCatalogs.length} catalogs.`);
+    }, [selectedCatalogs, selectedNFTs,  updateCatalogs, showSuccessToast]);
+
     if (viewingCatalog) {
       return (
         <CatalogViewPage
@@ -534,60 +436,20 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
       );
     }
 
-    logger.log("Rendering LibraryPage");
-    logger.log("filteredNfts:", filteredNfts);
-
-    const handleSelectMode = () => {
-      setIsSelectMode(true);
-      setSelectedNFTs([]);
-    };
-
-    const handleCancelSelectMode = () => {
-      setIsSelectMode(false);
-      setSelectedNFTs([]);
-      onCreateCatalogClose();
-      onAddToCatalogClose();
-    };
-
-    const handleAddToExistingCatalog = () => {
-      const selectedCatalogIds = selectedCatalogs.map(cat => cat.id);
-      setCatalogs(prevCatalogs => 
-        prevCatalogs.map(catalog => 
-          selectedCatalogIds.includes(catalog.id)
-            ? { ...catalog, nfts: [...catalog.nfts, ...selectedNFTs] }
-            : catalog
-        )
-      );
-      setSelectedNFTs([]);
-      setSelectedCatalogs([]);
-      setIsSelectMode(false);
-      onAddToCatalogClose();
-      toast({
-        title: "NFTs Added to Catalogs",
-        description: `Added ${selectedNFTs.length} NFTs to ${selectedCatalogs.length} catalogs.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-    };
-  
-
-
-
     return (
-      <Box className="container">
+      <StyledContainer>
         <VStack spacing="1.5rem" align="stretch">
           <Flex justify="space-between" align="center">
-            <Heading as="h1" fontSize="2rem">Your NFT Library</Heading>
-            <Button
+            <Heading as="h1" fontSize={headingSize}>Your NFT Library</Heading>
+            <StyledButton
               leftIcon={<Icon as={FaSync} />}
               onClick={handleRefreshNFTs}
               isLoading={isRefreshing}
               loadingText="Refreshing..."
               size={buttonSize}
             >
-              {showButtonText ? "Refresh Artifacts" : null}
-            </Button>
+              {showFullText ? "Refresh Artifacts" : null}
+            </StyledButton>
           </Flex>
           
           {isRefreshing && (
@@ -601,93 +463,90 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
             </Stat>
             <Stat>
               <StatLabel fontSize="1rem">Catalogs</StatLabel>
-              <StatNumber fontSize="1.5rem">{localCatalogs.length}</StatNumber>
+              <StatNumber fontSize="1.5rem">{catalogs.length}</StatNumber>
             </Stat>
             <Stat>
               <StatLabel fontSize="1rem">Spam NFTs</StatLabel>
-              <StatNumber fontSize="1.5rem">{spamNFTs}</StatNumber>
+              <StatNumber fontSize="1.5rem">{spamNfts}</StatNumber>
             </Stat>
           </StatGroup>
 
           {!isSelectMode ? (
-          <Button onClick={handleSelectMode} colorScheme="blue" width="100%">
-            Select
-          </Button>
-        ) : (
-          <HStack>
-            <Button leftIcon={<Icon as={FaTrash} />} onClick={() => handleMarkAsSpam(null, null, selectedNFTs)} colorScheme="red">
-              Add to Spam
-            </Button>
-            <Button leftIcon={<Icon as={FaPlus} />} onClick={onCreateCatalogToggle} colorScheme="green">
-              Create Catalog
-            </Button>
-            <Button leftIcon={<Icon as={FaFolderPlus} />} onClick={onAddToCatalogToggle} colorScheme="blue">
-              Add to Existing Catalog
-            </Button>
-            <Button leftIcon={<Icon as={FaTimes} />} onClick={handleCancelSelectMode} colorScheme="gray">
-              Cancel
-            </Button>
-          </HStack>
-        )}
-
-        
-        <Collapse in={isCreateCatalogOpen} animateOpacity>
-          <Box bg={cardBg} p="1rem" borderRadius="md" boxShadow="md">
-            <Heading as="h3" size="md" mb="0.5rem">Create New Catalog</Heading>
+            <StyledButton onClick={handleSelectMode} width="100%">
+              Select
+            </StyledButton>
+          ) : (
             <HStack>
-              <Input 
-                placeholder="Catalog Name" 
-                value={catalogName}
-                onChange={(e) => setCatalogName(e.target.value)}
-              />
-              <Button leftIcon={<Icon as={FaCheck} />} onClick={handleCreateCatalog} colorScheme="blue">
-                Create
-              </Button>
+              <StyledButton leftIcon={<Icon as={FaTrash} />} onClick={() => handleMarkAsSpam(null, null, selectedNFTs)} colorScheme="red">
+                Add to Spam
+              </StyledButton>
+              <StyledButton leftIcon={<Icon as={FaPlus} />} onClick={() => setIsCreateCatalogOpen(true)} colorScheme="green">
+                Create Catalog
+              </StyledButton>
+              <StyledButton leftIcon={<Icon as={FaFolderPlus} />} onClick={() => setIsAddToCatalogOpen(true)} colorScheme="blue">
+                Add to Existing Catalog
+              </StyledButton>
+              <StyledButton leftIcon={<Icon as={FaTimes} />} onClick={handleCancelSelectMode} colorScheme="gray">
+                Cancel
+              </StyledButton>
             </HStack>
-            <Text mt="0.5rem" fontSize="sm" color="gray.500">
-              {selectedNFTs.length} NFTs selected
-            </Text>
-          </Box>
-        </Collapse>
+          )}
 
-        <Collapse in={isAddToCatalogOpen} animateOpacity>
-          <Box bg={cardBg} p="1rem" borderRadius="md" boxShadow="md">
-            <Heading as="h3" size="md" mb="0.5rem">Add to Existing Catalog</Heading>
-            <Input 
-              placeholder="Search catalogs" 
-              value={catalogSearch}
-              onChange={(e) => setCatalogSearch(e.target.value)}
-              mb="1rem"
-            />
-            <VStack align="stretch" maxHeight="200px" overflowY="auto">
-              {filteredCatalogs.map(catalog => (
-                <Checkbox 
-                  key={catalog.id} 
-                  isChecked={selectedCatalogs.some(c => c.id === catalog.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedCatalogs([...selectedCatalogs, catalog]);
-                    } else {
-                      setSelectedCatalogs(selectedCatalogs.filter(c => c.id !== catalog.id));
-                    }
-                  }}
-                >
-                  {catalog.name}
-                </Checkbox>
-              ))}
-            </VStack>
-            <Button 
-              mt="1rem" 
-              colorScheme="blue" 
-              onClick={handleAddToExistingCatalog}
-              isDisabled={selectedCatalogs.length === 0 || selectedNFTs.length === 0}
-            >
-              Add to Selected Catalogs
-            </Button>
-          </Box>
-        </Collapse>
+          <Collapse in={isCreateCatalogOpen} animateOpacity>
+            <StyledCard>
+              <Heading as="h3" size="md" mb="0.5rem">Create New Catalog</Heading>
+              <HStack>
+                <Input 
+                  placeholder="Catalog Name" 
+                  value={catalogName}
+                  onChange={(e) => setCatalogName(e.target.value)}
+                />
+                <StyledButton leftIcon={<Icon as={FaCheck} />} onClick={handleCreateCatalog}>
+                  Create
+                </StyledButton>
+              </HStack>
+              <Text mt="0.5rem" fontSize="sm" color="gray.500">
+                {selectedNFTs.length} NFTs selected
+              </Text>
+            </StyledCard>
+          </Collapse>
 
-          
+          <Collapse in={isAddToCatalogOpen} animateOpacity>
+            <StyledCard>
+              <Heading as="h3" size="md" mb="0.5rem">Add to Existing Catalog</Heading>
+              <Input 
+                placeholder="Search catalogs" 
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+                mb="1rem"
+              />
+              <VStack align="stretch" maxHeight="200px" overflowY="auto">
+                {filteredCatalogs.map(catalog => (
+                  <Checkbox 
+                    key={catalog.id} 
+                    isChecked={selectedCatalogs.some(c => c.id === catalog.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedCatalogs([...selectedCatalogs, catalog]);
+                      } else {
+                        setSelectedCatalogs(selectedCatalogs.filter(c => c.id !== catalog.id));
+                      }
+                    }}
+                  >
+                    {catalog.name}
+                  </Checkbox>
+                ))}
+              </VStack>
+              <StyledButton 
+                mt="1rem" 
+                onClick={handleAddToExistingCatalog}
+                isDisabled={selectedCatalogs.length === 0 || selectedNFTs.length === 0}
+              >
+                Add to Selected Catalogs
+              </StyledButton>
+            </StyledCard>
+          </Collapse>
+
           <Tabs index={activeTab} onChange={setActiveTab} variant="enclosed">
             <TabList>
               <Tab fontSize="1rem">NFTs</Tab>
@@ -695,7 +554,7 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
             </TabList>
             <TabPanels>
               <TabPanel>
-                <Box mb="1rem">
+                <StyledCard>
                   <Heading as="h3" size="md" mb="0.5rem">Filters</Heading>
                   <SimpleGrid columns={{ base: 1, md: 2 }} spacing="1rem">
                     <Box>
@@ -725,12 +584,12 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
                       ))}
                     </Box>
                   </SimpleGrid>
-                </Box>
+                </StyledCard>
     
                 {Object.entries(consolidatedNfts).map(([address, nfts]) => (
-                  <Box key={address} mb="2rem">
+                  <Box key={address} mt="2rem">
                     <Flex align="center" mb="1rem">
-                      <Button 
+                      <StyledButton 
                         leftIcon={collapsedWallets[address] ? <FaChevronRight /> : <FaChevronDown />}
                         variant="ghost" 
                         onClick={() => handleWalletCollapse(address)}
@@ -738,7 +597,7 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
                         <Heading as="h3" size="md">
                           {wallets.find(wallet => wallet.address === address)?.nickname || address}
                         </Heading>
-                      </Button>
+                      </StyledButton>
                     </Flex>
                     {!collapsedWallets[address] && (
                       <NFTGrid 
@@ -747,10 +606,10 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
                         onNFTSelect={handleNFTSelect}
                         onMarkAsSpam={(nft) => handleMarkAsSpam(address, nft.network, nft)}
                         walletAddress={address}
-                        cardSize={270}
                         isSpamFolder={false}
                         isSelectMode={isSelectMode}
                         onNFTClick={handleNFTClick}
+                        gridColumns={gridColumns}
                       />
                     )}
                   </Box>
@@ -758,27 +617,25 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
               </TabPanel>
               
               <TabPanel>
-                <VStack spacing="1rem" align="stretch">
-                  <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing="1rem">
-                    {localCatalogs.map((catalog) => (
-                      <Box key={catalog.id} p="1rem" borderWidth={1} borderRadius="md" bg={cardBg}>
-                        <Heading as="h4" size="sm">{catalog.name}</Heading>
-                        <Text>{catalog.nfts.length} NFTs</Text>
-                        <HStack mt="0.5rem">
-                          <Button size="sm" onClick={() => handleOpenCatalog(catalog)}>View</Button>
-                          {catalog.name !== "Spam" && (
-                            <>
-                              <Button size="sm" onClick={() => handleEditCatalog(catalog)}>Edit</Button>
-                              <Button size="sm" colorScheme="red" onClick={() => handleDeleteCatalog(catalog.id)}>Delete</Button>
-                            </>
-                          )}
-                        </HStack>
-                      </Box>
-                    ))}
-                  </SimpleGrid>
-                </VStack>
+                <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing="1rem">
+                  {catalogs.map((catalog) => (
+                    <StyledCard key={catalog.id}>
+                      <Heading as="h4" size="sm">{catalog.name}</Heading>
+                      <Text>{catalog.nfts.length} NFTs</Text>
+                      <HStack mt="0.5rem">
+                        <StyledButton size="sm" onClick={() => handleOpenCatalog(catalog)}>View</StyledButton>
+                        {catalog.name !== "Spam" && (
+                          <>
+                            <StyledButton size="sm" onClick={() => handleOpenCatalog(catalog)}>Edit</StyledButton>
+                            <StyledButton size="sm" colorScheme="red" onClick={() => handleDeleteCatalog(catalog.id)}>Delete</StyledButton>
+                          </>
+                        )}
+                      </HStack>
+                    </StyledCard>
+                  ))}
+                </SimpleGrid>
                 
-                <Box mt="1rem">
+                <StyledCard mt="1rem">
                   <Heading as="h3" size="md" mb="0.5rem">Known Contracts</Heading>
                   <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing="1rem">
                     {Object.entries(contractNames).map(([address, name]) => (
@@ -788,42 +645,13 @@ const LibraryPage = ({ wallets, nfts, setNfts, spamNfts, setSpamNfts, catalogs: 
                       </Box>
                     ))}
                   </SimpleGrid>
-                </Box>
+                </StyledCard>
               </TabPanel>
             </TabPanels>
           </Tabs>
         </VStack>
-        
-        {/* <Modal isOpen={isOpen} onClose={onClose}>
-          <ModalOverlay />
-          <ModalContent>
-            <ModalHeader>Edit Catalog</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody>
-              <Input 
-                placeholder="Catalog Name" 
-                value={catalogName}
-                onChange={(e) => setCatalogName(e.target.value)}
-                mb="1rem"
-              />
-              <Text mb="0.5rem">Selected NFTs:</Text>
-              {selectedNFTs.map(nft => (
-                <Text key={`${nft.contract.address}-${nft.id.tokenId}`}>
-                  {nft.title || `Token ID: ${nft.id.tokenId}`}
-                </Text>
-              ))}
-            </ModalBody>
-            <ModalFooter>
-              <Button colorScheme="blue" mr={3} onClick={handleUpdateCatalog}>
-                Update Catalog
-              </Button>
-              <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal> */}
-      </Box>
+      </StyledContainer>
     );
 };
-
 
 export default LibraryPage;

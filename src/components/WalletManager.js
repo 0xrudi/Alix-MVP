@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { 
   VStack, 
   Input, 
-  Button, 
   Select, 
   Table, 
   Thead, 
@@ -10,19 +9,24 @@ import {
   Tr, 
   Th, 
   Td,
-  useToast,
   Text,
   Box,
 } from "@chakra-ui/react";
 import { Select as MultiSelect } from "chakra-react-select";
 import { resolveENS, isValidAddress, networks } from '../utils/web3Utils';
 import { logger } from '../utils/logger';
+import { useCustomToast } from '../utils/toastUtils';
+import { useErrorHandler } from '../utils/errorUtils';
+import { useAppContext } from '../context/AppContext';
+import { StyledButton, StyledCard } from '../styles/commonStyles';
 
-const WalletManager = ({ wallets = [], updateWallets }) => {
+const WalletManager = () => {
+  const { wallets, updateWallets } = useAppContext();
   const [input, setInput] = useState('');
   const [selectedNetwork, setSelectedNetwork] = useState('eth');
   const [error, setError] = useState('');
-  const toast = useToast();
+  const { showSuccessToast, showErrorToast } = useCustomToast();
+  const { handleError } = useErrorHandler();
 
   const handleAddWallet = async () => {
     setError('');
@@ -59,15 +63,9 @@ const WalletManager = ({ wallets = [], updateWallets }) => {
 
       updateWallets(updatedWallets);
       setInput('');
-      toast({
-        title: "Wallet Added",
-        description: "The wallet has been successfully added to your list.",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
+      showSuccessToast("Wallet Added", "The wallet has been successfully added to your list.");
     } catch (error) {
-      logger.error('Error adding wallet:', error);
+      handleError(error, 'adding wallet');
       setError(`Error adding wallet: ${error.message}`);
     }
   };
@@ -84,6 +82,7 @@ const WalletManager = ({ wallets = [], updateWallets }) => {
   const handleDeleteWallet = (addressToDelete) => {
     const updatedWallets = wallets.filter(wallet => wallet.address !== addressToDelete);
     updateWallets(updatedWallets);
+    showSuccessToast("Wallet Removed", "The wallet has been successfully removed from your list.");
   };
 
   const handleNicknameChange = (address, newNickname) => {
@@ -97,69 +96,73 @@ const WalletManager = ({ wallets = [], updateWallets }) => {
 
   return (
     <VStack spacing={6} align="stretch">
-      <VStack spacing={4}>
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Enter wallet address or ENS name"
-        />
-        <Select
-          value={selectedNetwork}
-          onChange={(e) => setSelectedNetwork(e.target.value)}
-        >
-          {networks.map((network) => (
-            <option key={network.value} value={network.value}>
-              {network.label}
-            </option>
-          ))}
-        </Select>
-        <Button onClick={handleAddWallet} colorScheme="blue">
-          Add Wallet
-        </Button>
-        {error && <Text color="red.500">{error}</Text>}
-      </VStack>
+      <StyledCard title="Add New Wallet">
+        <VStack spacing={4}>
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Enter wallet address or ENS name"
+          />
+          <Select
+            value={selectedNetwork}
+            onChange={(e) => setSelectedNetwork(e.target.value)}
+          >
+            {networks.map((network) => (
+              <option key={network.value} value={network.value}>
+                {network.label}
+              </option>
+            ))}
+          </Select>
+          <StyledButton onClick={handleAddWallet}>
+            Add Wallet
+          </StyledButton>
+          {error && <Text color="red.500">{error}</Text>}
+        </VStack>
+      </StyledCard>
       
       {wallets.length > 0 ? (
-        <Table variant="simple">
-          <Thead>
-            <Tr>
-              <Th>Nickname / Address</Th>
-              <Th>Networks</Th>
-              <Th>Actions</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {wallets.map((wallet) => (
-              <Tr key={wallet.address}>
-                <Td>
-                  <Input
-                    value={wallet.nickname || ''}
-                    onChange={(e) => handleNicknameChange(wallet.address, e.target.value)}
-                    placeholder="Add nickname"
-                  />
-                  <Text>{wallet.address}</Text>
-                </Td>
-                <Td>
-                  <MultiSelect
-                    isMulti
-                    options={networks}
-                    value={wallet.networks.map(networkValue => ({
-                      value: networkValue,
-                      label: networks.find(n => n.value === networkValue)?.label || networkValue
-                    }))}
-                    onChange={(selectedOptions) => handleNetworkChange(wallet.address, selectedOptions)}
-                    placeholder="Select networks"
-                  />
-                </Td>
-                <Td>
-                  <Button onClick={() => handleDeleteWallet(wallet.address)} colorScheme="red">
-                    Delete
-                  </Button>
-                </Td>
+        <StyledCard title="Your Wallets">
+          <Table variant="simple">
+            <Thead>
+              <Tr>
+                <Th>Nickname / Address</Th>
+                <Th>Networks</Th>
+                <Th>Actions</Th>
               </Tr>
-            ))}
-          </Tbody>
-        </Table>
+            </Thead>
+            <Tbody>
+              {wallets.map((wallet) => (
+                <Tr key={wallet.address}>
+                  <Td>
+                    <Input
+                      value={wallet.nickname || ''}
+                      onChange={(e) => handleNicknameChange(wallet.address, e.target.value)}
+                      placeholder="Add nickname"
+                    />
+                    <Text>{wallet.address}</Text>
+                  </Td>
+                  <Td>
+                    <MultiSelect
+                      isMulti
+                      options={networks}
+                      value={wallet.networks.map(networkValue => ({
+                        value: networkValue,
+                        label: networks.find(n => n.value === networkValue)?.label || networkValue
+                      }))}
+                      onChange={(selectedOptions) => handleNetworkChange(wallet.address, selectedOptions)}
+                      placeholder="Select networks"
+                    />
+                  </Td>
+                  <Td>
+                    <StyledButton onClick={() => handleDeleteWallet(wallet.address)} colorScheme="red">
+                      Delete
+                    </StyledButton>
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </StyledCard>
       ) : (
         <Box>
           <Text>No wallets added yet. Add a wallet to get started.</Text>

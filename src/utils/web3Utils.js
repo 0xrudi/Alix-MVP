@@ -7,12 +7,21 @@ let isMoralisStarted = false;
 
 const startMoralis = async () => {
   if (!isMoralisStarted) {
+    if (!MORALIS_API_KEY) {
+      throw new Error('Moralis API Key is not set');
+    }
     await Moralis.start({
       apiKey: MORALIS_API_KEY,
     });
     isMoralisStarted = true;
   }
 };
+
+const withMoralis = async (fn) => {
+  await startMoralis();
+  return fn();
+};
+
 
 export const networks = [
   { value: "eth", label: "Ethereum", chain: "0x1" },
@@ -45,22 +54,47 @@ export const getChainForNetwork = (networkValue) => {
   return network ? network.chain : null;
 };
 
-export const fetchNFTs = async (address, network, cursor = null, limit = 100) => {
-  if (!MORALIS_API_KEY) {
-    console.error('Moralis API Key is not set');
-    return { nfts: [], cursor: null };
+export const getImageUrl = (nft) => {
+  const possibleSources = [
+    nft.metadata?.image_url,
+    nft.metadata?.image,
+    nft.media?.[0]?.gateway,
+    nft.imageUrl,
+    nft.metadata?.external_url
+  ];
+
+  for (let source of possibleSources) {
+    if (source) {
+      // Check if the source is an SVG string
+      if (source.startsWith('data:image/svg+xml,')) {
+        return source;
+      }
+      // Check if it's already a valid URL (including IPFS gateways)
+      if (source.startsWith('http://') || source.startsWith('https://')) {
+        return source;
+      }
+      // Handle IPFS protocol
+      if (source.startsWith('ipfs://')) {
+        const hash = source.replace('ipfs://', '');
+        return `https://ipfs.io/ipfs/${hash}`;
+      }
+      // Handle Arweave protocol
+      if (source.startsWith('ar://')) {
+        const hash = source.replace('ar://', '');
+        return `https://arweave.net/${hash}`;
+      }
+    }
   }
 
-  try {
-    await startMoralis();
+  return 'https://via.placeholder.com/400?text=No+Image';
+};
 
+export const fetchNFTs = (address, network, cursor = null, limit = 100) => 
+  withMoralis(async () => {
     const chain = getChainForNetwork(network);
     if (!chain) {
-      console.error(`Unsupported network: ${network}`);
-      return { nfts: [], cursor: null };
+      throw new Error(`Unsupported network: ${network}`);
     }
-
-    console.log(`Fetching NFTs for address: ${address}, chain: ${chain}`);
 
     const response = await Moralis.EvmApi.nft.getWalletNFTs({
       address,
@@ -68,8 +102,6 @@ export const fetchNFTs = async (address, network, cursor = null, limit = 100) =>
       limit,
       cursor,
     });
-
-    console.log('Raw Moralis response:', response);
 
     const nfts = response.result.map(nft => ({
       id: { tokenId: nft.tokenId },
@@ -90,81 +122,55 @@ export const fetchNFTs = async (address, network, cursor = null, limit = 100) =>
       nfts, 
       cursor: response.pagination.cursor
     };
+  });
 
-  } catch (error) {
-    console.error('Error fetching NFTs:', error);
-    throw error;
-  }
-};
-
-// Update other functions to use startMoralis()
-export const resolveENS = async (ensName) => {
-  if (!MORALIS_API_KEY) {
-    console.error('Moralis API Key is not set');
-    return { success: false, message: 'Moralis API Key is not set' };
-  }
-
-  try {
-    await startMoralis();
-
-    console.log('Resolving ENS:', ensName);
+export const resolveENS = (ensName) => 
+  withMoralis(async () => {
     const response = await Moralis.EvmApi.resolve.resolveENSDomain({
       domain: ensName,
     });
 
-    console.log('ENS resolution response:', response);
-
     if (response && response.result && response.result.address) {
       const address = response.result.address.lowercase;
-      console.log('ENS resolved successfully:', address);
       return { success: true, address };
     } else {
-      console.log('ENS resolution failed: No address found');
       return { success: false, message: 'ENS name not found or no address associated' };
     }
-  } catch (error) {
-    console.error('Error resolving ENS:', error);
-    return { 
-      success: false, 
-      message: `Error resolving ENS: ${error.message}. Please check your network connection and Moralis API Key.` 
-    };
-  }
-};
+  });
 
 export const isValidAddress = (address) => {
   // This is a simple regex check, you might want to use a more robust method
   return /^0x[a-fA-F0-9]{40}$/.test(address);
 };
 
-export const fetchENSAvatar = async (ensName) => {
-  if (!MORALIS_API_KEY) {
-    console.error('Moralis API Key is not set');
-    return null;
-  }
+export const fetchENSAvatar = (ensName) => 
+  withMoralis(async () => {
+    try {
+      const response = await axios.get(`https://deep-index.moralis.io/api/v2/resolve/ens/${ensName}`, {
+        headers: {
+          'X-API-Key': MORALIS_API_KEY,
+        },
+      });
 
-  try {
-    const response = await axios.get(`https://deep-index.moralis.io/api/v2/resolve/ens/${ensName}`, {
-      headers: {
-        'X-API-Key': MORALIS_API_KEY,
-      },
-    });
-
-    if (response.data && response.data.avatar) {
-      return response.data.avatar;
-    } else {
+      if (response.data && response.data.avatar) {
+        return response.data.avatar;
+      } else {
+        return null;
+      }
+    } catch (error) {
+      console.error('Error fetching ENS avatar:', error);
       return null;
     }
-  } catch (error) {
-    console.error('Error fetching ENS avatar:', error);
-    return null;
-  }
-};
+  });
 
 export const isNftSpam = (tokenId, contractAddress, spamNfts) => {
   return Object.values(spamNfts).flat().some(spam => spam.tokenId === tokenId && spam.contractAddress === contractAddress);
 };
 
 export const getAvailableENS = (wallets) => {
+  if (!wallets || !Array.isArray(wallets)) {
+    return [];
+  }
   return wallets
     .filter(wallet => wallet.nickname && wallet.nickname.endsWith('.eth'))
     .map(wallet => wallet.nickname);

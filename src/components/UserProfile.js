@@ -6,21 +6,23 @@ import {
   Select
 } from "@chakra-ui/react";
 import { fetchENSAvatar, getAvailableENS } from '../utils/web3Utils';
+import { useAppContext } from '../context/AppContext';
 
-const UserProfile = ({ wallets, updateUserProfile }) => {
-  const [nickname, setNickname] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
+const UserProfile = () => {
+  const { userProfile, updateUserProfile, wallets } = useAppContext();
+  const [nickname, setNickname] = useState(userProfile.nickname || '');
+  const [avatarUrl, setAvatarUrl] = useState(userProfile.avatarUrl || '');
   const [availableENS, setAvailableENS] = useState([]);
 
   useEffect(() => {
     const ensDomains = getAvailableENS(wallets);
     setAvailableENS(ensDomains);
 
-    if (ensDomains.length > 0) {
+    if (ensDomains.length > 0 && !nickname) {
       setNickname(ensDomains[0]);
       fetchAndSetAvatar(ensDomains[0]);
     }
-  }, [wallets]);
+  }, [wallets, nickname]);
 
   const fetchAndSetAvatar = async (ensName) => {
     const avatarData = await fetchENSAvatar(ensName);
@@ -29,6 +31,7 @@ const UserProfile = ({ wallets, updateUserProfile }) => {
 
   const handleNicknameChange = (event) => {
     setNickname(event.target.value);
+    updateUserProfile({ nickname: event.target.value });
   };
 
   const handleAvatarUpload = (event) => {
@@ -37,6 +40,7 @@ const UserProfile = ({ wallets, updateUserProfile }) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         setAvatarUrl(reader.result);
+        updateUserProfile({ avatarUrl: reader.result });
       };
       reader.readAsDataURL(file);
     }
@@ -45,6 +49,7 @@ const UserProfile = ({ wallets, updateUserProfile }) => {
   const handleENSSelect = async (event) => {
     const selectedENS = event.target.value;
     setNickname(selectedENS);
+    updateUserProfile({ nickname: selectedENS });
     await fetchAndSetAvatar(selectedENS);
   };
 

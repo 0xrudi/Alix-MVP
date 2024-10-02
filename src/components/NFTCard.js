@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Image, Text, Button, VStack, HStack, Badge, useColorModeValue, AspectRatio, Checkbox } from "@chakra-ui/react";
 import { FaExclamationTriangle } from 'react-icons/fa';
+import { getImageUrl } from '../utils/web3Utils';
 
 const NFTCard = ({ 
   nft, 
@@ -15,41 +16,6 @@ const NFTCard = ({
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
-  const getImageUrl = (nft) => {
-    const possibleSources = [
-      nft.metadata?.image_url,
-      nft.metadata?.image,
-      nft.media?.[0]?.gateway,
-      nft.imageUrl,
-      nft.metadata?.external_url
-    ];
-  
-    for (let source of possibleSources) {
-      if (source) {
-        // Check if the source is an SVG string
-        if (source.startsWith('data:image/svg+xml,')) {
-          return source;
-        }
-        // Check if it's already a valid URL (including IPFS gateways)
-        if (source.startsWith('http://') || source.startsWith('https://')) {
-          return source;
-        }
-        // Handle IPFS protocol
-        if (source.startsWith('ipfs://')) {
-          const hash = source.replace('ipfs://', '');
-          return `https://ipfs.io/ipfs/${hash}`;
-        }
-        // Handle Arweave protocol
-        if (source.startsWith('ar://')) {
-          const hash = source.replace('ar://', '');
-          return `https://arweave.net/${hash}`;
-        }
-      }
-    }
-  
-    return 'https://via.placeholder.com/400?text=No+Image';
-  };
-
   const imageUrl = getImageUrl(nft);
 
   const handleCardClick = () => {
@@ -59,7 +25,6 @@ const NFTCard = ({
       onClick(nft);
     }
   };
-
 
   return (
     <Box
