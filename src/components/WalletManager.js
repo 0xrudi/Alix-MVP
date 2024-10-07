@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { 
   VStack, 
   Input, 
-  Select, 
   Table, 
   Thead, 
   Tbody, 
@@ -11,9 +10,17 @@ import {
   Td,
   Text,
   Box,
+  Tag,
+  Wrap,
+  WrapItem,
 } from "@chakra-ui/react";
-import { Select as MultiSelect } from "chakra-react-select";
-import { resolveENS, isValidAddress, networks } from '../utils/web3Utils';
+import { 
+  resolveENS, 
+  resolveUnstoppableDomain, 
+  isValidAddress, 
+  fetchNFTs, 
+  networks 
+} from '../utils/web3Utils';
 import { logger } from '../utils/logger';
 import { useCustomToast } from '../utils/toastUtils';
 import { useErrorHandler } from '../utils/errorUtils';
@@ -23,60 +30,91 @@ import { StyledButton, StyledCard } from '../styles/commonStyles';
 const WalletManager = () => {
   const { wallets, updateWallets } = useAppContext();
   const [input, setInput] = useState('');
-  const [selectedNetwork, setSelectedNetwork] = useState('eth');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const { handleError } = useErrorHandler();
 
   const handleAddWallet = async () => {
     setError('');
+    setIsLoading(true);
     let address = input;
+    let walletType = '';
     let walletNickname = '';
 
     try {
-      if (input.endsWith('.eth')) {
-        logger.log('Resolving ENS name:', input);
-        const result = await resolveENS(input);
-        logger.log('ENS resolution result:', result);
-        if (result.success) {
-          address = result.address;
+      // Check if it's a valid address first
+      const addressCheck = isValidAddress(input);
+      if (addressCheck.isValid) {
+        address = input;
+        walletType = addressCheck.type;
+      } else if (input.endsWith('.eth')) {
+        // Try ENS resolution
+        const ensResult = await resolveENS(input);
+        if (ensResult.success) {
+          address = ensResult.address;
+          walletType = ensResult.type;
           walletNickname = input;
         } else {
-          setError(result.message);
-          return;
+          throw new Error(ensResult.message);
         }
-      } else if (!isValidAddress(input)) {
-        setError('Invalid address format');
-        return;
+      } else {
+        // Try Unstoppable Domain resolution
+        const udResult = await resolveUnstoppableDomain(input);
+        if (udResult.success) {
+          address = udResult.address;
+          walletType = udResult.type;
+          walletNickname = input;
+        } else {
+          throw new Error(udResult.message);
+        }
       }
 
       const newWallet = {
         address,
         nickname: walletNickname,
-        networks: [selectedNetwork],
+        type: walletType,
+        networks: [],
       };
+
+      logger.log('Searching for NFTs for wallet:', address);
+
+      if (walletType === 'evm') {
+        for (const network of networks.filter(n => n.type === 'evm')) {
+          try {
+            const { nfts } = await fetchNFTs(address, network.value);
+            if (nfts.length > 0) {
+              newWallet.networks.push(network.value);
+              logger.log(`Found ${nfts.length} NFTs on ${network.label}`);
+            }
+          } catch (error) {
+            logger.error(`Error fetching NFTs for ${address} on ${network.label}:`, error);
+          }
+        }
+      } else if (walletType === 'solana') {
+        try {
+          const { nfts } = await fetchNFTs(address, 'solana');
+          if (nfts.length > 0) {
+            newWallet.networks.push('solana');
+            logger.log(`Found ${nfts.length} NFTs on Solana`);
+          }
+        } catch (error) {
+          logger.error(`Error fetching NFTs for Solana address ${address}:`, error);
+        }
+      }
 
       logger.log('New wallet object:', newWallet);
 
       const updatedWallets = [...wallets, newWallet];
-      logger.log('Updated wallets array:', updatedWallets);
-
       updateWallets(updatedWallets);
       setInput('');
-      showSuccessToast("Wallet Added", "The wallet has been successfully added to your list.");
+      showSuccessToast("Wallet Added", `The ${walletType.toUpperCase()} wallet has been successfully added with ${newWallet.networks.length} active networks.`);
     } catch (error) {
       handleError(error, 'adding wallet');
       setError(`Error adding wallet: ${error.message}`);
+    } finally {
+      setIsLoading(false);
     }
-  };
-
-  const handleNetworkChange = (address, selectedOptions) => {
-    const updatedWallets = wallets.map(wallet => 
-      wallet.address === address 
-        ? { ...wallet, networks: selectedOptions.map(option => option.value) }
-        : wallet
-    );
-    updateWallets(updatedWallets);
   };
 
   const handleDeleteWallet = (addressToDelete) => {
@@ -101,19 +139,9 @@ const WalletManager = () => {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Enter wallet address or ENS name"
+            placeholder="Enter wallet address, ENS, or Unstoppable Domain"
           />
-          <Select
-            value={selectedNetwork}
-            onChange={(e) => setSelectedNetwork(e.target.value)}
-          >
-            {networks.map((network) => (
-              <option key={network.value} value={network.value}>
-                {network.label}
-              </option>
-            ))}
-          </Select>
-          <StyledButton onClick={handleAddWallet}>
+          <StyledButton onClick={handleAddWallet} isLoading={isLoading} loadingText="Adding wallet...">
             Add Wallet
           </StyledButton>
           {error && <Text color="red.500">{error}</Text>}
@@ -126,7 +154,8 @@ const WalletManager = () => {
             <Thead>
               <Tr>
                 <Th>Nickname / Address</Th>
-                <Th>Networks</Th>
+                <Th>Type</Th>
+                <Th>Active Networks</Th>
                 <Th>Actions</Th>
               </Tr>
             </Thead>
@@ -142,16 +171,20 @@ const WalletManager = () => {
                     <Text>{wallet.address}</Text>
                   </Td>
                   <Td>
-                    <MultiSelect
-                      isMulti
-                      options={networks}
-                      value={wallet.networks.map(networkValue => ({
-                        value: networkValue,
-                        label: networks.find(n => n.value === networkValue)?.label || networkValue
-                      }))}
-                      onChange={(selectedOptions) => handleNetworkChange(wallet.address, selectedOptions)}
-                      placeholder="Select networks"
-                    />
+                    <Tag colorScheme={wallet.type === 'evm' ? 'green' : 'purple'}>
+                      {wallet.type.toUpperCase()}
+                    </Tag>
+                  </Td>
+                  <Td>
+                    <Wrap>
+                      {wallet.networks.map((networkValue) => (
+                        <WrapItem key={networkValue}>
+                          <Tag colorScheme="blue" variant="solid">
+                            {networkValue}
+                          </Tag>
+                        </WrapItem>
+                      ))}
+                    </Wrap>
                   </Td>
                   <Td>
                     <StyledButton onClick={() => handleDeleteWallet(wallet.address)} colorScheme="red">

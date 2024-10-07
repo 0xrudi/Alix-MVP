@@ -26,6 +26,9 @@ const NFTCard = ({
     }
   };
 
+  // Determine the network display value
+  const networkDisplay = nft.network || (nft.chainId ? `Chain ID: ${nft.chainId}` : 'Unknown');
+
   return (
     <Box
       borderWidth={1}
@@ -70,7 +73,7 @@ const NFTCard = ({
         )}
       </AspectRatio>
       <VStack p={2} spacing={1} align="stretch">
-        <Text fontWeight="bold" fontSize="sm" noOfLines={1}>{nft.title || `Token ID: ${nft.id.tokenId}`}</Text>
+        <Text fontWeight="bold" fontSize="sm" noOfLines={1}>{nft.title || `Token ID: ${nft.id?.tokenId}`}</Text>
         <HStack justify="space-between">
           {!isSelectMode && (
             <Button
@@ -87,7 +90,7 @@ const NFTCard = ({
             </Button>
           )}
           <Badge colorScheme="purple" variant="subtle" fontSize="xs">
-            {nft.network.toUpperCase()}
+            {networkDisplay}
           </Badge>
         </HStack>
       </VStack>

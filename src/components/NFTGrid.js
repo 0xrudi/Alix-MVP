@@ -17,7 +17,7 @@ import { useCustomColorMode } from '../hooks/useColorMode';
 import { StyledContainer } from '../styles/commonStyles';
 
 const NFTGrid = ({ 
-  nfts = [], 
+  nfts = {}, 
   selectedNFTs, 
   onNFTSelect, 
   onMarkAsSpam, 
@@ -32,7 +32,8 @@ const NFTGrid = ({
 
   logger.log("NFTGrid received nfts:", nfts);
 
-  const filteredAndSortedNFTs = filterAndSortNFTs(nfts, searchTerm, sortOption, isSpamFolder);
+  const nftsArray = Array.isArray(nfts) ? nfts : Object.values(nfts).flat();
+  const filteredAndSortedNFTs = filterAndSortNFTs(nftsArray, searchTerm, sortOption, isSpamFolder);
 
   return (
     <StyledContainer>
@@ -52,7 +53,7 @@ const NFTGrid = ({
           </Select>
         </HStack>
         <Text fontSize="sm" color="gray.500">
-          Showing {filteredAndSortedNFTs.length} of {nfts.length} NFTs
+          Showing {filteredAndSortedNFTs.length} of {nftsArray.length} NFTs
         </Text>
         <SimpleGrid 
           columns={gridColumns}

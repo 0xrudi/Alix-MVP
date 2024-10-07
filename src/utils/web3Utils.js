@@ -1,7 +1,14 @@
 import Moralis from 'moralis';
 import axios from 'axios';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { getParsedNftAccountsByOwner } from "@nfteyez/sol-rayz";
+import { ethers } from 'ethers';
+import Resolution from '@unstoppabledomains/resolution';
 
 const MORALIS_API_KEY = process.env.REACT_APP_MORALIS_API_KEY;
+const MAINNET_RPC_URL = 'https://ethereum.publicnode.com';
+const BASE_RPC_URL = 'https://mainnet.base.org'
+const resolution = new Resolution();
 
 let isMoralisStarted = false;
 
@@ -22,36 +29,107 @@ const withMoralis = async (fn) => {
   return fn();
 };
 
-
 export const networks = [
-  { value: "eth", label: "Ethereum", chain: "0x1" },
-  { value: "polygon", label: "Polygon", chain: "0x89" },
-  { value: "bsc", label: "Binance Smart Chain", chain: "0x38" },
-  { value: "arbitrum", label: "Arbitrum", chain: "0xa4b1" },
-  { value: "base", label: "Base", chain: "0x2105" },
-  { value: "optimism", label: "Optimism", chain: "0xa" },
-  { value: "linea", label: "Linea", chain: "0xe708" },
-  { value: "avalanche", label: "Avalanche", chain: "0xa86a" },
-  { value: "fantom", label: "Fantom", chain: "0xfa" },
-  { value: "cronos", label: "Cronos", chain: "0x19" },
-  { value: "palm", label: "Palm", chain: "0x2a15c308d" },
-  { value: "ronin", label: "Ronin", chain: "0x7e4" },
-  { value: "gnosis", label: "Gnosis", chain: "0x64" },
-  { value: "chiliz", label: "Chiliz", chain: "0x15b38" },
-  { value: "pulsechain", label: "Pulsechain", chain: "0x171" },
-  { value: "moonbeam", label: "Moonbeam", chain: "0x504" },
-  { value: "moonriver", label: "Moonriver", chain: "0x505" },
-  { value: "blast", label: "Blast", chain: "0x13e31" },
-  { value: "zksync", label: "zkSync", chain: "0x144" },
-  { value: "mantle", label: "Mantle", chain: "0x1388" },
-  { value: "polygon_zkevm", label: "Polygon zkEVM", chain: "0x44d" },
-  { value: "zetachain", label: "Zetachain", chain: "0x1b58" },
-  { value: "solana", label: "Solana", chain: "1"},
+  { value: "eth", label: "Ethereum", chain: "0x1", type: "evm" },
+  { value: "polygon", label: "Polygon", chain: "0x89", type: "evm" },
+  { value: "bsc", label: "Binance Smart Chain", chain: "0x38", type: "evm" },
+  { value: "arbitrum", label: "Arbitrum", chain: "0xa4b1", type: "evm" },
+  { value: "optimism", label: "Optimism", chain: "0xa", type: "evm" },
+  { value: "avalanche", label: "Avalanche", chain: "0xa86a", type: "evm" },
+  { value: "fantom", label: "Fantom", chain: "0xfa", type: "evm" },
+  { value: "solana", label: "Solana", chain: "1", type: "solana" },
 ];
 
 export const getChainForNetwork = (networkValue) => {
   const network = networks.find(n => n.value === networkValue);
   return network ? network.chain : null;
+};
+
+export const getNetworkType = (networkValue) => {
+  const network = networks.find(n => n.value === networkValue);
+  return network ? network.type : null;
+};
+
+export const fetchNFTs = async (address, network, cursor = null, limit = 100) => {
+  const networkType = getNetworkType(network);
+
+  if (networkType === 'evm') {
+    return fetchEVMNFTs(address, network, cursor, limit);
+  } else if (networkType === 'solana') {
+    return fetchSolanaNFTs(address);
+  } else {
+    throw new Error(`Unsupported network type: ${networkType}`);
+  }
+};
+
+const fetchEVMNFTs = (address, network, cursor = null, limit = 100) => 
+  withMoralis(async () => {
+    const chain = getChainForNetwork(network);
+    if (!chain) {
+      throw new Error(`Unsupported network: ${network}`);
+    }
+
+    const response = await Moralis.EvmApi.nft.getWalletNFTs({
+      address,
+      chain,
+      limit,
+      cursor,
+      normalizeMetadata: true,
+    });
+
+    const nfts = response.result.map(nft => ({
+      id: { tokenId: nft.tokenId },
+      contract: { 
+        address: nft.tokenAddress,
+        name: nft.name,
+        symbol: nft.symbol
+      },
+      title: nft.metadata?.name || nft.name || `Token ID: ${nft.tokenId}`,
+      description: nft.metadata?.description || '',
+      media: [{
+        gateway: nft.metadata?.image || nft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
+      }],
+      metadata: nft.metadata || {},
+      isSpam: nft.possibleSpam
+    }));
+
+    return { 
+      nfts, 
+      cursor: response.pagination.cursor
+    };
+  });
+
+const fetchSolanaNFTs = async (address) => {
+  const connection = new Connection("https://api.mainnet-beta.solana.com");
+  const publicKey = new PublicKey(address);
+
+  try {
+    const nftArray = await getParsedNftAccountsByOwner({
+      publicAddress: publicKey,
+      connection: connection,
+    });
+
+    const nfts = nftArray.map(nft => ({
+      id: { tokenId: nft.mint },
+      contract: {
+        address: nft.data.creators[0].address,
+        name: nft.data.name,
+        symbol: nft.data.symbol
+      },
+      title: nft.data.name,
+      description: nft.data.description || '',
+      media: [{
+        gateway: nft.data.uri || 'https://via.placeholder.com/150?text=No+Image'
+      }],
+      metadata: nft.data,
+      isSpam: false // Solana doesn't provide spam detection, so we set it to false by default
+    }));
+
+    return { nfts, cursor: null };
+  } catch (error) {
+    console.error("Error fetching Solana NFTs:", error);
+    throw error;
+  }
 };
 
 export const getImageUrl = (nft) => {
@@ -89,58 +167,69 @@ export const getImageUrl = (nft) => {
   return 'https://via.placeholder.com/400?text=No+Image';
 };
 
-export const fetchNFTs = (address, network, cursor = null, limit = 100) => 
-  withMoralis(async () => {
-    const chain = getChainForNetwork(network);
-    if (!chain) {
-      throw new Error(`Unsupported network: ${network}`);
+export const resolveENS = async (ensName) => {
+  const providers = [
+    new ethers.providers.JsonRpcProvider(MAINNET_RPC_URL),
+    new ethers.providers.JsonRpcProvider(BASE_RPC_URL),
+  ];
+
+  for (const provider of providers) {
+    try {
+      const address = await provider.resolveName(ensName);
+      if (address) {
+        return { success: true, address, type: 'evm' };
+      }
+    } catch (error) {
+      console.error(`Error resolving ENS on provider:`, error);
     }
+  }
 
-    const response = await Moralis.EvmApi.nft.getWalletNFTs({
-      address,
-      chain,
-      limit,
-      cursor,
-    });
+  return { success: false, message: 'ENS name not found or no address associated' };
+};
 
-    const nfts = response.result.map(nft => ({
-      id: { tokenId: nft.tokenId },
-      contract: { 
-        address: nft.tokenAddress,
-        name: nft.name,
-        symbol: nft.symbol
-      },
-      title: nft.metadata?.name || nft.name || `Token ID: ${nft.tokenId}`,
-      description: nft.metadata?.description || '',
-      media: [{
-        gateway: nft.metadata?.image || nft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
-      }],
-      metadata: nft.metadata || {}
-    }));
-
-    return { 
-      nfts, 
-      cursor: response.pagination.cursor
-    };
-  });
-
-export const resolveENS = (ensName) => 
-  withMoralis(async () => {
-    const response = await Moralis.EvmApi.resolve.resolveENSDomain({
-      domain: ensName,
-    });
-
-    if (response && response.result && response.result.address) {
-      const address = response.result.address.lowercase;
-      return { success: true, address };
-    } else {
-      return { success: false, message: 'ENS name not found or no address associated' };
+export const resolveUnstoppableDomain = async (domain) => {
+  try {
+    const address = await resolution.addr(domain, 'ETH');
+    if (address) {
+      return { success: true, address, type: 'evm' };
     }
-  });
+  } catch (error) {
+    console.error('Error resolving Unstoppable Domain:', error);
+  }
+
+  try {
+    const address = await resolution.addr(domain, 'SOL');
+    if (address) {
+      return { success: true, address, type: 'solana' };
+    }
+  } catch (error) {
+    console.error('Error resolving Unstoppable Domain for Solana:', error);
+  }
+
+  return { success: false, message: 'Unstoppable Domain not found or no address associated' };
+};
+
+export const isValidSolanaAddress = (address) => {
+  try {
+    new PublicKey(address);
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
 
 export const isValidAddress = (address) => {
-  // This is a simple regex check, you might want to use a more robust method
-  return /^0x[a-fA-F0-9]{40}$/.test(address);
+  // Check if it's a valid Ethereum address
+  if (/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    return { isValid: true, type: 'evm' };
+  }
+  
+  // Check if it's a valid Solana address
+  if (isValidSolanaAddress(address)) {
+    return { isValid: true, type: 'solana' };
+  }
+
+  return { isValid: false };
 };
 
 export const fetchENSAvatar = (ensName) => 
