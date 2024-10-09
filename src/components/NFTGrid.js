@@ -1,3 +1,5 @@
+// src/components/NFTGrid.js
+
 import React, { useState } from 'react';
 import { 
   SimpleGrid, 
@@ -12,7 +14,7 @@ import {
 import { FaSearch } from 'react-icons/fa';
 import NFTCard from './NFTCard';
 import { logger } from '../utils/logger';
-import { filterAndSortNFTs } from '../utils/nftUtils';
+import { filterAndSortNFTs, generateNFTId, isERC1155 } from '../utils/nftUtils';
 import { useCustomColorMode } from '../hooks/useColorMode';
 import { StyledContainer } from '../styles/commonStyles';
 
@@ -60,21 +62,23 @@ const NFTGrid = ({
           spacing={{ base: 2, md: 4 }}
           width="100%"
         >
-          {filteredAndSortedNFTs.map((nft) => (
-            <NFTCard
-              key={`${nft.contract?.address}-${nft.id?.tokenId}`}
-              nft={nft}
-              isSelected={selectedNFTs.some(selectedNFT => 
-                selectedNFT.id?.tokenId === nft.id?.tokenId && 
-                selectedNFT.contract?.address === nft.contract?.address
-              )}
-              onSelect={() => onNFTSelect(nft)}
-              onMarkAsSpam={() => onMarkAsSpam(nft)}
-              isSpamFolder={isSpamFolder}
-              isSelectMode={isSelectMode}
-              onClick={() => onNFTClick(nft)}
-            />
-          ))}
+          {filteredAndSortedNFTs.map((nft, index) => {
+            const nftId = generateNFTId(nft, index);
+            const quantity = isERC1155(nft) ? parseInt(nft.balance) || 1 : 1;
+
+            return Array.from({ length: quantity }, (_, i) => (
+              <NFTCard
+                key={`${nftId}-${i}`}
+                nft={nft}
+                isSelected={selectedNFTs.some(selectedNFT => generateNFTId(selectedNFT) === nftId)}
+                onSelect={() => onNFTSelect(nft)}
+                onMarkAsSpam={() => onMarkAsSpam(nft)}
+                isSpamFolder={isSpamFolder}
+                isSelectMode={isSelectMode}
+                onClick={() => onNFTClick(nft)}
+              />
+            ));
+          })}
         </SimpleGrid>
       </VStack>
     </StyledContainer>

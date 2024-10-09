@@ -36,6 +36,7 @@ import { useCustomToast } from '../utils/toastUtils';
 import { useErrorHandler } from '../utils/errorUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
+import debounce from 'lodash/debounce';
 
 const LibraryPage = () => {
   const { 
@@ -59,7 +60,9 @@ const LibraryPage = () => {
   const [catalogName, setCatalogName] = useState('');
   const [totalNFTs, setTotalNFTs] = useState(0);
   const [filteredNfts, setFilteredNfts] = useState({});
-  const [spamCatalog, setSpamCatalog] = useState({ id: "spam", name: "Spam", nfts: [] });
+  const [spamCatalog, setSpamCatalog] = useState(() => {
+    return catalogs.find(cat => cat.name === "Spam") || { id: "spam", name: "Spam", nfts: [] };
+  });
   const [selectedWallets, setSelectedWallets] = useState(wallets.map(w => w.address));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState(0);
@@ -78,6 +81,21 @@ const LibraryPage = () => {
   const navigate = useNavigate();
 
   const [selectedContracts, setSelectedContracts] = useState([]);
+
+  // Debounced update functions
+  const debouncedUpdateCatalogs = useCallback(
+    debounce((newCatalogs) => {
+      updateCatalogs(newCatalogs);
+    }, 500),
+    [updateCatalogs]
+  );
+
+  const debouncedUpdateSpamNfts = useCallback(
+    debounce((count) => {
+      updateSpamNfts(count);
+    }, 500),
+    [updateSpamNfts]
+  );
 
   const allContracts = useMemo(() => {
     const contracts = new Set();
@@ -177,9 +195,13 @@ const LibraryPage = () => {
       acc + Object.values(wallet).reduce((sum, network) => sum + (network.nfts ? network.nfts.length : 0), 0), 0);
     setTotalNFTs(total);
   
-    const spam = catalogs.find(cat => cat.name === "Spam")?.nfts.length || 0;
-    updateSpamNfts(spam);
-  }, [nfts, catalogs, updateSpamNfts]);
+    const spamCount = spamCatalog.nfts.length;
+    debouncedUpdateSpamNfts(spamCount);
+
+    logger.log('Updated spam catalog:', spamCatalog);
+    logger.log('Total NFTs:', total);
+    logger.log('Spam NFTs count:', spamCount);
+  }, [nfts, spamCatalog, debouncedUpdateSpamNfts]);
 
   useEffect(() => {
     try {
@@ -194,15 +216,6 @@ const LibraryPage = () => {
     }
   }, [calculatedContractNames, handleError]);
 
-  useEffect(() => {
-    const total = Object.values(nfts).reduce((acc, wallet) => 
-      acc + Object.values(wallet).reduce((sum, network) => sum + (network.nfts ? network.nfts.length : 0), 0), 0);
-    setTotalNFTs(total);
-  
-    const spam = catalogs.find(cat => cat.name === "Spam")?.nfts.length || 0;
-    updateSpamNfts(spam);
-  }, [nfts, catalogs, updateSpamNfts, setTotalNFTs]);
-
   // Move all useCallback and useMemo hooks here
   const handleNFTClick = useCallback((nft) => {
     navigate('/artifact', { state: { nft } });
@@ -215,67 +228,71 @@ const LibraryPage = () => {
     }));
   }, []);
 
+  // Update handleMarkAsSpam function
   const handleMarkAsSpam = useCallback((address, network, nfts) => {
     console.log('handleMarkAsSpam called');
-    if (typeof updateNfts !== 'function' || typeof updateCatalogs !== 'function' || typeof updateSpamNfts !== 'function') {
-        console.error('Required update functions are not available');
-        return;
-    }
-
     const nftsToSpam = Array.isArray(nfts) ? nfts : [nfts];
     
-    updateNfts(prevNfts => {
+    try {
+      // Update local nfts state
+      updateNfts(prevNfts => {
         const updatedNfts = JSON.parse(JSON.stringify(prevNfts));
         nftsToSpam.forEach(nft => {
-            if (updatedNfts[address] && updatedNfts[address][network]) {
-                updatedNfts[address][network].nfts = updatedNfts[address][network].nfts.filter(item => 
-                    !(item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
-                );
-            }
+          if (updatedNfts[address] && updatedNfts[address][network]) {
+            updatedNfts[address][network].nfts = updatedNfts[address][network].nfts.filter(item => 
+              !(item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
+            );
+          }
         });
         return updatedNfts;
-    });
+      });
 
-    updateCatalogs(prevCatalogs => {
-        let spamCatalog = prevCatalogs.find(cat => cat.name === "Spam");
-        if (!spamCatalog) {
-            spamCatalog = { id: "spam", name: "Spam", nfts: [] };
-            prevCatalogs.push(spamCatalog);
-        }
-        
+      // Update spam catalog
+      setSpamCatalog(prevSpamCatalog => {
+        const updatedSpamCatalog = { ...prevSpamCatalog };
         const newSpamNfts = nftsToSpam.filter(nft => 
-            !spamCatalog.nfts.some(spamNft => 
-                spamNft.id?.tokenId === nft.id?.tokenId && 
-                spamNft.contract?.address === nft.contract?.address
-            )
+          !updatedSpamCatalog.nfts.some(spamNft => 
+            spamNft.id?.tokenId === nft.id?.tokenId && 
+            spamNft.contract?.address === nft.contract?.address
+          )
         ).map(nft => ({
-            ...nft,
-            walletAddress: address,
-            network,
-            isSpam: true,
-            spamInfo: {
-                dateMarked: new Date().toISOString(),
-                markedBy: 'user',
-            }
+          ...nft,
+          walletAddress: address,
+          network,
+          isSpam: true,
+          spamInfo: {
+            dateMarked: new Date().toISOString(),
+            markedBy: 'user',
+          }
         }));
         
-        spamCatalog.nfts = [...spamCatalog.nfts, ...newSpamNfts];
-        
-        return [...prevCatalogs];
-    });
+        updatedSpamCatalog.nfts = [...updatedSpamCatalog.nfts, ...newSpamNfts];
+        return updatedSpamCatalog;
+      });
 
-    // Update spam NFT count
-    updateSpamNfts(prevSpamNfts => prevSpamNfts + nftsToSpam.length);
+      // Debounced update of app context
+      debouncedUpdateCatalogs(prevCatalogs => 
+        prevCatalogs.map(cat => cat.name === "Spam" ? spamCatalog : cat)
+      );
 
-    setTotalNFTs(prevTotal => prevTotal - nftsToSpam.length);
+      // Update spam NFT count
+      const newSpamCount = spamCatalog.nfts.length + nftsToSpam.length;
+      debouncedUpdateSpamNfts(newSpamCount);
 
-    showInfoToast(`Marked ${nftsToSpam.length} NFT${nftsToSpam.length > 1 ? 's' : ''} as Spam`, "The NFT(s) have been moved to the Spam folder.");
+      setTotalNFTs(prevTotal => prevTotal - nftsToSpam.length);
 
-    if (isSelectMode) {
+      showInfoToast(`Marked ${nftsToSpam.length} NFT${nftsToSpam.length > 1 ? 's' : ''} as Spam`, "The NFT(s) have been moved to the Spam folder.");
+
+      if (isSelectMode) {
         setSelectedNFTs([]);
         setIsSelectMode(false);
+      }
+    } catch (error) {
+      handleError(error, 'marking NFTs as spam');
+      showErrorToast("Error", "Failed to mark NFTs as spam. Please try again.");
     }
-  }, [updateNfts, updateCatalogs, updateSpamNfts, showInfoToast, isSelectMode, setSelectedNFTs, setIsSelectMode, setTotalNFTs]);
+  }, [updateNfts, spamCatalog, debouncedUpdateCatalogs, debouncedUpdateSpamNfts, showInfoToast, showErrorToast, handleError, isSelectMode]);
+
 
   const handleWalletToggle = useCallback((address) => {
     setSelectedWallets(prevSelectedWallets => 
@@ -412,25 +429,6 @@ const LibraryPage = () => {
       return acc;
     }, {});
   }, [filteredNfts]);
-
-  const updateSpamCatalog = (fetchedSpamNfts) => {
-    const allSpamNfts = Object.values(fetchedSpamNfts).flatMap(wallet => 
-      Object.values(wallet).flat()
-    );
-  
-    updateCatalogs(prevCatalogs => {
-      const spamCatalog = prevCatalogs.find(cat => cat.name === "Spam") || { id: "spam", name: "Spam", nfts: [] };
-      const updatedSpamCatalog = {
-        ...spamCatalog,
-        nfts: [...spamCatalog.nfts, ...allSpamNfts]
-      };
-  
-      const otherCatalogs = prevCatalogs.filter(cat => cat.name !== "Spam");
-      return [...otherCatalogs, updatedSpamCatalog];
-    });
-  
-    updateSpamNfts(prevSpamNfts => prevSpamNfts + allSpamNfts.length);
-  };
 
   const handleArtifactsSubTabChange = (index) => {
     setActiveArtifactsSubTab(index);

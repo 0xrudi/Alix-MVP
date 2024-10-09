@@ -1,7 +1,10 @@
+// src/components/NFTCard.js
+
 import React from 'react';
 import { Box, Image, Text, Button, VStack, HStack, Badge, useColorModeValue, AspectRatio, Checkbox } from "@chakra-ui/react";
 import { FaExclamationTriangle } from 'react-icons/fa';
 import { getImageUrl } from '../utils/web3Utils';
+import { isERC1155 } from '../utils/nftUtils';
 
 const NFTCard = ({ 
   nft, 
@@ -9,7 +12,6 @@ const NFTCard = ({
   onSelect, 
   onMarkAsSpam, 
   isSpamFolder, 
-  cardSize,
   isSelectMode,
   onClick
 }) => {
@@ -17,6 +19,7 @@ const NFTCard = ({
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
   const imageUrl = getImageUrl(nft);
+  const quantity = isERC1155(nft) ? parseInt(nft.balance) || 1 : 1;
 
   const handleCardClick = () => {
     if (isSelectMode) {
@@ -93,6 +96,11 @@ const NFTCard = ({
             {networkDisplay}
           </Badge>
         </HStack>
+        {isERC1155(nft) && (
+          <Badge colorScheme="green" variant="subtle" fontSize="xs">
+            Qty: {quantity}
+          </Badge>
+        )}
       </VStack>
       {nft.isSpam && (
         <Badge
