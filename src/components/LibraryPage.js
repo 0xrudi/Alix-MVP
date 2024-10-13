@@ -23,6 +23,13 @@ import {
   Checkbox,
   Progress,
   Collapse,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton
 } from "@chakra-ui/react";
 import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaTrash, FaTimes, FaCheck, FaFolderPlus } from 'react-icons/fa';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -37,6 +44,7 @@ import { useErrorHandler } from '../utils/errorUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 import debounce from 'lodash/debounce';
+import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
 
 const LibraryPage = () => {
   const { 
@@ -312,6 +320,12 @@ const LibraryPage = () => {
     });
   }, []);
 
+  const handleCloseModals = () => {
+    setIsCreateCatalogOpen(false);
+    setIsAddToCatalogOpen(false);
+    setCatalogName('');
+  };
+
   const handleNFTSelect = useCallback((nft) => {
     setSelectedNFTs(prev => 
       prev.some(selected => selected.id.tokenId === nft.id.tokenId && selected.contract.address === nft.contract.address)
@@ -370,6 +384,14 @@ const LibraryPage = () => {
       )
     );
   }, [ updateCatalogs]);
+
+  const handleRemoveSelectedArtifact = (artifactToRemove) => {
+    setSelectedNFTs(prev => prev.filter(nft => 
+      nft.id?.tokenId !== artifactToRemove.id?.tokenId || 
+      nft.contract?.address !== artifactToRemove.contract?.address
+    ));
+  };
+
 
   const handleRemoveNFTsFromViewingCatalog = useCallback((nftsToRemove) => {
     if (viewingCatalog) {
@@ -510,6 +532,66 @@ const LibraryPage = () => {
             <StatNumber fontSize="1.5rem">{spamNfts}</StatNumber>
           </Stat>
         </StatGroup>
+
+                {/* Create Catalog Modal */}
+        <Modal isOpen={isCreateCatalogOpen} onClose={handleCloseModals}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Create New Catalog</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <Input
+                placeholder="Enter catalog name"
+                value={catalogName}
+                onChange={(e) => setCatalogName(e.target.value)}
+              />
+            </ModalBody>
+            <ModalFooter>
+              <Button colorScheme="blue" mr={3} onClick={() => {
+                handleCreateCatalog();
+                handleCloseModals();
+              }}>
+                Create
+              </Button>
+              <Button variant="ghost" onClick={handleCloseModals}>Cancel</Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+
+        {/* Add to Existing Catalog Modal */}
+        <Modal isOpen={isAddToCatalogOpen} onClose={handleCloseModals}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Add to Existing Catalog</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              {catalogs.map(catalog => (
+                <Checkbox
+                  key={catalog.id}
+                  isChecked={selectedCatalogs.includes(catalog.id)}
+                  onChange={() => {
+                    setSelectedCatalogs(prev => 
+                      prev.includes(catalog.id)
+                        ? prev.filter(id => id !== catalog.id)
+                        : [...prev, catalog.id]
+                    );
+                  }}
+                >
+                  {catalog.name}
+                </Checkbox>
+              ))}
+            </ModalBody>
+            <ModalFooter>
+              <Button colorScheme="blue" mr={3} onClick={() => {
+                handleAddToExistingCatalog();
+                handleCloseModals();
+              }}>
+                Add
+              </Button>
+              <Button variant="ghost" onClick={handleCloseModals}>Cancel</Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
 
         <Tabs index={activeTab} onChange={setActiveTab} variant="enclosed">
           <TabList>
@@ -655,6 +737,12 @@ const LibraryPage = () => {
           </TabPanels>
         </Tabs>
       </VStack>
+      {isSelectMode && (
+        <SelectedArtifactsOverlay 
+          selectedArtifacts={selectedNFTs}
+          onRemoveArtifact={handleRemoveSelectedArtifact}
+        />
+      )}
     </StyledContainer>
   );
 };

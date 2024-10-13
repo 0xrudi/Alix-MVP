@@ -2,13 +2,13 @@
 
 ## Urgent Bugs
 
-### 1. Non-unique identifiers for artifacts
+<!-- ### 1. Non-unique identifiers for artifacts
 **Description:** Error occurring due to non-unique keys when rendering lists of NFTs.
 **Component:** NFTGrid and NFTCard
 **Task:**
 - Review the NFTGrid and NFTCard components
 - Update key generation logic to use a combination of contract address and token ID
-- Ensure unique keys are used for each NFT item
+- Ensure unique keys are used for each NFT item -->
 
 ### 2. Spam marking not updating the spam catalog
 **Description:** When marking an NFT as spam, the spam count updates but the NFT is not added to the spam catalog.
