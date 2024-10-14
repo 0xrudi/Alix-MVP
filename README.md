@@ -1,61 +1,75 @@
-# Alix - Web3 Artifact Management System
-
+Alix - Web3 Artifact Management System
 Alix is a comprehensive Web3 artifact management system designed to help users organize, view, and manage their digital assets across multiple blockchain networks. With support for both EVM-compatible chains and Solana, Alix provides a unified interface for interacting with your NFTs and other blockchain artifacts.
+Features
+1. Multi-Chain Wallet Management
 
-## Features
+Add Multiple Wallets: Connect and manage wallets from various blockchain networks, including Ethereum, Polygon, Binance Smart Chain, and Solana.
+ENS and Unstoppable Domains Support: Easily add wallets using ENS (Ethereum Name Service) names or Unstoppable Domains.
+Automatic Network Detection: When adding a new wallet, Alix automatically detects which networks contain NFTs for that wallet.
+Wallet Nicknames: Assign custom nicknames to your wallets for easy identification.
 
-### 1. Multi-Chain Wallet Management
-- **Add Multiple Wallets**: Connect and manage wallets from various blockchain networks, including Ethereum, Polygon, Binance Smart Chain, and Solana.
-- **ENS and Unstoppable Domains Support**: Easily add wallets using ENS (Ethereum Name Service) names or Unstoppable Domains.
-- **Automatic Network Detection**: When adding a new wallet, Alix automatically detects which networks contain NFTs for that wallet.
-- **Wallet Nicknames**: Assign custom nicknames to your wallets for easy identification.
+2. Comprehensive Artifact Library
 
-### 2. Comprehensive Artifact Library
-- **Multi-Network NFT Display**: View all your NFTs from different networks in one unified interface.
-- **Artifact Details**: Click on any NFT to view detailed information, including metadata, contract address, and token ID.
-- **Sorting and Filtering**: Sort your artifacts by title or contract name, and filter by wallet or contract address.
-- **Search Functionality**: Quickly find specific NFTs using the search feature.
-- **Collapsible Wallet Sections**: Easily manage large collections by collapsing or expanding wallet sections.
+Multi-Network NFT Display: View all your NFTs from different networks in one unified interface.
+Artifact Details: Click on any NFT to view detailed information, including metadata, contract address, and token ID.
+Sorting and Filtering: Sort your artifacts by title or contract name, and filter by wallet or contract address.
+Search Functionality: Quickly find specific NFTs using the search feature.
+Collapsible Wallet Sections: Easily manage large collections by collapsing or expanding wallet sections.
 
-### 3. Spam Detection and Management
-- **Automatic Spam Detection**: Leverages Moralis API to automatically detect and flag potential spam NFTs.
-- **Manual Spam Marking**: Ability to manually mark or unmark NFTs as spam.
-- **Spam Folder**: Dedicated section to view and manage NFTs marked as spam.
-- **Spam Statistics**: Track the number of spam NFTs in your collection.
+3. Spam Detection and Management
 
-### 4. Catalog System
-- **Custom Catalogs**: Create personalized catalogs to organize your NFTs into themed collections.
-- **Flexible NFT Management**: Add or remove NFTs from catalogs as needed.
-- **Catalog Overview**: View all your created catalogs, including the number of NFTs in each.
-- **Catalog Actions**: Edit catalog details or delete unwanted catalogs.
+Automatic Spam Detection: Leverages Moralis API to automatically detect and flag potential spam NFTs.
+Manual Spam Marking: Ability to manually mark or unmark NFTs as spam.
+Spam Folder: Dedicated section to view and manage NFTs marked as spam.
+Spam Statistics: Track the number of spam NFTs in your collection.
 
-### 5. Bulk Actions
-- **Multi-Select Mode**: Select multiple NFTs at once for batch operations.
-- **Bulk Spam Marking**: Mark multiple NFTs as spam in one action.
-- **Bulk Catalog Addition**: Add multiple NFTs to existing or new catalogs simultaneously.
+4. Catalog System
 
-### 6. User-Friendly Interface
-- **Responsive Design**: Optimized for both desktop and mobile viewing.
-- **Dark Mode Support**: Toggle between light and dark modes for comfortable viewing in any environment.
-- **Intuitive Navigation**: Easy-to-use sidebar for quick access to different sections of the app.
-- **Loading Indicators**: Progress bars and loading states to keep users informed during data fetching.
+Custom Catalogs: Create personalized catalogs to organize your NFTs into themed collections.
+Flexible NFT Management: Add or remove NFTs from catalogs as needed.
+Catalog Overview: View all your created catalogs, including the number of NFTs in each.
+Catalog Actions: Edit catalog details or delete unwanted catalogs.
 
-### 7. Data Refresh and Sync
-- **Manual Refresh**: Ability to manually refresh NFT data to ensure up-to-date information.
-- **Automatic Updates**: Background syncing to keep NFT data current without user intervention.
+5. Bulk Actions
 
-### 8. Detailed NFT Views
-- **High-Resolution Images**: View high-quality images or animations of your NFTs.
-- **Metadata Display**: Access and view all available metadata for each NFT.
-- **External Links**: Direct links to view the NFT on block explorers or marketplace listings.
+Multi-Select Mode: Select multiple NFTs at once for batch operations.
+Bulk Spam Marking: Mark multiple NFTs as spam in one action.
+Bulk Catalog Addition: Add multiple NFTs to existing or new catalogs simultaneously.
 
-### 9. Security and Privacy
-- **Local Data Storage**: User data is stored locally, ensuring privacy and quick access.
-- **No Private Key Storage**: Alix never stores or requires access to private keys or seed phrases.
+6. User-Friendly Interface
 
-### 10. Performance Optimization
-- **Efficient Data Handling**: Optimized data structures for quick loading and smooth performance, even with large NFT collections.
-- **Lazy Loading**: Images and data are loaded as needed to improve initial load times.
+Responsive Design: Optimized for both desktop and mobile viewing.
+Dark Mode Support: Toggle between light and dark modes for comfortable viewing in any environment.
+Intuitive Navigation: Easy-to-use sidebar for quick access to different sections of the app.
+Loading Indicators: Progress bars and loading states to keep users informed during data fetching.
+
+7. Data Refresh and Sync
+
+Manual Refresh: Ability to manually refresh NFT data to ensure up-to-date information.
+Automatic Updates: Background syncing to keep NFT data current without user intervention.
+
+8. Detailed NFT Views
+
+High-Resolution Images: View high-quality images or animations of your NFTs.
+Metadata Display: Access and view all available metadata for each NFT.
+External Links: Direct links to view the NFT on block explorers or marketplace listings.
+
+9. Security and Privacy
+
+Local Data Storage: User data is stored locally, ensuring privacy and quick access.
+No Private Key Storage: Alix never stores or requires access to private keys or seed phrases.
+
+10. Performance Optimization
+
+Efficient Data Handling: Optimized data structures for quick loading and smooth performance, even with large NFT collections.
+Lazy Loading: Images and data are loaded as needed to improve initial load times.
+
+11. Selected Artifacts Overlay
+
+Persistent Selection View: A fixed overlay at the bottom of the screen shows currently selected artifacts.
+Quick Actions: Easily accessible buttons for common actions (Add to Spam, Create Catalog, Add to Existing Catalog) directly in the overlay.
+Expandable Interface: Toggle between a compact view with icon-only buttons and an expanded view with full-text buttons.
+Real-time Updates: The overlay updates in real-time as artifacts are selected or deselected.
 
 ## Installation
 
@@ -112,6 +126,7 @@ src/
     NFTCard.js
     NFTGrid.js
     ProfilePage.js
+    SelectedArtifactsOverlay.js
     UserProfile.js
     WalletManager.js
     WelcomePage.js
