@@ -8,14 +8,15 @@ import {
   Image,
   VStack,
   IconButton,
+  Button,
   Collapse,
   Badge,
   CloseButton,
 } from "@chakra-ui/react";
-import { FaChevronUp, FaChevronDown } from 'react-icons/fa';
+import { FaChevronUp, FaChevronDown, FaTrash, FaPlus, FaFolderPlus } from 'react-icons/fa';
 import { getImageUrl } from '../utils/web3Utils';
 
-const SelectedArtifactsOverlay = ({ selectedArtifacts, onRemoveArtifact }) => {
+const SelectedArtifactsOverlay = ({ selectedArtifacts, onRemoveArtifact, onAddToSpam, onCreateCatalog, onAddToExistingCatalog }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const toggleExpand = () => setIsExpanded(!isExpanded);
@@ -37,20 +38,74 @@ const SelectedArtifactsOverlay = ({ selectedArtifacts, onRemoveArtifact }) => {
         p={3}
         borderBottom="1px solid"
         borderColor="gray.200"
-        onClick={toggleExpand}
-        cursor="pointer"
       >
-        <Text fontWeight="bold">
-          Selected Artifacts: {selectedArtifacts.length}
-        </Text>
-        <IconButton
-          icon={isExpanded ? <FaChevronDown /> : <FaChevronUp />}
-          variant="ghost"
-          size="sm"
-          aria-label={isExpanded ? "Collapse" : "Expand"}
-        />
+        <Flex align="center" flex={1}>
+          <Text fontWeight="bold" mr={2}>
+            Selected Artifacts: {selectedArtifacts.length}
+          </Text>
+          <IconButton
+            icon={isExpanded ? <FaChevronDown /> : <FaChevronUp />}
+            variant="ghost"
+            size="sm"
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+            onClick={toggleExpand}
+          />
+        </Flex>
+        {!isExpanded && (
+          <Flex>
+            <IconButton
+              icon={<FaTrash />}
+              variant="ghost"
+              size="sm"
+              aria-label="Add to Spam"
+              onClick={onAddToSpam}
+              mr={1}
+            />
+            <IconButton
+              icon={<FaPlus />}
+              variant="ghost"
+              size="sm"
+              aria-label="Create Catalog"
+              onClick={onCreateCatalog}
+              mr={1}
+            />
+            <IconButton
+              icon={<FaFolderPlus />}
+              variant="ghost"
+              size="sm"
+              aria-label="Add to Existing Catalog"
+              onClick={onAddToExistingCatalog}
+            />
+          </Flex>
+        )}
       </Flex>
       <Collapse in={isExpanded}>
+        <VStack spacing={2} p={3} align="stretch">
+          <Button
+            leftIcon={<FaTrash />}
+            size="sm"
+            onClick={onAddToSpam}
+            fontSize="xs"
+          >
+            Add to Spam
+          </Button>
+          <Button
+            leftIcon={<FaPlus />}
+            size="sm"
+            onClick={onCreateCatalog}
+            fontSize="xs"
+          >
+            Create Catalog
+          </Button>
+          <Button
+            leftIcon={<FaFolderPlus />}
+            size="sm"
+            onClick={onAddToExistingCatalog}
+            fontSize="xs"
+          >
+            Add to Existing Catalog
+          </Button>
+        </VStack>
         <VStack
           maxHeight="300px"
           overflowY="auto"

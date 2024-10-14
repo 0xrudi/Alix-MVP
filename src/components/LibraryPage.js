@@ -682,15 +682,6 @@ const LibraryPage = () => {
                         </StyledButton>
                       ) : (
                         <>
-                          <StyledButton leftIcon={<Icon as={FaTrash} />} onClick={() => handleMarkAsSpam(null, null, selectedNFTs)} colorScheme="red">
-                            Add to Spam
-                          </StyledButton>
-                          <StyledButton leftIcon={<Icon as={FaPlus} />} onClick={() => setIsCreateCatalogOpen(true)} colorScheme="green">
-                            Create Catalog
-                          </StyledButton>
-                          <StyledButton leftIcon={<Icon as={FaFolderPlus} />} onClick={() => setIsAddToCatalogOpen(true)} colorScheme="blue">
-                            Add to Existing Catalog
-                          </StyledButton>
                           <StyledButton leftIcon={<Icon as={FaTimes} />} onClick={handleCancelSelectMode} colorScheme="gray">
                             Cancel
                           </StyledButton>
@@ -741,6 +732,9 @@ const LibraryPage = () => {
         <SelectedArtifactsOverlay 
           selectedArtifacts={selectedNFTs}
           onRemoveArtifact={handleRemoveSelectedArtifact}
+          onAddToSpam={handleMarkAsSpam}
+          onCreateCatalog={() => setIsCreateCatalogOpen(true)}
+          onAddToExistingCatalog={() => setIsAddToCatalogOpen(true)}
         />
       )}
     </StyledContainer>
