@@ -26,7 +26,9 @@ const NFTGrid = ({
   isSpamFolder = false,
   isSelectMode,
   onNFTClick,
-  gridColumns
+  gridColumns,
+  isSearchResult = false,
+  onAddToCatalog
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState('title');
@@ -76,6 +78,8 @@ const NFTGrid = ({
                 isSpamFolder={isSpamFolder}
                 isSelectMode={isSelectMode}
                 onClick={() => onNFTClick(nft)}
+                isSearchResult={isSearchResult}
+                onAddToCatalog={onAddToCatalog}
               />
             ));
           })}

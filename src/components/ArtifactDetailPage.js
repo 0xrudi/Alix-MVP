@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Heading,
@@ -21,9 +21,20 @@ import {
   AccordionButton,
   AccordionPanel,
   AccordionIcon,
+  useToast,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  Select,
 } from "@chakra-ui/react";
-import { FaArrowLeft } from 'react-icons/fa';
+import { FaArrowLeft, FaPlus, FaExternalLinkAlt } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { getImageUrl } from '../utils/web3Utils';
+import { useAppContext } from '../context/AppContext';
 
 const MetadataDisplay = ({ data, level = 0 }) => {
   const bgColor = useColorModeValue('gray.50', 'gray.700');
@@ -78,60 +89,47 @@ const ArtifactDetailPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const nft = location.state?.nft;
+  const isSearchResult = location.state?.isSearchResult;
+  const toast = useToast();
+  const { catalogs, updateCatalogs } = useAppContext();
+  const [isAddToCatalogOpen, setIsAddToCatalogOpen] = useState(false);
+  const [selectedCatalog, setSelectedCatalog] = useState('');
 
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
-
-  const getImageUrl = (nft) => {
-    const possibleSources = [
-      nft.metadata?.image_url,
-      nft.metadata?.image,
-      nft.media?.[0]?.gateway,
-      nft.imageUrl,
-      nft.metadata?.external_url
-    ];
-  
-    for (let source of possibleSources) {
-      if (source) {
-        // Check if the source is an SVG string
-        if (source.startsWith('data:image/svg+xml,')) {
-          return source;
-        }
-        // Check if it's already a valid URL (including IPFS gateways)
-        if (source.startsWith('http://') || source.startsWith('https://')) {
-          return source;
-        }
-        // Handle IPFS protocol
-        if (source.startsWith('ipfs://')) {
-          const hash = source.replace('ipfs://', '');
-          return `https://ipfs.io/ipfs/${hash}`;
-        }
-        // Handle Arweave protocol
-        if (source.startsWith('ar://')) {
-          const hash = source.replace('ar://', '');
-          return `https://arweave.net/${hash}`;
-        }
-      }
-    }
-  
-    return 'https://via.placeholder.com/400?text=No+Image';
-  };
-
-  const renderValue = (value) => {
-    if (value === null || value === undefined) {
-      return 'N/A';
-    }
-    if (typeof value === 'object') {
-      return JSON.stringify(value);
-    }
-    return String(value);
-  };
 
   if (!nft) {
     return <Box>No NFT data available</Box>;
   }
 
   const imageUrl = getImageUrl(nft);
+
+  const handleAddToCatalog = () => {
+    setIsAddToCatalogOpen(true);
+  };
+
+  const handleConfirmAddToCatalog = () => {
+    if (selectedCatalog) {
+      const updatedCatalogs = catalogs.map(catalog => {
+        if (catalog.id === selectedCatalog) {
+          return {
+            ...catalog,
+            nfts: [...catalog.nfts, nft]
+          };
+        }
+        return catalog;
+      });
+      updateCatalogs(updatedCatalogs);
+      toast({
+        title: "NFT Added to Catalog",
+        description: `The NFT has been added to the selected catalog.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      setIsAddToCatalogOpen(false);
+    }
+  };
 
   return (
     <Box maxWidth="container.xl" margin="auto" p={8}>
@@ -141,7 +139,7 @@ const ArtifactDetailPage = () => {
 
       <Box bg={bgColor} p={6} borderRadius="lg" boxShadow="md" borderColor={borderColor} borderWidth={1}>
         <Heading as="h2" size="xl" mb={4}>
-          {renderValue(nft.title) || `Token ID: ${renderValue(nft.id?.tokenId)}`}
+          {nft.title || `Token ID: ${nft.id?.tokenId}`}
         </Heading>
 
         {imageUrl.startsWith('data:image/svg+xml,') ? (
@@ -155,7 +153,7 @@ const ArtifactDetailPage = () => {
         ) : (
             <Image
                 src={imageUrl}
-                alt={renderValue(nft.title) || 'NFT'}
+                alt={nft.title || 'NFT'}
                 maxHeight="400px"
                 objectFit="contain"
                 margin="auto"
@@ -163,13 +161,19 @@ const ArtifactDetailPage = () => {
             />
         )}
 
-        <Text mb={6}>{renderValue(nft.metadata?.description)}</Text>
+        <Text mb={6}>{nft.description || 'No description available.'}</Text>
 
         <VStack align="start" spacing={4}>
           <HStack>
-            <Badge colorScheme="purple">{renderValue(nft.network).toUpperCase()}</Badge>
+            <Badge colorScheme="purple">{nft.network || 'Unknown Network'}</Badge>
             {nft.isSpam && <Badge colorScheme="red">Spam</Badge>}
           </HStack>
+
+          {isSearchResult && (
+            <Button leftIcon={<FaPlus />} colorScheme="green" onClick={handleAddToCatalog}>
+              Add to Catalog
+            </Button>
+          )}
 
           <Accordion allowMultiple width="100%">
             <AccordionItem>
@@ -186,26 +190,26 @@ const ArtifactDetailPage = () => {
                   <Tbody>
                     <Tr>
                       <Th>Contract Name</Th>
-                      <Td>{renderValue(nft.name)}</Td>
+                      <Td>{nft.contract?.name || 'N/A'}</Td>
                     </Tr>
                     <Tr>
                       <Th>Contract Address</Th>
-                      <Td>{renderValue(nft.contract?.address?._value || nft.contract?.address)}</Td>
+                      <Td>{nft.contract?.address || 'N/A'}</Td>
                     </Tr>
                     <Tr>
                       <Th>Token ID</Th>
-                      <Td>{renderValue(nft.id?.tokenId)}</Td>
+                      <Td>{nft.id?.tokenId || 'N/A'}</Td>
                     </Tr>
                     <Tr>
                       <Th>Creator/Artist</Th>
-                      <Td>{renderValue(nft.metadata?.created_by || nft.metadata?.artist)}</Td>
+                      <Td>{nft.creator || nft.artist || 'N/A'}</Td>
                     </Tr>
                   </Tbody>
                 </Table>
               </AccordionPanel>
             </AccordionItem>
 
-            {nft.metadata?.attributes && (
+            {nft.attributes && (
               <AccordionItem>
                 <h2>
                   <AccordionButton>
@@ -224,10 +228,10 @@ const ArtifactDetailPage = () => {
                       </Tr>
                     </Thead>
                     <Tbody>
-                      {nft.metadata.attributes.map((attr, index) => (
+                      {nft.attributes.map((attr, index) => (
                         <Tr key={index}>
-                          <Td>{renderValue(attr.trait_type)}</Td>
-                          <Td>{renderValue(attr.value)}</Td>
+                          <Td>{attr.trait_type}</Td>
+                          <Td>{attr.value}</Td>
                         </Tr>
                       ))}
                     </Tbody>
@@ -267,13 +271,40 @@ const ArtifactDetailPage = () => {
             </AccordionItem>
           </Accordion>
 
-          {nft.metadata?.external_url && (
-            <Link href={nft.metadata.external_url} isExternal color="blue.500">
-              View on External Site
+          {nft.externalUrl && (
+            <Link href={nft.externalUrl} isExternal color="blue.500">
+              View on External Site <FaExternalLinkAlt />
             </Link>
           )}
         </VStack>
       </Box>
+
+      <Modal isOpen={isAddToCatalogOpen} onClose={() => setIsAddToCatalogOpen(false)}>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Add to Catalog</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Select
+              placeholder="Select catalog"
+              value={selectedCatalog}
+              onChange={(e) => setSelectedCatalog(e.target.value)}
+            >
+              {catalogs.map((catalog) => (
+                <option key={catalog.id} value={catalog.id}>
+                  {catalog.name}
+                </option>
+              ))}
+            </Select>
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="blue" mr={3} onClick={handleConfirmAddToCatalog}>
+              Add
+            </Button>
+            <Button variant="ghost" onClick={() => setIsAddToCatalogOpen(false)}>Cancel</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 };

@@ -497,6 +497,11 @@ const LibraryPage = () => {
     showSuccessToast("NFTs Refreshed", "Your NFTs have been refreshed and categorized.");
   };
 
+  const handleAddToCatalog = (nft) => {
+  setSelectedNFTs([nft]);
+  setIsAddToCatalogOpen(true);
+};
+
 
   return (
     <StyledContainer>
@@ -624,15 +629,17 @@ const LibraryPage = () => {
                             </Flex>
                             {!collapsedWallets[address] && (
                               <NFTGrid 
-                                nfts={nfts}
-                                selectedNFTs={selectedNFTs}
-                                onNFTSelect={handleNFTSelect}
-                                onMarkAsSpam={(nft) => handleMarkAsSpam(address, nft.network, nft)}
-                                walletAddress={address}
-                                isSpamFolder={false}
-                                isSelectMode={isSelectMode}
-                                onNFTClick={handleNFTClick}
-                                gridColumns={gridColumns}
+                              nfts={nfts}
+                              selectedNFTs={selectedNFTs}
+                              onNFTSelect={handleNFTSelect}
+                              onMarkAsSpam={(nft) => handleMarkAsSpam(address, nft.network, nft)}
+                              walletAddress={address}
+                              isSpamFolder={false}
+                              isSelectMode={isSelectMode}
+                              onNFTClick={handleNFTClick}
+                              gridColumns={gridColumns}
+                              isSearchResult={false}
+                              onAddToCatalog={handleAddToCatalog}
                               />
                             )}
                           </Box>

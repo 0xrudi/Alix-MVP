@@ -57,6 +57,16 @@ export const AppProvider = ({ children }) => {
     setUserProfile(prevProfile => ({ ...prevProfile, ...newProfile }));
   };
 
+  const addNFTToCatalog = (catalogId, nft) => {
+    setCatalogs(prevCatalogs => 
+      prevCatalogs.map(catalog => 
+        catalog.id === catalogId
+          ? { ...catalog, nfts: [...catalog.nfts, nft] }
+          : catalog
+      )
+    );
+  };
+
   return (
     <AppContext.Provider value={{
       wallets,
@@ -69,7 +79,8 @@ export const AppProvider = ({ children }) => {
       updateNfts,
       updateSpamNfts,
       updateCatalogs,
-      updateUserProfile
+      updateUserProfile,
+      addNFTToCatalog
     }}>
       {children}
     </AppContext.Provider>

@@ -1,20 +1,22 @@
-// src/components/NFTCard.js
-
 import React from 'react';
-import { Box, Image, Text, Button, VStack, HStack, Badge, useColorModeValue, AspectRatio, Checkbox } from "@chakra-ui/react";
-import { FaExclamationTriangle } from 'react-icons/fa';
+import { Box, Image, Text, Button, VStack, HStack, Badge, useColorModeValue, AspectRatio, Checkbox, Tooltip } from "@chakra-ui/react";
+import { FaExclamationTriangle, FaPlus, FaInfoCircle } from 'react-icons/fa';
 import { getImageUrl } from '../utils/web3Utils';
 import { isERC1155 } from '../utils/nftUtils';
+import { useAppContext } from '../context/AppContext';
 
 const NFTCard = ({ 
   nft, 
   isSelected, 
   onSelect, 
   onMarkAsSpam, 
-  isSpamFolder, 
+  isSpamFolder,
   isSelectMode,
-  onClick
+  onClick,
+  isSearchResult,
+  onAddToCatalog
 }) => {
+  const { catalogs } = useAppContext();
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
@@ -27,6 +29,11 @@ const NFTCard = ({
     } else {
       onClick(nft);
     }
+  };
+
+  const handleAddToCatalog = (e) => {
+    e.stopPropagation();
+    onAddToCatalog(nft);
   };
 
   // Determine the network display value
@@ -48,7 +55,7 @@ const NFTCard = ({
       onClick={handleCardClick}
       cursor={isSelectMode ? "pointer" : "default"}
     >
-      {isSelectMode && (
+      {isSelectMode && !isSearchResult && (
         <Checkbox
           position="absolute"
           top={2}
@@ -78,7 +85,7 @@ const NFTCard = ({
       <VStack p={2} spacing={1} align="stretch">
         <Text fontWeight="bold" fontSize="sm" noOfLines={1}>{nft.title || `Token ID: ${nft.id?.tokenId}`}</Text>
         <HStack justify="space-between">
-          {!isSelectMode && (
+          {!isSelectMode && !isSearchResult && (
             <Button
               size="xs"
               colorScheme={isSpamFolder ? "green" : "red"}
@@ -91,6 +98,19 @@ const NFTCard = ({
             >
               {isSpamFolder ? "Unmark" : "Spam"}
             </Button>
+          )}
+          {isSearchResult && (
+            <Tooltip label="Add to Catalog">
+              <Button
+                size="xs"
+                colorScheme="green"
+                variant="outline"
+                onClick={handleAddToCatalog}
+                leftIcon={<FaPlus />}
+              >
+                Add
+              </Button>
+            </Tooltip>
           )}
           <Badge colorScheme="purple" variant="subtle" fontSize="xs">
             {networkDisplay}
@@ -112,6 +132,16 @@ const NFTCard = ({
         >
           Spam
         </Badge>
+      )}
+      {catalogs.some(catalog => catalog.nfts.some(catalogNft => 
+        catalogNft.id?.tokenId === nft.id?.tokenId && 
+        catalogNft.contract?.address === nft.contract?.address
+      )) && (
+        <Tooltip label="In Catalog">
+          <Box position="absolute" top={2} right={2}>
+            <FaInfoCircle color="green" />
+          </Box>
+        </Tooltip>
       )}
     </Box>
   );
