@@ -12,6 +12,8 @@ import AdminPage from './components/AdminPage';
 import './global.css';
 import ArtifactDetailPage from './components/ArtifactDetailPage';
 import { AppProvider } from './context/AppContext';
+import { Provider } from 'react-redux';
+import store from './redux/store';
 
 function AppContent() {
   const location = useLocation();
@@ -39,13 +41,15 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
-      <ChakraProvider theme={theme}>
-        <AppProvider>
-          <AppContent />
-        </AppProvider>
-      </ChakraProvider>
-    </Router>
+    <Provider store={store}>
+      <Router>
+        <ChakraProvider theme={theme}>
+          <AppProvider>
+            <AppContent />
+          </AppProvider>
+        </ChakraProvider>
+      </Router>
+    </Provider>
   );
 }
 
