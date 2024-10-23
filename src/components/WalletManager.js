@@ -1,4 +1,6 @@
+// src/components/WalletManager.js
 import React, { useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { 
   VStack, 
   Input, 
@@ -24,15 +26,18 @@ import {
 import { logger } from '../utils/logger';
 import { useCustomToast } from '../utils/toastUtils';
 import { useErrorHandler } from '../utils/errorUtils';
-import { useAppContext } from '../context/AppContext';
+import { addWallet, removeWallet, updateWallet } from '../redux/slices/walletSlice';
+import { addNFTs } from '../redux/slices/nftSlice';
 import { StyledButton, StyledCard } from '../styles/commonStyles';
+import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
 
 const WalletManager = () => {
-  const { wallets, updateWallets } = useAppContext();
+  const dispatch = useDispatch();
+  const wallets = useSelector(state => state.wallets.list);
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { showSuccessToast, showErrorToast } = useCustomToast();
+  const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast();
   const { handleError } = useErrorHandler();
 
   const handleAddWallet = async () => {
@@ -41,25 +46,41 @@ const WalletManager = () => {
     let address = input;
     let walletType = '';
     let walletNickname = '';
-
+  
     try {
       // Check if it's a valid address first
       const addressCheck = isValidAddress(input);
       if (addressCheck.isValid) {
         address = input;
         walletType = addressCheck.type;
-      } else if (input.endsWith('.eth')) {
-        // Try ENS resolution
+      } else if (input.toLowerCase().endsWith('.eth') || input.toLowerCase().includes('.')) {
+        // Try ENS resolution - including base domains
+        showInfoToast("Resolving Address", "Attempting to resolve ENS name...");
+        
+        // First try direct ENS resolution
         const ensResult = await resolveENS(input);
         if (ensResult.success) {
           address = ensResult.address;
           walletType = ensResult.type;
           walletNickname = input;
         } else {
-          throw new Error(ensResult.message);
+          // If direct resolution fails, try with .eth suffix if not present
+          if (!input.toLowerCase().endsWith('.eth')) {
+            const ensWithEth = await resolveENS(`${input}.eth`);
+            if (ensWithEth.success) {
+              address = ensWithEth.address;
+              walletType = ensWithEth.type;
+              walletNickname = input;
+            } else {
+              throw new Error("ENS name not found or no address associated");
+            }
+          } else {
+            throw new Error(ensResult.message);
+          }
         }
       } else {
         // Try Unstoppable Domain resolution
+        showInfoToast("Resolving Address", "Attempting to resolve Unstoppable Domain...");
         const udResult = await resolveUnstoppableDomain(input);
         if (udResult.success) {
           address = udResult.address;
@@ -69,46 +90,40 @@ const WalletManager = () => {
           throw new Error(udResult.message);
         }
       }
-
+  
       const newWallet = {
+        id: Date.now().toString(),
         address,
         nickname: walletNickname,
         type: walletType,
         networks: [],
       };
-
-      logger.log('Searching for NFTs for wallet:', address);
-
-      if (walletType === 'evm') {
-        for (const network of networks.filter(n => n.type === 'evm')) {
-          try {
-            const { nfts } = await fetchNFTs(address, network.value);
-            if (nfts.length > 0) {
-              newWallet.networks.push(network.value);
-              logger.log(`Found ${nfts.length} NFTs on ${network.label}`);
-            }
-          } catch (error) {
-            logger.error(`Error fetching NFTs for ${address} on ${network.label}:`, error);
-          }
-        }
-      } else if (walletType === 'solana') {
-        try {
-          const { nfts } = await fetchNFTs(address, 'solana');
-          if (nfts.length > 0) {
-            newWallet.networks.push('solana');
-            logger.log(`Found ${nfts.length} NFTs on Solana`);
-          }
-        } catch (error) {
-          logger.error(`Error fetching NFTs for Solana address ${address}:`, error);
-        }
-      }
-
-      logger.log('New wallet object:', newWallet);
-
-      const updatedWallets = [...wallets, newWallet];
-      updateWallets(updatedWallets);
+  
+      // Add the wallet first
+      dispatch(addWallet(newWallet));
+  
+      // Determine relevant networks
+      const relevantNetworks = walletType === 'evm' 
+        ? networks.filter(n => n.type === 'evm').map(n => n.value)
+        : ['solana'];
+  
+      showInfoToast(
+        "Scanning Networks", 
+        `Checking ${relevantNetworks.length} networks for NFTs...`
+      );
+  
+      // Fetch NFTs and update networks
+      const activeNetworks = await dispatch(fetchWalletNFTs({ 
+        walletId: newWallet.id, 
+        address: newWallet.address, 
+        networks: relevantNetworks 
+      })).unwrap();
+  
       setInput('');
-      showSuccessToast("Wallet Added", `The ${walletType.toUpperCase()} wallet has been successfully added with ${newWallet.networks.length} active networks.`);
+      showSuccessToast(
+        "Wallet Added", 
+        `Found NFTs on ${activeNetworks.length} networks. Wallet added successfully.`
+      );
     } catch (error) {
       handleError(error, 'adding wallet');
       setError(`Error adding wallet: ${error.message}`);
@@ -117,19 +132,13 @@ const WalletManager = () => {
     }
   };
 
-  const handleDeleteWallet = (addressToDelete) => {
-    const updatedWallets = wallets.filter(wallet => wallet.address !== addressToDelete);
-    updateWallets(updatedWallets);
+  const handleDeleteWallet = (walletId) => {
+    dispatch(removeWallet(walletId));
     showSuccessToast("Wallet Removed", "The wallet has been successfully removed from your list.");
   };
 
-  const handleNicknameChange = (address, newNickname) => {
-    const updatedWallets = wallets.map(wallet => 
-      wallet.address === address 
-        ? { ...wallet, nickname: newNickname }
-        : wallet
-    );
-    updateWallets(updatedWallets);
+  const handleNicknameChange = (walletId, newNickname) => {
+    dispatch(updateWallet({ id: walletId, nickname: newNickname }));
   };
 
   return (
@@ -161,11 +170,11 @@ const WalletManager = () => {
             </Thead>
             <Tbody>
               {wallets.map((wallet) => (
-                <Tr key={wallet.address}>
+                <Tr key={wallet.id}>
                   <Td>
                     <Input
                       value={wallet.nickname || ''}
-                      onChange={(e) => handleNicknameChange(wallet.address, e.target.value)}
+                      onChange={(e) => handleNicknameChange(wallet.id, e.target.value)}
                       placeholder="Add nickname"
                     />
                     <Text>{wallet.address}</Text>
@@ -187,7 +196,7 @@ const WalletManager = () => {
                     </Wrap>
                   </Td>
                   <Td>
-                    <StyledButton onClick={() => handleDeleteWallet(wallet.address)} colorScheme="red">
+                    <StyledButton onClick={() => handleDeleteWallet(wallet.id)} colorScheme="red">
                       Delete
                     </StyledButton>
                   </Td>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { 
   Heading, 
   Tabs, 
@@ -17,9 +18,10 @@ import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyle
 import { useResponsive } from '../hooks/useResponsive';
 
 const ProfilePage = () => {
-  const { wallets, userProfile, updateUserProfile } = useAppContext();
+  const { userProfile, updateUserProfile } = useAppContext();
   const { showSuccessToast } = useCustomToast();
   const { buttonSize, headingSize } = useResponsive();
+  const wallets = useSelector(state => state.wallets.wallets);
 
   const handleSaveProfile = () => {
     showSuccessToast("Profile Saved", "Your profile has been updated successfully.");

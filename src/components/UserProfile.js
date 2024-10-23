@@ -7,9 +7,12 @@ import {
 } from "@chakra-ui/react";
 import { fetchENSAvatar, getAvailableENS } from '../utils/web3Utils';
 import { useAppContext } from '../context/AppContext';
+import { useSelector, useDispatch } from 'react-redux';
 
 const UserProfile = () => {
-  const { userProfile, updateUserProfile, wallets } = useAppContext();
+  const dispatch = useDispatch();
+  const wallets = useSelector(state => state.wallets.wallets);
+  const { userProfile, updateUserProfile } = useAppContext();
   const [nickname, setNickname] = useState(userProfile.nickname || '');
   const [avatarUrl, setAvatarUrl] = useState(userProfile.avatarUrl || '');
   const [availableENS, setAvailableENS] = useState([]);
@@ -31,7 +34,7 @@ const UserProfile = () => {
 
   const handleNicknameChange = (event) => {
     setNickname(event.target.value);
-    updateUserProfile({ nickname: event.target.value });
+    dispatch(updateUserProfile({ nickname: event.target.value }));
   };
 
   const handleAvatarUpload = (event) => {

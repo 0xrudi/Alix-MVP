@@ -1,5 +1,4 @@
 // src/components/NFTGrid.js
-
 import React, { useState } from 'react';
 import { 
   SimpleGrid, 
@@ -14,15 +13,16 @@ import {
 import { FaSearch } from 'react-icons/fa';
 import NFTCard from './NFTCard';
 import { logger } from '../utils/logger';
-import { filterAndSortNFTs, generateNFTId, isERC1155 } from '../utils/nftUtils';
+import { filterAndSortNFTs } from '../utils/nftUtils';
 import { useCustomColorMode } from '../hooks/useColorMode';
 import { StyledContainer } from '../styles/commonStyles';
 
 const NFTGrid = ({ 
-  nfts = {}, 
+  nfts = [], 
   selectedNFTs, 
   onNFTSelect, 
   onMarkAsSpam, 
+  walletId,
   isSpamFolder = false,
   isSelectMode,
   onNFTClick,
@@ -34,8 +34,7 @@ const NFTGrid = ({
 
   logger.log("NFTGrid received nfts:", nfts);
 
-  const nftsArray = Array.isArray(nfts) ? nfts : Object.values(nfts).flat();
-  const filteredAndSortedNFTs = filterAndSortNFTs(nftsArray, searchTerm, sortOption, isSpamFolder);
+  const filteredAndSortedNFTs = filterAndSortNFTs(nfts, searchTerm, sortOption, isSpamFolder);
 
   return (
     <StyledContainer>
@@ -52,33 +51,31 @@ const NFTGrid = ({
           <Select value={sortOption} onChange={(e) => setSortOption(e.target.value)}>
             <option value="title">Sort by Title</option>
             <option value="contractName">Sort by Contract</option>
+            <option value="network">Sort by Network</option>
           </Select>
         </HStack>
         <Text fontSize="sm" color="gray.500">
-          Showing {filteredAndSortedNFTs.length} of {nftsArray.length} NFTs
+          Showing {filteredAndSortedNFTs.length} of {nfts.length} NFTs
         </Text>
         <SimpleGrid 
           columns={gridColumns}
           spacing={{ base: 2, md: 4 }}
           width="100%"
         >
-          {filteredAndSortedNFTs.map((nft, index) => {
-            const nftId = generateNFTId(nft, index);
-            const quantity = isERC1155(nft) ? parseInt(nft.balance) || 1 : 1;
-
-            return Array.from({ length: quantity }, (_, i) => (
-              <NFTCard
-                key={`${nftId}-${i}`}
-                nft={nft}
-                isSelected={selectedNFTs.some(selectedNFT => generateNFTId(selectedNFT) === nftId)}
-                onSelect={() => onNFTSelect(nft)}
-                onMarkAsSpam={() => onMarkAsSpam(nft)}
-                isSpamFolder={isSpamFolder}
-                isSelectMode={isSelectMode}
-                onClick={() => onNFTClick(nft)}
-              />
-            ));
-          })}
+          {filteredAndSortedNFTs.map((nft) => (
+            <NFTCard
+              key={`${nft.contract?.address}-${nft.id?.tokenId}-${nft.network}`}
+              nft={nft}
+              isSelected={selectedNFTs.some(n => n.id === nft.id)}
+              onSelect={() => onNFTSelect(nft)}
+              onMarkAsSpam={() => onMarkAsSpam(nft)}
+              isSpamFolder={isSpamFolder}
+              isSelectMode={isSelectMode}
+              onClick={() => onNFTClick(nft)}
+              tokenStandard={nft.tokenStandard}
+              network={nft.network}
+            />
+          ))}
         </SimpleGrid>
       </VStack>
     </StyledContainer>

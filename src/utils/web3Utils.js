@@ -10,18 +10,28 @@ const MAINNET_RPC_URL = 'https://ethereum.publicnode.com';
 const BASE_RPC_URL = 'https://mainnet.base.org'
 const resolution = new Resolution();
 
-let isMoralisStarted = false;
+let moralisStartPromise = null;
 
 const startMoralis = async () => {
-  if (!isMoralisStarted) {
-    if (!MORALIS_API_KEY) {
-      throw new Error('Moralis API Key is not set');
-    }
-    await Moralis.start({
-      apiKey: MORALIS_API_KEY,
-    });
-    isMoralisStarted = true;
+  if (!moralisStartPromise) {
+    moralisStartPromise = (async () => {
+      if (!MORALIS_API_KEY) {
+        throw new Error('Moralis API Key is not set');
+      }
+      try {
+        await Moralis.start({
+          apiKey: MORALIS_API_KEY,
+        });
+        return true;
+      } catch (error) {
+        if (error.message.includes('Modules are started already')) {
+          return true; // Already started is fine
+        }
+        throw error; // Re-throw other errors
+      }
+    })();
   }
+  return moralisStartPromise;
 };
 
 const withMoralis = async (fn) => {
@@ -168,23 +178,55 @@ export const getImageUrl = (nft) => {
 };
 
 export const resolveENS = async (ensName) => {
-  const providers = [
-    new ethers.providers.JsonRpcProvider(MAINNET_RPC_URL),
-    new ethers.providers.JsonRpcProvider(BASE_RPC_URL),
-  ];
+  // Initialize the mainnet provider first
+  const mainnetProvider = new ethers.providers.JsonRpcProvider(MAINNET_RPC_URL);
+  
+  try {
+    // If it's a Base domain
+    if (ensName.toLowerCase().endsWith('.base.eth')) {
+      // First resolve the name on Ethereum mainnet to get the controller address
+      const baseRegistryAddress = "0x4E2883Eb808584502326B3EA7b163f9E47a68E5D"; // Base Registry Address
+      const baseRegistryABI = [
+        "function resolve(string name) view returns (address)",
+      ];
+      
+      const baseRegistry = new ethers.Contract(
+        baseRegistryAddress,
+        baseRegistryABI,
+        mainnetProvider
+      );
 
-  for (const provider of providers) {
-    try {
-      const address = await provider.resolveName(ensName);
-      if (address) {
-        return { success: true, address, type: 'evm' };
+      try {
+        const address = await baseRegistry.resolve(ensName);
+        if (address && address !== ethers.constants.AddressZero) {
+          return { success: true, address, type: 'evm' };
+        }
+      } catch (error) {
+        console.error('Error resolving Base domain:', error);
       }
-    } catch (error) {
-      console.error(`Error resolving ENS on provider:`, error);
     }
-  }
 
-  return { success: false, message: 'ENS name not found or no address associated' };
+    // Try regular ENS resolution on mainnet
+    const address = await mainnetProvider.resolveName(ensName);
+    if (address) {
+      return { success: true, address, type: 'evm' };
+    }
+
+    // If no resolution found
+    return { success: false, message: 'ENS name not found or no address associated' };
+  } catch (error) {
+    console.error('Error resolving ENS:', error);
+    return { success: false, message: error.message || 'Error resolving ENS name' };
+  }
+};
+
+// Update the BASE_PROVIDER initialization
+const getBaseProvider = () => {
+  return new ethers.providers.JsonRpcProvider(BASE_RPC_URL, {
+    name: 'base',
+    chainId: 8453,
+    ensAddress: null // Base doesn't have native ENS support
+  });
 };
 
 export const resolveUnstoppableDomain = async (domain) => {

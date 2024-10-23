@@ -1,122 +1,89 @@
-Alix - Web3 Artifact Management System
+# Alix - Web3 Artifact Management System
+
 Alix is a comprehensive Web3 artifact management system designed to help users organize, view, and manage their digital assets across multiple blockchain networks. With support for both EVM-compatible chains and Solana, Alix provides a unified interface for interacting with your NFTs and other blockchain artifacts.
-Features
-1. Multi-Chain Wallet Management
 
-Add Multiple Wallets: Connect and manage wallets from various blockchain networks, including Ethereum, Polygon, Binance Smart Chain, and Solana.
-ENS and Unstoppable Domains Support: Easily add wallets using ENS (Ethereum Name Service) names or Unstoppable Domains.
-Automatic Network Detection: When adding a new wallet, Alix automatically detects which networks contain NFTs for that wallet.
-Wallet Nicknames: Assign custom nicknames to your wallets for easy identification.
+## Features
 
-2. Comprehensive Artifact Library
+### 1. Multi-Chain Wallet Management
+- Connect and manage wallets from various blockchain networks (Ethereum, Polygon, BSC, Solana, etc.)
+- ENS and Unstoppable Domains support with enhanced resolution capabilities
+- Base domain support (.base.eth) with proper registry integration
+- Automatic network detection for NFT holdings
+- Custom wallet nicknames for easy identification
+- Unified wallet management across all supported networks
 
-Multi-Network NFT Display: View all your NFTs from different networks in one unified interface.
-Artifact Details: Click on any NFT to view detailed information, including metadata, contract address, and token ID.
-Sorting and Filtering: Sort your artifacts by title or contract name, and filter by wallet or contract address.
-Search Functionality: Quickly find specific NFTs using the search feature.
-Collapsible Wallet Sections: Easily manage large collections by collapsing or expanding wallet sections.
+### 2. Comprehensive Artifact Library
+- Multi-Network NFT Display in a unified interface
+- Support for both ERC-721 and ERC-1155 token standards
+- Token balance tracking for ERC-1155 NFTs
+- Detailed artifact information (metadata, contract address, token ID)
+- Advanced sorting and filtering options
+- Network-specific NFT organization
+- Collapsible wallet sections for better organization
 
-3. Spam Detection and Management
+### 3. Spam Detection and Management
+- Automatic spam detection via Moralis API
+- Manual spam marking/unmarking capabilities
+- Dedicated spam folder with management features
+- Spam statistics and tracking
+- Bulk spam management operations
 
-Automatic Spam Detection: Leverages Moralis API to automatically detect and flag potential spam NFTs.
-Manual Spam Marking: Ability to manually mark or unmark NFTs as spam.
-Spam Folder: Dedicated section to view and manage NFTs marked as spam.
-Spam Statistics: Track the number of spam NFTs in your collection.
+### 4. Catalog System
+- Create and manage custom NFT collections
+- Flexible NFT organization across networks
+- Catalog statistics and overview
+- Bulk operations for catalog management
+- Cross-network catalog support
 
-4. Catalog System
+### 5. Redux State Management
+- Centralized state management with Redux Toolkit
+- Efficient data access with selectors
+- Async operations handling with Redux Thunk
+- Proper serialization of blockchain data
+- Network-specific state organization
+- Support for complex data structures
 
-Custom Catalogs: Create personalized catalogs to organize your NFTs into themed collections.
-Flexible NFT Management: Add or remove NFTs from catalogs as needed.
-Catalog Overview: View all your created catalogs, including the number of NFTs in each.
-Catalog Actions: Edit catalog details or delete unwanted catalogs.
-
-5. Bulk Actions
-
-Multi-Select Mode: Select multiple NFTs at once for batch operations.
-Bulk Spam Marking: Mark multiple NFTs as spam in one action.
-Bulk Catalog Addition: Add multiple NFTs to existing or new catalogs simultaneously.
-
-6. User-Friendly Interface
-
-Responsive Design: Optimized for both desktop and mobile viewing.
-Dark Mode Support: Toggle between light and dark modes for comfortable viewing in any environment.
-Intuitive Navigation: Easy-to-use sidebar for quick access to different sections of the app.
-Loading Indicators: Progress bars and loading states to keep users informed during data fetching.
-
-7. Data Refresh and Sync
-
-Manual Refresh: Ability to manually refresh NFT data to ensure up-to-date information.
-Automatic Updates: Background syncing to keep NFT data current without user intervention.
-
-8. Detailed NFT Views
-
-High-Resolution Images: View high-quality images or animations of your NFTs.
-Metadata Display: Access and view all available metadata for each NFT.
-External Links: Direct links to view the NFT on block explorers or marketplace listings.
-
-9. Security and Privacy
-
-Local Data Storage: User data is stored locally, ensuring privacy and quick access.
-No Private Key Storage: Alix never stores or requires access to private keys or seed phrases.
-
-10. Performance Optimization
-
-Efficient Data Handling: Optimized data structures for quick loading and smooth performance, even with large NFT collections.
-Lazy Loading: Images and data are loaded as needed to improve initial load times.
-
-11. Selected Artifacts Overlay
-
-Persistent Selection View: A fixed overlay at the bottom of the screen shows currently selected artifacts.
-Quick Actions: Easily accessible buttons for common actions (Add to Spam, Create Catalog, Add to Existing Catalog) directly in the overlay.
-Expandable Interface: Toggle between a compact view with icon-only buttons and an expanded view with full-text buttons.
-Real-time Updates: The overlay updates in real-time as artifacts are selected or deselected.
+### 6. User Interface
+- Responsive design for all devices
+- Dark/Light mode support
+- Intuitive navigation system
+- Real-time loading indicators
+- Enhanced error handling and feedback
+- Persistent selection overlay
 
 ## Installation
 
-To run the Alix application locally, follow these steps:
-
 1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/Alix-MVP.git
-   ```
-2. Navigate to the project directory:
-   ```
-   cd Alix-MVP
-   ```
-3. Install the dependencies:
-   ```
-   npm install
-   ```
-4. Set up the environment variables:
-   - Create a `.env` file in the project root.
-   - Add the necessary environment variables:
-     ```
-     REACT_APP_MORALIS_API_KEY=your_moralis_api_key
-     ```
-5. Start the development server:
-   ```
-   npm start
-   ```
-6. Open your browser and visit `http://localhost:3000` to access the Alix application.
+```bash
+git clone https://github.com/yourusername/Alix-MVP.git
+```
 
-## Technologies Used
+2. Navigate to project directory:
+```bash
+cd Alix-MVP
+```
 
-- React: JavaScript library for building user interfaces
-- Chakra UI: UI component library for React
-- Moralis: Web3 development platform for blockchain data access and user authentication
-- Axios: Promise-based HTTP client for making API requests
-- react-router-dom: Routing library for React applications
-- react-icons: Icon library for React applications
+3. Install dependencies:
+```bash
+npm install
+```
+
+4. Set up environment variables:
+```bash
+REACT_APP_MORALIS_API_KEY=your_moralis_api_key
+```
+
+5. Start development server:
+```bash
+npm start
+```
 
 ## Project Structure
-
-The project structure is as follows:
 ```
 src/
-  components/
+  components/             # React components
     AdminPage.js
     ArtifactDetailPage.js
-    CatalogPage.js
     CatalogViewPage.js
     ErrorBoundary.js
     HomePage.js
@@ -125,23 +92,38 @@ src/
     MenuModal.js
     NFTCard.js
     NFTGrid.js
+    WalletNFTGrid.js     # New component for wallet-specific NFT display
     ProfilePage.js
     SelectedArtifactsOverlay.js
     UserProfile.js
     WalletManager.js
     WelcomePage.js
-  context/
+  context/               # React context (legacy)
     AppContext.js
-  hooks/
+  hooks/                 # Custom React hooks
     useColorMode.js
     useResponsive.js
-  utils/
-    logger.js
-    web3Utils.js
-    toastUtils.js
+  redux/                 # Redux state management
+    actions/             # Redux actions
+    slices/             # Redux toolkit slices
+      catalogSlice.js
+      nftSlice.js
+      userSlice.js
+      walletSlice.js
+    thunks/             # Async action creators
+      walletThunks.js
+    store.js
+    selectors/          # Redux selectors
+      nftSelectors.js
+  utils/                # Utility functions
     errorUtils.js
+    logger.js
     nftUtils.js
-  styles/
+    serializationUtils.js
+    toastUtils.js
+    web3Utils.js
+    zoraUtils.js
+  styles/               # Styling utilities
     commonStyles.js
   App.js
   global.css
@@ -149,67 +131,119 @@ src/
   index.css
   index.js
   polyfills.js
-public/
-  index.html
-.env
-config-overrides.js
-package.json
-README.md
 ```
 
-## Component Breakdown
+## Technologies Used
 
-- `App.js`: The main component that manages the application state and routing between different pages.
-- `HomePage.js`: Shows a dashboard with quick actions and overview of the user's NFTs and catalogs.
-- `LibraryPage.js`: The main page for viewing and managing NFT collections. It includes filtering options, catalog creation, and bulk actions.
-- `ProfilePage.js`: Allows users to manage their profile and connected wallets.
-- `NFTGrid.js`: Displays a grid of NFTs, used within the LibraryPage component.
-- `NFTCard.js`: Represents an individual NFT card within the NFTGrid, showing NFT details and actions.
-- `CatalogViewPage.js`: Displays the contents of a specific catalog and allows for NFT management within that catalog.
-- `WalletManager.js`: Manages the connection and configuration of user wallets, including ENS resolution.
-- `ArtifactDetailPage.js`: Provides a detailed view of individual NFTs, including metadata, attributes, and high-resolution images.
+- **React**: Frontend library
+- **Redux Toolkit**: State management
+- **Redux Thunk**: Async action handling
+- **Chakra UI**: Component library
+- **Moralis**: Web3 development platform
+- **Axios**: HTTP client
+- **Ethers.js**: Ethereum library
+- **React Router**: Navigation
+- **React Icons**: Icon library
 
-## Recent Developments
+## Component Architecture
 
-- Implemented centralized state management using React Context (AppContext).
-- Added a custom color mode hook for consistent theming across components.
-- Created utility functions for common toast notifications and error handling.
-- Optimized NFT filtering and sorting logic with memoization.
-- Improved spam marking functionality with automatic updates to spam counts and catalog.
-- Enhanced the user interface for a more intuitive catalog management experience.
-- Implemented custom hooks for responsive design patterns.
-- Added support for rendering SVG images in both the NFT grid and detailed artifact view.
+### Key Components and Responsibilities
 
-## Utils and Hooks
+1. **LibraryPage**
+- Main container for NFT display
+- Manages wallet and catalog views
+- Handles NFT selection and bulk operations
+- Integrates with Redux for state management
 
-- `web3Utils.js`: Contains utility functions for interacting with web3, including NFT fetching, ENS resolution, and network management.
-- `logger.js`: Provides logging functionality for better debugging and error tracking.
-- `toastUtils.js`: Centralizes toast notification logic for consistent user feedback.
-- `errorUtils.js`: Provides centralized error handling functions.
-- `nftUtils.js`: Contains utility functions for NFT filtering and sorting.
-- `useColorMode.js`: Custom hook for managing color mode across the application.
-- `useResponsive.js`: Custom hook for managing responsive design patterns.
+2. **WalletNFTGrid**
+- Dedicated component for wallet-specific NFT display
+- Handles Redux integration for NFT data
+- Manages NFT filtering and sorting per wallet
+- Optimized rendering for large NFT collections
 
-## Configuration
+3. **NFTGrid**
+- Generic grid display component
+- Handles layout and presentation
+- Supports both ERC-721 and ERC-1155 display
+- Network-aware display capabilities
 
-- `config-overrides.js`: Contains webpack configuration overrides for handling polyfills and environment variables.
-- `polyfills.js`: Provides necessary polyfills for browser compatibility.
-
-## Moralis API Integration
-
-This project uses the Moralis API for fetching NFTs and resolving ENS domains. To set up the Moralis API:
-
-1. Sign up for a Moralis account at [https://moralis.io/](https://moralis.io/)
-2. Create a new API key in your Moralis dashboard
-3. Add the API key to your `.env` file:
-
+### Enhanced Redux Store Structure
+```javascript
+{
+  wallets: {
+    list: [],
+    isLoading: false,
+    error: null
+  },
+  nfts: {
+    byWallet: {
+      [walletId]: {
+        [network]: {
+          ERC721: [], // Array of ERC-721 tokens
+          ERC1155: [] // Array of ERC-1155 tokens with balances
+        }
+      }
+    },
+    networksByWallet: {}, // Tracks active networks per wallet
+    allIds: [], // Unique identifier tracking
+    balances: {}, // ERC-1155 balance tracking
+    isLoading: false,
+    error: null
+  },
+  catalogs: {
+    list: [], // Includes system catalogs (e.g., Spam) and user catalogs
+    isLoading: false,
+    error: null
+  },
+  user: {
+    profile: {},
+    preferences: {}
+  }
+}
 ```
-REACT_APP_MORALIS_API_KEY=your_moralis_api_key
+
+### Redux Selectors
+```javascript
+// NFT Selectors
+const walletNFTs = useSelector(selectFlattenedWalletNFTs);
+const totalNFTs = useSelector(selectTotalNFTs);
+const spamNFTs = useSelector(selectTotalSpamNFTs);
+
+// Catalog Selectors
+const catalogs = useSelector(selectAllCatalogs);
+const userCatalogs = useSelector(selectUserCatalogs);
+```
+
+### Component Integration
+```javascript
+// Proper hooks usage in components
+const WalletNFTGrid = ({ walletId }) => {
+  const nfts = useSelector(state => selectFlattenedWalletNFTs(state, walletId));
+  // Component logic
+};
+
+// Library page integration
+const LibraryPage = () => {
+  const wallets = useSelector(selectAllWallets);
+  // Render WalletNFTGrid for each wallet
+};
+```
+
+### Redux Integration Example
+```javascript
+// Selecting data
+const wallets = useSelector(state => state.wallets.list);
+const nfts = useSelector(selectNFTsByWallet);
+
+// Dispatching actions
+dispatch(addWallet(newWallet));
+dispatch(updateNFT({ walletId, nft }));
+
+// Async operations
+dispatch(fetchWalletNFTs({ walletId, address, networks }));
 ```
 
 ## Supported Networks
-
-The application supports multiple blockchain networks, including:
 
 - Ethereum (ETH)
 - Polygon (MATIC)
@@ -217,54 +251,53 @@ The application supports multiple blockchain networks, including:
 - Arbitrum
 - Base
 - Optimism
-- Linea
 - Avalanche (AVAX)
 - Fantom (FTM)
-- Cronos
-- Palm
-- Ronin
-- Gnosis
-- Chiliz
-- PulseChain
-- Moonbeam
-- Moonriver
-- Blast
-- zkSync
-- Mantle
-- Polygon zkEVM
-- ZetaChain
 - Solana
+- Additional L2 networks
 
-This list is based on the `networks` array in `src/utils/web3Utils.js`. The application uses Moralis API to interact with these networks, ensuring broad coverage of the blockchain ecosystem.
+## Recent Developments
 
-To add support for additional networks:
+- Implemented Redux state management
+- Added support for ERC-1155 tokens
+- Enhanced network detection
+- Improved error handling
+- Added serialization utilities
+- Enhanced wallet management
+- Implemented proper async operations
+- Added comprehensive selectors
+- Improved performance optimizations
 
-1. Update the `networks` array in `src/utils/web3Utils.js`
-2. Ensure that the Moralis API supports the new network
-3. Update the UI components to include the new network options where applicable
+## Future Development Plans
 
-Please note that the availability of NFTs and specific features may vary depending on the network and its compatibility with the Moralis API.
+- Implement metadata caching
+- Add additional token standards
+- Enhance network auto-switching
+- Implement batch operations
+- Add L2 network support
+- Improve error recovery
+- Add data persistence
+- Enhance mobile experience
 
 ## Contributing
 
-Contributions to the Alix project are welcome! If you find any bugs, have feature requests, or want to contribute improvements, please open an issue or submit a pull request on the GitHub repository.
-
-When contributing, please follow the existing code style and conventions, and make sure to test your changes thoroughly.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-
-## Acknowledgements
-
-- [Moralis](https://moralis.io/) for providing the Web3 API and development platform.
-- [Chakra UI](https://chakra-ui.com/) for the UI component library.
-- [Anthropic](https://www.anthropic.com) and their AI assistant Claude for providing technical guidance and contributions throughout the development process.
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
 
 ## Contact
-
-If you have any questions, suggestions, or feedback, please feel free to reach out to the project maintainer:
 
 - Name: Rudini
 - Email: 0xrudini@gmail.com
 - GitHub: [0xrudi](https://github.com/0xrudini)
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Acknowledgements
+
+- [Moralis](https://moralis.io/) - Web3 development platform
+- [Chakra UI](https://chakra-ui.com/) - UI components
+- [Anthropic](https://www.anthropic.com) - Technical guidance through Claude
