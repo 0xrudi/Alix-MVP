@@ -5,51 +5,95 @@ Alix is a comprehensive Web3 artifact management system designed to help users o
 ## Features
 
 ### 1. Multi-Chain Wallet Management
-- Connect and manage wallets from various blockchain networks (Ethereum, Polygon, BSC, Solana, etc.)
-- ENS and Unstoppable Domains support with enhanced resolution capabilities
-- Base domain support (.base.eth) with proper registry integration
-- Automatic network detection for NFT holdings
-- Custom wallet nicknames for easy identification
-- Unified wallet management across all supported networks
+* Connect and manage wallets from various blockchain networks (Ethereum, Polygon, BSC, Solana, etc.)
+* ENS and Unstoppable Domains support with enhanced resolution capabilities
+* Advanced Base domain support (.base.eth) with proper registry integration and checksum handling
+* Robust address validation and normalization across different networks
+* Automatic network detection for NFT holdings with improved accuracy
+* Custom wallet nicknames for easy identification
+* Unified wallet management across all supported networks
 
 ### 2. Comprehensive Artifact Library
-- Multi-Network NFT Display in a unified interface
-- Support for both ERC-721 and ERC-1155 token standards
-- Token balance tracking for ERC-1155 NFTs
-- Detailed artifact information (metadata, contract address, token ID)
-- Advanced sorting and filtering options
-- Network-specific NFT organization
-- Collapsible wallet sections for better organization
+* Multi-Network NFT Display in a unified interface
+* Enhanced support for both ERC-721 and ERC-1155 token standards
+* Advanced token balance tracking for ERC-1155 NFTs
+* Deduplication system to prevent duplicate NFT displays
+* Detailed artifact information (metadata, contract address, token ID)
+* Advanced sorting and filtering options with real-time updates
+* Network-specific NFT organization with collapsible sections
+* Improved metadata handling and display
 
 ### 3. Spam Detection and Management
-- Automatic spam detection via Moralis API
-- Manual spam marking/unmarking capabilities
-- Dedicated spam folder with management features
-- Spam statistics and tracking
-- Bulk spam management operations
+* Enhanced automatic spam detection via Moralis API
+* Improved manual spam marking/unmarking capabilities
+* Dedicated spam folder with advanced management features
+* Real-time spam statistics and tracking
+* Bulk spam management operations
+* Automatic spam synchronization across views
 
 ### 4. Catalog System
-- Create and manage custom NFT collections
-- Flexible NFT organization across networks
-- Catalog statistics and overview
-- Bulk operations for catalog management
-- Cross-network catalog support
+* Create and manage custom NFT collections with improved organization
+* Enhanced cross-network artifact support
+* Catalog statistics and overview with real-time updates
+* Efficient bulk operations for catalog management
+* Improved artifact selection and management interface
+* Better catalog state persistence
 
 ### 5. Redux State Management
-- Centralized state management with Redux Toolkit
-- Efficient data access with selectors
-- Async operations handling with Redux Thunk
-- Proper serialization of blockchain data
-- Network-specific state organization
-- Support for complex data structures
+* Centralized state management with Redux Toolkit
+* Optimized data access with memoized selectors
+* Enhanced async operations handling with Redux Thunk
+* Robust serialization of blockchain data
+* Network-specific state organization
+* Support for complex data structures
+* Improved error handling and state recovery
+* Enhanced performance through proper state normalization
 
 ### 6. User Interface
-- Responsive design for all devices
-- Dark/Light mode support
-- Intuitive navigation system
-- Real-time loading indicators
-- Enhanced error handling and feedback
-- Persistent selection overlay
+* Responsive design for all devices
+* Dark/Light mode support
+* Intuitive navigation system
+* Real-time loading indicators
+* Enhanced error handling and user feedback
+* Persistent selection overlay
+* Improved grid/list view options
+
+## Recent Improvements
+
+### State Management
+* Implemented robust NFT deduplication system
+* Enhanced Redux state management with proper normalization
+* Improved selector performance with memoization
+* Added better error handling and recovery
+* Enhanced async operation management
+
+### Network Support
+* Added robust Base network support with proper address handling
+* Improved network detection and validation
+* Enhanced multi-network artifact management
+* Better handling of network-specific quirks
+* Improved cross-network compatibility
+
+### Data Handling
+* Enhanced serialization for blockchain data
+* Improved address validation and normalization
+* Better handling of ERC-1155 token balances
+* Enhanced metadata processing and display
+* Improved spam detection and management
+
+### Performance
+* Optimized NFT loading and display
+* Improved state updates and re-renders
+* Enhanced selector performance
+* Better memory management
+* Reduced duplicate data storage
+
+### Error Handling
+* Improved error recovery mechanisms
+* Enhanced user feedback for errors
+* Better logging and debugging capabilities
+* Improved error boundary implementation
+* More robust error state management
 
 ## Installation
 
@@ -135,37 +179,37 @@ src/
 
 ## Technologies Used
 
-- **React**: Frontend library
-- **Redux Toolkit**: State management
-- **Redux Thunk**: Async action handling
-- **Chakra UI**: Component library
-- **Moralis**: Web3 development platform
-- **Axios**: HTTP client
-- **Ethers.js**: Ethereum library
-- **React Router**: Navigation
-- **React Icons**: Icon library
+* **React**: Frontend library
+* **Redux Toolkit**: State management
+* **Redux Thunk**: Async action handling
+* **Chakra UI**: Component library
+* **Moralis**: Web3 development platform
+* **Axios**: HTTP client
+* **Ethers.js**: Ethereum library
+* **React Router**: Navigation
+* **React Icons**: Icon library
 
 ## Component Architecture
 
 ### Key Components and Responsibilities
 
-1. **LibraryPage**
-- Main container for NFT display
-- Manages wallet and catalog views
-- Handles NFT selection and bulk operations
-- Integrates with Redux for state management
+#### 1. LibraryPage
+* Main container for NFT display
+* Manages wallet and catalog views
+* Handles NFT selection and bulk operations
+* Integrates with Redux for state management
 
-2. **WalletNFTGrid**
-- Dedicated component for wallet-specific NFT display
-- Handles Redux integration for NFT data
-- Manages NFT filtering and sorting per wallet
-- Optimized rendering for large NFT collections
+#### 2. WalletNFTGrid
+* Dedicated component for wallet-specific NFT display
+* Handles Redux integration for NFT data
+* Manages NFT filtering and sorting per wallet
+* Optimized rendering for large NFT collections
 
-3. **NFTGrid**
-- Generic grid display component
-- Handles layout and presentation
-- Supports both ERC-721 and ERC-1155 display
-- Network-aware display capabilities
+#### 3. NFTGrid
+* Generic grid display component
+* Handles layout and presentation
+* Supports both ERC-721 and ERC-1155 display
+* Network-aware display capabilities
 
 ### Enhanced Redux Store Structure
 ```javascript
@@ -201,6 +245,7 @@ src/
   }
 }
 ```
+
 
 ### Redux Selectors
 ```javascript
@@ -268,16 +313,24 @@ dispatch(fetchWalletNFTs({ walletId, address, networks }));
 - Added comprehensive selectors
 - Improved performance optimizations
 
-## Future Development Plans
+## Next Steps
 
-- Implement metadata caching
-- Add additional token standards
-- Enhance network auto-switching
-- Implement batch operations
-- Add L2 network support
-- Improve error recovery
-- Add data persistence
-- Enhance mobile experience
+### Immediate Priorities
+* Further enhance Base network support
+* Implement additional network optimizations
+* Improve artifact deduplication system
+* Enhance spam detection accuracy
+* Optimize selector performance
+
+### Future Development Plans
+* Implement metadata caching
+* Add additional token standards
+* Enhance network auto-switching
+* Expand batch operations
+* Add more L2 network support
+* Further improve error recovery
+* Add data persistence
+* Enhance mobile experience
 
 ## Contributing
 

@@ -1,6 +1,5 @@
-// src/components/CatalogViewPage.js
-
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 import { 
   Box, 
   Heading, 
@@ -24,6 +23,7 @@ import {
 import { FaList, FaThLarge, FaChevronDown, FaChevronUp, FaSearch } from 'react-icons/fa';
 import NFTCard from './NFTCard';
 import ListViewItem from './ListViewItem';
+import { selectCatalogNFTs, selectCatalogCount } from '../redux/slices/catalogSlice';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 
 const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam }) => {
@@ -32,12 +32,23 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
   const [isListView, setIsListView] = useState(true);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const catalogNFTs = useSelector(state => selectCatalogNFTs(state, catalog.id)) || [];
+  const nftCount = useSelector(state => selectCatalogCount(state, catalog.id));
   const toast = useToast();
+
+  const filteredNFTs = catalogNFTs.filter(nft => 
+    nft && (
+      nft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      nft.id?.tokenId?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
 
   const handleNFTSelect = (nft) => {
     setSelectedNFTs(prev => 
-      prev.some(item => item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address)
-        ? prev.filter(item => item.id?.tokenId !== nft.id?.tokenId || item.contract?.address !== nft.contract?.address)
+      prev.some(item => item.id?.tokenId === nft.id?.tokenId && 
+                       item.contract?.address === nft.contract?.address)
+        ? prev.filter(item => item.id?.tokenId !== nft.id?.tokenId || 
+                            item.contract?.address !== nft.contract?.address)
         : [...prev, nft]
     );
   };
@@ -54,20 +65,13 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
     });
   };
 
-  const filteredNFTs = catalog.nfts.filter(nft => 
-    nft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    nft.id?.tokenId?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const isSpamCatalog = catalog.name === "Spam";
-
   return (
     <StyledContainer>
       <Flex justify="space-between" align="center" mb={6}>
         <Heading as="h2" size="xl">{catalog.name}</Heading>
         <StyledButton onClick={onBack}>Back to Catalogs</StyledButton>
       </Flex>
-      <Text mb={4}>{filteredNFTs.length} NFTs in this catalog</Text>
+      <Text mb={4}>{nftCount} NFTs in this catalog</Text>
       
       <StyledCard mb={4}>
         <Flex justify="space-between" align="center" mb={2}>
@@ -143,11 +147,14 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
               key={`${nft.contract?.address}-${nft.id?.tokenId}`}
               nft={nft}
               isSelected={selectedNFTs.some(item => 
-                item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address
+                item.id?.tokenId === nft.id?.tokenId && 
+                item.contract?.address === nft.contract?.address
               )}
               onSelect={() => handleNFTSelect(nft)}
-              onRemove={isSpamCatalog ? () => onUnmarkSpam(nft) : () => onRemoveNFTs([nft])}
-              isSpamFolder={isSpamCatalog}
+              onRemove={catalog.id === 'spam' ? 
+                () => onUnmarkSpam(nft) : 
+                () => onRemoveNFTs([nft])}
+              isSpamFolder={catalog.id === 'spam'}
             />
           ))}
         </VStack>
@@ -158,12 +165,15 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
               key={`${nft.contract?.address}-${nft.id?.tokenId}`}
               nft={nft}
               isSelected={selectedNFTs.some(item => 
-                item.id?.tokenId === nft.id?.tokenId && item.contract?.address === nft.contract?.address
+                item.id?.tokenId === nft.id?.tokenId && 
+                item.contract?.address === nft.contract?.address
               )}
               onSelect={() => handleNFTSelect(nft)}
-              onRemove={isSpamCatalog ? () => onUnmarkSpam(nft) : () => onRemoveNFTs([nft])}
+              onRemove={catalog.id === 'spam' ? 
+                () => onUnmarkSpam(nft) : 
+                () => onRemoveNFTs([nft])}
               cardSize={cardSize}
-              isSpamFolder={isSpamCatalog}
+              isSpamFolder={catalog.id === 'spam'}
             />
           ))}
         </SimpleGrid>
