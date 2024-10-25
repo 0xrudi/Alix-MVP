@@ -43,10 +43,12 @@ import { useErrorHandler } from '../utils/errorUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
-import { addCatalog, updateCatalog, removeCatalog, setCatalogs, selectAllCatalogs } from '../redux/slices/catalogSlice';
-import { fetchNFTsStart, fetchNFTsSuccess, fetchNFTsFailure, updateNFT, selectTotalNFTs, selectTotalSpamNFTs, selectNFTStructure, selectFlattenedWalletNFTs } from '../redux/slices/nftSlice';
+import { addCatalog, updateCatalog, removeCatalog, setCatalogs, selectAllCatalogs, updateSpamCatalog } from '../redux/slices/catalogSlice';
+import { fetchNFTsStart, fetchNFTsSuccess, fetchNFTsFailure, updateNFT, selectTotalNFTs, selectTotalSpamNFTs, selectNFTStructure, selectFlattenedWalletNFTs, selectSpamNFTs } from '../redux/slices/nftSlice';
 import debounce from 'lodash/debounce';
 import WalletNFTGrid from './WalletNFTGrid';
+import CatalogCard from './catalogCard';
+import { fetchWalletNFTs } from '../redux/thunks/walletThunks'
 
 const LibraryPage = () => {
   const dispatch = useDispatch();
@@ -81,6 +83,20 @@ const LibraryPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    try {
+      if (Array.isArray(spamNFTs)) {
+        dispatch(updateSpamCatalog(spamNFTs));
+      } else {
+        console.warn('spamNFTs is not an array:', spamNFTs);
+        dispatch(updateSpamCatalog([]));
+      }
+    } catch (error) {
+      console.error('Error updating spam catalog:', error);
+      dispatch(updateSpamCatalog([]));
+    }
+  }, [dispatch, spamNFTs]);
+
+  useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
     if (tab === 'nfts') setActiveTab(0);
@@ -111,8 +127,15 @@ const LibraryPage = () => {
   }, []);
 
   const handleMarkAsSpam = useCallback((walletId, nft) => {
-    dispatch(updateNFT({ walletId, nft: { ...nft, isSpam: !nft.isSpam } }));
-    showInfoToast(`Marked NFT as ${nft.isSpam ? 'Not Spam' : 'Spam'}`, `The NFT has been ${nft.isSpam ? 'removed from' : 'moved to'} the Spam folder.`);
+    dispatch(updateNFT({ 
+      walletId, 
+      nft: { ...nft, isSpam: !nft.isSpam } 
+    }));
+    
+    showInfoToast(
+      `Marked NFT as ${nft.isSpam ? 'Not Spam' : 'Spam'}`,
+      `The NFT has been ${nft.isSpam ? 'removed from' : 'moved to'} the Spam folder.`
+    );
   }, [dispatch, showInfoToast]);
 
   const handleWalletToggle = useCallback((walletId) => {
@@ -165,33 +188,41 @@ const LibraryPage = () => {
     setViewingCatalog(catalog);
   }, []);
 
-  const handleRefreshNFTs = async () => {
-    setIsRefreshing(true);
-    setRefreshProgress(0);
-    dispatch(fetchNFTsStart());
+const handleRefreshNFTs = async () => {
+  setIsRefreshing(true);
+  setRefreshProgress(0);
   
-    let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
-    let completedFetches = 0;
-  
-    for (const wallet of wallets) {
-      for (const networkValue of wallet.networks) {
-        try {
-          const { nfts: networkNfts } = await fetchNFTs(wallet.address, networkValue);
-          dispatch(fetchNFTsSuccess({ walletId: wallet.id, networkValue, nfts: networkNfts }));
-          
-          completedFetches++;
-          setRefreshProgress((completedFetches / totalFetches) * 100);
-        } catch (error) {
-          handleError(error, `fetching NFTs for ${wallet.address} on ${networkValue}`);
-          dispatch(fetchNFTsFailure({ walletId: wallet.id, networkValue, error: error.message }));
-          showErrorToast("NFT Fetch Error", `Failed to fetch NFTs for ${wallet.nickname || wallet.address} on ${networkValue}. Please try again later.`);
-        }
+  let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
+  let completedFetches = 0;
+
+  for (const wallet of wallets) {
+    try {
+      const result = await dispatch(fetchWalletNFTs({
+        walletId: wallet.id,
+        address: wallet.address,
+        networks: wallet.networks
+      })).unwrap();
+
+      if (result.hasNewNFTs) {
+        showSuccessToast(
+          "New NFTs Found", 
+          `Found new or updated NFTs for ${wallet.nickname || wallet.address}`
+        );
       }
+      
+      completedFetches++;
+      setRefreshProgress((completedFetches / totalFetches) * 100);
+    } catch (error) {
+      handleError(error, `refreshing NFTs for ${wallet.address}`);
     }
-  
-    setIsRefreshing(false);
-    showSuccessToast("NFTs Refreshed", "Your NFTs have been refreshed and categorized.");
-  };
+  }
+
+  setIsRefreshing(false);
+  showSuccessToast(
+    "Refresh Complete", 
+    "Your NFT collection has been updated."
+  );
+};
 
   const filteredCatalogs = useMemo(() => 
     catalogs.filter(catalog => 
@@ -353,29 +384,13 @@ const LibraryPage = () => {
             <TabPanel>
               <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing="1rem">
                 {filteredCatalogs.map((catalog) => (
-                  <StyledCard key={catalog.id}>
-                    <Heading as="h4" size="sm">{catalog.name}</Heading>
-                    <Text>{catalog.nftIds ? catalog.nftIds.length : 0} Artifacts</Text>
-                    <HStack mt="0.5rem">
-                      <StyledButton size="sm" onClick={() => handleOpenCatalog(catalog)}>
-                        View
-                      </StyledButton>
-                      {!catalog.isSystem && ( // Don't show edit/delete for system catalogs
-                        <>
-                          <StyledButton size="sm" onClick={() => handleOpenCatalog(catalog)}>
-                            Edit
-                          </StyledButton>
-                          <StyledButton 
-                            size="sm" 
-                            colorScheme="red" 
-                            onClick={() => handleDeleteCatalog(catalog.id)}
-                          >
-                            Delete
-                          </StyledButton>
-                        </>
-                      )}
-                    </HStack>
-                  </StyledCard>
+                  <CatalogCard
+                    key={catalog.id}
+                    catalog={catalog}
+                    onView={() => handleOpenCatalog(catalog)}
+                    onEdit={() => handleOpenCatalog(catalog)}
+                    onDelete={() => handleDeleteCatalog(catalog.id)}
+                  />
                 ))}
               </SimpleGrid>
             </TabPanel>

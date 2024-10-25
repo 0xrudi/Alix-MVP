@@ -1,6 +1,66 @@
-// src/redux/slices/nftSlice.js
 import { createSlice } from '@reduxjs/toolkit';
-import { serializeNFT } from '../../utils/serializationUtils';
+import { serializeNFT, serializeAddress } from '../../utils/serializationUtils';
+import { logger } from '../../utils/logger';
+
+const safeCompareAddresses = (addr1, addr2) => {
+  try {
+    const serialized1 = serializeAddress(addr1);
+    const serialized2 = serializeAddress(addr2);
+    return serialized1 && serialized2 && serialized1 === serialized2;
+  } catch (error) {
+    logger.error('Error comparing addresses:', error);
+    return false;
+  }
+};
+
+const isSameNFT = (nft1, nft2) => {
+  try {
+    if (!nft1 || !nft2) return false;
+    
+    const tokenId1 = nft1.id?.tokenId?.toString();
+    const tokenId2 = nft2.id?.tokenId?.toString();
+    
+    return tokenId1 === tokenId2 && 
+           safeCompareAddresses(nft1.contract?.address, nft2.contract?.address) &&
+           nft1.network === nft2.network;
+  } catch (error) {
+    logger.error('Error comparing NFTs:', error, { nft1, nft2 });
+    return false;
+  }
+};
+
+const mergeNFTArrays = (existing = [], incoming = []) => {
+  const merged = [...existing];
+  let addedCount = 0;
+  let updatedCount = 0;
+  
+  incoming.forEach(newNFT => {
+    try {
+      const serializedNewNFT = serializeNFT(newNFT);
+      if (!serializedNewNFT) return;
+
+      const existingIndex = merged.findIndex(existing => isSameNFT(existing, serializedNewNFT));
+      
+      if (existingIndex === -1) {
+        merged.push(serializedNewNFT);
+        addedCount++;
+      } else {
+        // Preserve existing data and update with new data
+        merged[existingIndex] = {
+          ...merged[existingIndex],
+          ...serializedNewNFT,
+          isSpam: merged[existingIndex].isSpam || serializedNewNFT.isSpam,
+        };
+        updatedCount++;
+      }
+    } catch (error) {
+      logger.error('Error processing NFT in merge:', error, newNFT);
+    }
+  });
+
+  logger.log('Merge results:', { addedCount, updatedCount });
+  return merged;
+};
 
 const nftSlice = createSlice({
   name: 'nfts',
@@ -54,22 +114,26 @@ const nftSlice = createSlice({
 
     updateNFT: (state, action) => {
       const { walletId, nft } = action.payload;
-      const network = nft.network || 'unknown';
-      const tokenStandard = nft.contract?.type === 'ERC1155' ? 'ERC1155' : 'ERC721';
-
-      if (state.byWallet[walletId]?.[network]?.[tokenStandard]) {
-        const index = state.byWallet[walletId][network][tokenStandard]
-          .findIndex(n => n.id.tokenId === nft.id.tokenId && n.contract.address === nft.contract.address);
+      const network = nft.network;
+      const type = nft.contract?.type === 'ERC1155' ? 'ERC1155' : 'ERC721';
+      
+      if (state.byWallet[walletId]?.[network]?.[type]) {
+        const index = state.byWallet[walletId][network][type]
+          .findIndex(n => isSameNFT(n, nft));
         
         if (index !== -1) {
-          state.byWallet[walletId][network][tokenStandard][index] = serializeNFT(nft);
-
-          // Update balance for ERC1155
-          if (tokenStandard === 'ERC1155') {
-            state.balances[walletId] = state.balances[walletId] || {};
-            state.balances[walletId][nft.id.tokenId] = state.balances[walletId][nft.id.tokenId] || {};
-            state.balances[walletId][nft.id.tokenId][nft.contract.address] = parseInt(nft.balance || '1');
-          }
+          state.byWallet[walletId][network][type][index] = {
+            ...state.byWallet[walletId][network][type][index],
+            ...nft
+          };
+          
+          logger.log('Updated NFT:', {
+            walletId,
+            network,
+            type,
+            nftId: nft.id?.tokenId,
+            isSpam: nft.isSpam
+          });
         }
       }
     },
@@ -103,49 +167,64 @@ const nftSlice = createSlice({
     fetchNFTsSuccess: (state, action) => {
       const { walletId, networkValue, nfts } = action.payload;
       
-      // Initialize wallet and network structures
-      if (!state.networksByWallet[walletId]) {
-        state.networksByWallet[walletId] = [];
-      }
-      if (!state.networksByWallet[walletId].includes(networkValue)) {
-        state.networksByWallet[walletId].push(networkValue);
-      }
-
-      if (!state.byWallet[walletId]) {
-        state.byWallet[walletId] = {};
-      }
-      if (!state.byWallet[walletId][networkValue]) {
-        state.byWallet[walletId][networkValue] = {
-          ERC721: [],
-          ERC1155: []
-        };
-      }
-
-      // Process and store NFTs
-      nfts.forEach(nft => {
-        const serializedNft = serializeNFT({
-          ...nft,
-          network: networkValue
+      try {
+        logger.log('Processing NFTs update:', { 
+          walletId, 
+          networkValue, 
+          incomingCounts: {
+            ERC721: nfts.ERC721?.length || 0,
+            ERC1155: nfts.ERC1155?.length || 0
+          }
         });
-        const tokenStandard = nft.contract?.type === 'ERC1155' ? 'ERC1155' : 'ERC721';
-        
-        state.byWallet[walletId][networkValue][tokenStandard].push(serializedNft);
-        
-        // Handle ERC1155 balances
-        if (tokenStandard === 'ERC1155') {
-          if (!state.balances[walletId]) {
-            state.balances[walletId] = {};
-          }
-          if (!state.balances[walletId][nft.id.tokenId]) {
-            state.balances[walletId][nft.id.tokenId] = {};
-          }
-          state.balances[walletId][nft.id.tokenId][nft.contract.address] = 
-            parseInt(nft.balance || '1');
-        }
-      });
 
-      state.allIds = [...new Set([...state.allIds, ...nfts.map(nft => nft.id)])];
-      state.isLoading = false;
+        // Initialize structures if needed
+        if (!state.byWallet[walletId]) {
+          state.byWallet[walletId] = {};
+        }
+        if (!state.byWallet[walletId][networkValue]) {
+          state.byWallet[walletId][networkValue] = {
+            ERC721: [],
+            ERC1155: []
+          };
+        }
+
+        // Process ERC721 tokens
+        if (nfts.ERC721?.length > 0) {
+          const processedERC721 = nfts.ERC721.map(nft => ({
+            ...serializeNFT(nft),
+            network: networkValue
+          })).filter(Boolean);
+
+          state.byWallet[walletId][networkValue].ERC721 = 
+            mergeNFTArrays(state.byWallet[walletId][networkValue].ERC721, processedERC721);
+        }
+
+        // Process ERC1155 tokens
+        if (nfts.ERC1155?.length > 0) {
+          const processedERC1155 = nfts.ERC1155.map(nft => ({
+            ...serializeNFT(nft),
+            network: networkValue
+          })).filter(Boolean);
+
+          state.byWallet[walletId][networkValue].ERC1155 = 
+            mergeNFTArrays(state.byWallet[walletId][networkValue].ERC1155, processedERC1155);
+        }
+
+        // Update network tracking
+        if (!state.networksByWallet[walletId]) {
+          state.networksByWallet[walletId] = [];
+        }
+        if (!state.networksByWallet[walletId].includes(networkValue)) {
+          state.networksByWallet[walletId].push(networkValue);
+        }
+
+        state.isLoading = false;
+        state.error = null;
+
+      } catch (error) {
+        logger.error('Error processing NFTs:', error);
+        state.error = error.message;
+      }
     },
 
     fetchNFTsFailure: (state, action) => {
@@ -176,13 +255,18 @@ export const selectWalletNetworks = (state, walletId) =>
   state.nfts.networksByWallet[walletId] || [];
 
 export const selectTotalNFTs = (state) => {
-  return Object.values(state.nfts.byWallet).reduce((walletAcc, walletNfts) => {
-    return walletAcc + Object.values(walletNfts).reduce((networkAcc, networkNfts) => {
-      return networkAcc + 
-        (networkNfts.ERC721?.length || 0) + 
-        (networkNfts.ERC1155?.length || 0);
-    }, 0);
-  }, 0);
+    try {
+      return Object.values(state.nfts.byWallet).reduce((walletTotal, walletNfts) => {
+        return walletTotal + Object.values(walletNfts).reduce((networkTotal, networkNfts) => {
+          return networkTotal + 
+            (networkNfts.ERC721?.length || 0) + 
+            (networkNfts.ERC1155?.length || 0);
+        }, 0);
+      }, 0);
+    } catch (error) {
+      logger.error('Error calculating total NFTs:', error);
+      return 0;
+    }
 };
 
 export const selectTotalSpamNFTs = (state) => {
@@ -235,9 +319,48 @@ export const selectFlattenedWalletNFTs = (state, walletId) => {
     });
     
     return flattened;
-  };
+};
 
-export const {
+export const selectSpamNFTs = (state) => {
+    if (!state.nfts?.byWallet) {
+      return [];
+    }
+  
+    const allNFTs = [];
+    Object.entries(state.nfts.byWallet).forEach(([walletId, walletNfts]) => {
+      if (!walletNfts) return;
+      
+      Object.entries(walletNfts).forEach(([network, networkNfts]) => {
+        if (!networkNfts) return;
+  
+        const spamERC721 = (networkNfts.ERC721 || [])
+          .filter(nft => nft && nft.isSpam)
+          .map(nft => ({
+            ...nft,
+            walletId,
+            network
+          }));
+  
+        const spamERC1155 = (networkNfts.ERC1155 || [])
+          .filter(nft => nft && nft.isSpam)
+          .map(nft => ({
+            ...nft,
+            walletId,
+            network
+          }));
+  
+        allNFTs.push(...spamERC721, ...spamERC1155);
+      });
+    });
+    
+    return allNFTs;
+};
+
+export const selectNFTsByWalletAndNetwork = (state, walletId, network) => {
+  return state.nfts.byWallet[walletId]?.[network] || { ERC721: [], ERC1155: [] };
+};
+
+export const { 
   fetchNFTsStart,
   fetchNFTsSuccess,
   fetchNFTsFailure,

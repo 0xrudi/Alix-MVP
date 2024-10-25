@@ -4,6 +4,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { getParsedNftAccountsByOwner } from "@nfteyez/sol-rayz";
 import { ethers } from 'ethers';
 import Resolution from '@unstoppabledomains/resolution';
+import { logger } from '../utils/logger';
 
 const MORALIS_API_KEY = process.env.REACT_APP_MORALIS_API_KEY;
 const MAINNET_RPC_URL = 'https://ethereum.publicnode.com';
@@ -47,12 +48,29 @@ export const networks = [
   { value: "optimism", label: "Optimism", chain: "0xa", type: "evm" },
   { value: "avalanche", label: "Avalanche", chain: "0xa86a", type: "evm" },
   { value: "fantom", label: "Fantom", chain: "0xfa", type: "evm" },
+  { value: "base", label: "Base", chain: "0x2105", type: "evm" }, 
   { value: "solana", label: "Solana", chain: "1", type: "solana" },
 ];
 
+export const isValidBaseAddress = (address) => {
+  try {
+    const normalized = normalizeBaseAddress(address);
+    return normalized.length === 42 && normalized.startsWith('0x');
+  } catch {
+    return false;
+  }
+};
+
 export const getChainForNetwork = (networkValue) => {
   const network = networks.find(n => n.value === networkValue);
-  return network ? network.chain : null;
+  if (network) {
+    // Special handling for Base network
+    if (networkValue === 'base') {
+      return '0x2105'; // Base mainnet chain ID
+    }
+    return network.chain;
+  }
+  return null;
 };
 
 export const getNetworkType = (networkValue) => {
@@ -64,6 +82,46 @@ export const fetchNFTs = async (address, network, cursor = null, limit = 100) =>
   const networkType = getNetworkType(network);
 
   if (networkType === 'evm') {
+    if (network === 'base') {
+      try {
+        // Normalize the address for Base network
+        const normalizedAddress = normalizeBaseAddress(address);
+        
+        const response = await Moralis.EvmApi.nft.getWalletNFTs({
+          address: normalizedAddress,
+          chain: getChainForNetwork(network),
+          limit,
+          cursor,
+          normalizeMetadata: true,
+        });
+
+        const nfts = response.result.map(nft => ({
+          id: { tokenId: nft.tokenId },
+          contract: { 
+            address: normalizeBaseAddress(nft.tokenAddress),
+            name: nft.name,
+            symbol: nft.symbol,
+            type: nft.contractType
+          },
+          title: nft.metadata?.name || nft.name || `Token ID: ${nft.tokenId}`,
+          description: nft.metadata?.description || '',
+          media: [{
+            gateway: nft.metadata?.image || nft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
+          }],
+          metadata: nft.metadata || {},
+          isSpam: nft.possibleSpam,
+          network: 'base'
+        }));
+
+        return { 
+          nfts, 
+          cursor: response.pagination.cursor
+        };
+      } catch (error) {
+        logger.error('Error fetching Base NFTs:', error);
+        throw error;
+      }
+    }
     return fetchEVMNFTs(address, network, cursor, limit);
   } else if (networkType === 'solana') {
     return fetchSolanaNFTs(address);
@@ -142,6 +200,19 @@ const fetchSolanaNFTs = async (address) => {
   }
 };
 
+// Add this new utility function for Base address handling
+const normalizeBaseAddress = (address) => {
+  try {
+    // Remove '0x' prefix if it exists
+    const cleanAddress = address.toLowerCase().replace('0x', '');
+    // Add '0x' prefix back and return
+    return `0x${cleanAddress}`;
+  } catch (error) {
+    logger.error('Error normalizing Base address:', error);
+    return address;
+  }
+};
+
 export const getImageUrl = (nft) => {
   const possibleSources = [
     nft.metadata?.image_url,
@@ -178,44 +249,43 @@ export const getImageUrl = (nft) => {
 };
 
 export const resolveENS = async (ensName) => {
-  // Initialize the mainnet provider first
   const mainnetProvider = new ethers.providers.JsonRpcProvider(MAINNET_RPC_URL);
   
   try {
-    // If it's a Base domain
     if (ensName.toLowerCase().endsWith('.base.eth')) {
-      // First resolve the name on Ethereum mainnet to get the controller address
-      const baseRegistryAddress = "0x4E2883Eb808584502326B3EA7b163f9E47a68E5D"; // Base Registry Address
-      const baseRegistryABI = [
-        "function resolve(string name) view returns (address)",
-      ];
-      
-      const baseRegistry = new ethers.Contract(
-        baseRegistryAddress,
-        baseRegistryABI,
-        mainnetProvider
-      );
-
       try {
-        const address = await baseRegistry.resolve(ensName);
-        if (address && address !== ethers.constants.AddressZero) {
-          return { success: true, address, type: 'evm' };
+        const baseRegistryAddress = "0x4E2883Eb808584502326B3EA7b163f9E47a68E5D";
+        const baseRegistryABI = [
+          "function resolve(string name) view returns (address)",
+        ];
+        
+        const baseRegistry = new ethers.Contract(
+          baseRegistryAddress,
+          baseRegistryABI,
+          mainnetProvider
+        );
+
+        const rawAddress = await baseRegistry.resolve(ensName);
+        
+        if (rawAddress && rawAddress !== ethers.constants.AddressZero) {
+          // Use our custom normalization for Base addresses
+          const normalizedAddress = normalizeBaseAddress(rawAddress);
+          return { success: true, address: normalizedAddress, type: 'evm' };
         }
-      } catch (error) {
-        console.error('Error resolving Base domain:', error);
+      } catch (baseError) {
+        logger.error('Error resolving Base domain:', baseError);
       }
     }
 
-    // Try regular ENS resolution on mainnet
+    // Try regular ENS resolution
     const address = await mainnetProvider.resolveName(ensName);
     if (address) {
       return { success: true, address, type: 'evm' };
     }
 
-    // If no resolution found
     return { success: false, message: 'ENS name not found or no address associated' };
   } catch (error) {
-    console.error('Error resolving ENS:', error);
+    logger.error('Error resolving ENS:', error);
     return { success: false, message: error.message || 'Error resolving ENS name' };
   }
 };
