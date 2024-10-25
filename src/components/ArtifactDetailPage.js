@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Heading,
@@ -30,6 +30,7 @@ import {
   ModalBody,
   ModalCloseButton,
   Select,
+  Skeleton,
 } from "@chakra-ui/react";
 import { FaArrowLeft, FaPlus, FaExternalLinkAlt } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -94,15 +95,46 @@ const ArtifactDetailPage = () => {
   const { catalogs, updateCatalogs } = useAppContext();
   const [isAddToCatalogOpen, setIsAddToCatalogOpen] = useState(false);
   const [selectedCatalog, setSelectedCatalog] = useState('');
+  const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
+  const [isLoading, setIsLoading] = useState(true);
 
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadImage = async () => {
+      if (!nft) return;
+
+      try {
+        setIsLoading(true);
+        const url = await getImageUrl(nft);
+        if (mounted) {
+          setImageUrl(url || 'https://via.placeholder.com/400?text=No+Image');
+        }
+      } catch (error) {
+        console.error('Error loading NFT image:', error);
+        if (mounted) {
+          setImageUrl('https://via.placeholder.com/400?text=Error+Loading+Image');
+        }
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadImage();
+
+    return () => {
+      mounted = false;
+    };
+  }, [nft]);
+
   if (!nft) {
     return <Box>No NFT data available</Box>;
   }
-
-  const imageUrl = getImageUrl(nft);
 
   const handleAddToCatalog = () => {
     setIsAddToCatalogOpen(true);
@@ -131,6 +163,43 @@ const ArtifactDetailPage = () => {
     }
   };
 
+  const renderImage = () => {
+    if (isLoading) {
+      return (
+        <Skeleton
+          height="400px"
+          width="100%"
+          margin="auto"
+          mb={6}
+        />
+      );
+    }
+
+    if (typeof imageUrl === 'string' && imageUrl.startsWith('data:image/svg+xml,')) {
+      return (
+        <Box 
+          dangerouslySetInnerHTML={{ __html: decodeURIComponent(imageUrl.split(',')[1]) }} 
+          maxHeight="400px"
+          width="100%"
+          margin="auto"
+          mb={6}
+        />
+      );
+    }
+
+    return (
+      <Image
+        src={imageUrl}
+        alt={nft.title || 'NFT'}
+        maxHeight="400px"
+        objectFit="contain"
+        margin="auto"
+        mb={6}
+        fallbackSrc="https://via.placeholder.com/400?text=Error+Loading+Image"
+      />
+    );
+  };
+
   return (
     <Box maxWidth="container.xl" margin="auto" p={8}>
       <Button leftIcon={<FaArrowLeft />} onClick={() => navigate(-1)} mb={6}>
@@ -142,24 +211,7 @@ const ArtifactDetailPage = () => {
           {nft.title || `Token ID: ${nft.id?.tokenId}`}
         </Heading>
 
-        {imageUrl.startsWith('data:image/svg+xml,') ? (
-            <Box 
-                dangerouslySetInnerHTML={{ __html: decodeURIComponent(imageUrl.split(',')[1]) }} 
-                maxHeight="400px"
-                width="100%"
-                margin="auto"
-                mb={6}
-            />
-        ) : (
-            <Image
-                src={imageUrl}
-                alt={nft.title || 'NFT'}
-                maxHeight="400px"
-                objectFit="contain"
-                margin="auto"
-                mb={6}
-            />
-        )}
+        {renderImage()}
 
         <Text mb={6}>{nft.description || 'No description available.'}</Text>
 
