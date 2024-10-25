@@ -52,6 +52,213 @@ export const networks = [
   { value: "solana", label: "Solana", chain: "1", type: "solana" },
 ];
 
+const isValidImageExtension = (url) => {
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif'];
+  return imageExtensions.some(ext => url.toLowerCase().endsWith(ext));
+};
+
+const isValidMimeType = (contentType) => {
+  const validMimeTypes = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/svg+xml',
+    'image/bmp',
+    'image/avif'
+  ];
+  return validMimeTypes.some(mime => contentType.toLowerCase().includes(mime));
+};
+
+const convertToGatewayUrl = (uri) => {
+  if (!uri) return null;
+
+  logger.debug('[Gateway Conversion] Processing URI:', uri);
+
+  // Handle Arweave protocol - process this first
+  if (uri.startsWith('ar://')) {
+    const hash = uri.replace('ar://', '');
+    const arweaveUrl = `https://arweave.net/${hash}`;
+    logger.debug('[Gateway Conversion] Converted Arweave URI:', { original: uri, converted: arweaveUrl });
+    return arweaveUrl;
+  }
+
+  // Handle raw Arweave hash
+  if (uri.match(/^[a-zA-Z0-9_-]{43}$/)) {
+    const arweaveUrl = `https://arweave.net/${uri}`;
+    logger.debug('[Gateway Conversion] Converted Arweave hash:', { original: uri, converted: arweaveUrl });
+    return arweaveUrl;
+  }
+
+  // Handle IPFS protocol
+  if (uri.startsWith('ipfs://')) {
+    const hash = uri.replace('ipfs://', '');
+    return `https://ipfs.io/ipfs/${hash}`;
+  }
+
+  // Handle IPFS gateway URLs that might need normalization
+  if (uri.includes('/ipfs/')) {
+    const hash = uri.split('/ipfs/')[1];
+    return `https://ipfs.io/ipfs/${hash}`;
+  }
+
+  // Return original URI if no conversion needed
+  return uri;
+};
+
+
+const validateTokenUri = async (uri) => {
+  try {
+    logger.debug('[TokenURI Validation] Validating URI:', uri);
+
+    // Handle data URIs
+    if (uri.startsWith('data:')) {
+      return uri.startsWith('data:image/') ? uri : null;
+    }
+
+    // Convert URI to gateway URL if needed
+    const gatewayUrl = convertToGatewayUrl(uri);
+    if (!gatewayUrl) {
+      logger.warn('[TokenURI Validation] Invalid URI:', uri);
+      return null;
+    }
+
+    // If it has a valid image extension, return the URL without validation
+    // This helps avoid unnecessary timeouts for known image types
+    if (isValidImageExtension(gatewayUrl)) {
+      logger.debug('[TokenURI Validation] Valid image extension found, skipping validation:', gatewayUrl);
+      return gatewayUrl;
+    }
+
+    // Handle known CORS-restricted domains
+    const corsRestrictedDomains = [
+      'unlock-protocol.com',
+      'base.org',
+      'storage.unlock-protocol.com'
+    ];
+    
+    if (corsRestrictedDomains.some(domain => gatewayUrl.includes(domain))) {
+      logger.debug('[TokenURI Validation] Known CORS-restricted domain, skipping validation:', gatewayUrl);
+      return gatewayUrl;
+    }
+
+    // Only proceed with HTTP(S) requests
+    if (!gatewayUrl.startsWith('http://') && !gatewayUrl.startsWith('https://')) {
+      throw new Error(`Unsupported protocol: ${gatewayUrl.split('://')[0]}`);
+    }
+
+    try {
+      // Try a HEAD request first for faster validation
+      const response = await axios.head(gatewayUrl, {
+        timeout: 3000, // Shorter timeout for HEAD requests
+        validateStatus: status => status === 200,
+      });
+
+      // If HEAD request succeeds and it's an image, return immediately
+      const contentType = response.headers['content-type'].toLowerCase();
+      if (isValidMimeType(contentType)) {
+        return gatewayUrl;
+      }
+    } catch (headError) {
+      // If HEAD fails, continue with GET request
+      logger.debug('[TokenURI Validation] HEAD request failed, trying GET:', { 
+        url: gatewayUrl,
+        error: headError.message 
+      });
+    }
+
+    // Proceed with full GET request
+    const response = await axios.get(gatewayUrl, {
+      timeout: 5000,
+      validateStatus: status => status === 200,
+      headers: {
+        'Accept': 'application/json, image/*'
+      }
+    }).catch(error => {
+      // Special handling for CORS and timeout errors
+      if (error.message.includes('CORS') || error.code === 'ECONNABORTED') {
+        logger.debug('[TokenURI Validation] CORS/Timeout error, returning URL without validation:', gatewayUrl);
+        return { 
+          data: null, 
+          headers: { 'content-type': 'unknown' }, 
+          bypassValidation: true 
+        };
+      }
+      throw error;
+    });
+
+    // If we bypassed validation due to CORS/timeout
+    if (response.bypassValidation) {
+      return gatewayUrl;
+    }
+
+    const contentType = response.headers['content-type'].toLowerCase();
+    
+    logger.debug('[TokenURI Validation] Response:', {
+      uri: gatewayUrl,
+      contentType,
+      headers: response.headers
+    });
+
+    // Handle JSON responses
+    if (contentType.includes('application/json')) {
+      const data = response.data;
+      logger.debug('[TokenURI Validation] JSON response:', { data });
+
+      const possibleImageUrls = [
+        data.image,
+        data.image_url,
+        data.artwork?.uri,
+        data.image_data,
+        data.animation_url,
+        data.metadata?.image,
+        data.metadata?.image_url,
+        data.properties?.image,
+        data.properties?.preview?.image
+      ].filter(Boolean);
+
+      logger.debug('[TokenURI Validation] Found possible image URLs:', possibleImageUrls);
+
+      // For JSON responses, don't recursively validate to avoid timeout loops
+      for (const imageUrl of possibleImageUrls) {
+        if (isValidImageExtension(imageUrl) || 
+            imageUrl.startsWith('ar://') || 
+            imageUrl.startsWith('ipfs://')) {
+          return convertToGatewayUrl(imageUrl);
+        }
+      }
+    }
+
+    // Handle direct image responses
+    if (isValidMimeType(contentType)) {
+      return gatewayUrl;
+    }
+
+    logger.warn('[TokenURI Validation] Invalid content type:', {
+      uri: gatewayUrl,
+      contentType
+    });
+    return null;
+
+  } catch (error) {
+    logger.error('[TokenURI Validation] Error:', {
+      uri,
+      gatewayUrl: convertToGatewayUrl(uri),
+      error: error.message
+    });
+
+    // If validation fails but we have a known image URL, return it anyway
+    if (isValidImageExtension(uri) || 
+        uri.startsWith('ar://') || 
+        uri.startsWith('ipfs://')) {
+      return convertToGatewayUrl(uri);
+    }
+
+    return null;
+  }
+};
+
+
 export const isValidBaseAddress = (address) => {
   try {
     const normalized = normalizeBaseAddress(address);
@@ -84,8 +291,17 @@ export const fetchNFTs = async (address, network, cursor = null, limit = 100) =>
   if (networkType === 'evm') {
     if (network === 'base') {
       try {
-        // Normalize the address for Base network
+        logger.log('Fetching Base NFTs - Raw Input:', {
+          address,
+          network,
+          cursor,
+          limit
+        });
+
+        // Use the utility function
         const normalizedAddress = normalizeBaseAddress(address);
+        
+        logger.log('Base network - Normalized address:', normalizedAddress);
         
         const response = await Moralis.EvmApi.nft.getWalletNFTs({
           address: normalizedAddress,
@@ -95,30 +311,55 @@ export const fetchNFTs = async (address, network, cursor = null, limit = 100) =>
           normalizeMetadata: true,
         });
 
-        const nfts = response.result.map(nft => ({
-          id: { tokenId: nft.tokenId },
-          contract: { 
-            address: normalizeBaseAddress(nft.tokenAddress),
+        // Log the raw response for Base network
+        logger.log('Raw Moralis API Response (Base):', {
+          result: response.result.map(nft => ({
+            tokenId: nft.tokenId,
             name: nft.name,
-            symbol: nft.symbol,
-            type: nft.contractType
-          },
-          title: nft.metadata?.name || nft.name || `Token ID: ${nft.tokenId}`,
-          description: nft.metadata?.description || '',
-          media: [{
-            gateway: nft.metadata?.image || nft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
-          }],
-          metadata: nft.metadata || {},
-          isSpam: nft.possibleSpam,
-          network: 'base'
-        }));
+            metadata: nft.metadata,
+            tokenAddress: nft.tokenAddress,
+            tokenUri: nft.tokenUri,
+            rawData: nft
+          }))
+        });
+
+        const nfts = response.result.map(nft => {
+          logger.log('Processing Base NFT:', {
+            tokenId: nft.tokenId,
+            name: nft.name,
+            tokenAddress: nft.tokenAddress
+          });
+
+          return {
+            id: { tokenId: nft.tokenId },
+            contract: { 
+              address: normalizeBaseAddress(nft.tokenAddress),
+              name: nft.name,
+              symbol: nft.symbol,
+              type: nft.contractType
+            },
+            title: nft.metadata?.name || nft.name || `Token ID: ${nft.tokenId}`,
+            description: nft.metadata?.description || '',
+            media: [{
+              gateway: nft.metadata?.image || nft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
+            }],
+            metadata: nft.metadata || {},
+            isSpam: nft.possibleSpam,
+            network: 'base'
+          };
+        });
 
         return { 
           nfts, 
           cursor: response.pagination.cursor
         };
       } catch (error) {
-        logger.error('Error fetching Base NFTs:', error);
+        logger.error('Error in Base NFT fetching:', {
+          error: error.message,
+          stack: error.stack,
+          address,
+          network
+        });
         throw error;
       }
     }
@@ -143,6 +384,18 @@ const fetchEVMNFTs = (address, network, cursor = null, limit = 100) =>
       limit,
       cursor,
       normalizeMetadata: true,
+    });
+
+    // Log the raw response
+    logger.log('Raw Moralis API Response:', {
+      result: response.result.map(nft => ({
+        tokenId: nft.tokenId,
+        name: nft.name,
+        metadata: nft.metadata,
+        tokenAddress: nft.tokenAddress,
+        tokenUri: nft.tokenUri,
+        rawData: nft // Include the complete raw NFT data
+      }))
     });
 
     const nfts = response.result.map(nft => ({
@@ -200,51 +453,90 @@ const fetchSolanaNFTs = async (address) => {
   }
 };
 
-// Add this new utility function for Base address handling
 const normalizeBaseAddress = (address) => {
   try {
-    // Remove '0x' prefix if it exists
+    if (!address) {
+      logger.error('Attempted to normalize null/undefined Base address');
+      return '';
+    }
+    if (typeof address !== 'string') {
+      logger.error('Invalid address type:', {
+        address,
+        type: typeof address
+      });
+      // Convert to string if possible
+      address = String(address);
+    }
+    // Remove '0x' prefix if it exists and convert to lowercase
     const cleanAddress = address.toLowerCase().replace('0x', '');
     // Add '0x' prefix back and return
     return `0x${cleanAddress}`;
   } catch (error) {
-    logger.error('Error normalizing Base address:', error);
-    return address;
+    logger.error('Error normalizing Base address:', {
+      error: error.message,
+      address
+    });
+    return address || '';
   }
 };
 
-export const getImageUrl = (nft) => {
+export const getImageUrl = async (nft) => {
+  const logDebug = (source, url) => {
+    logger.debug(`[NFT: ${nft.title || nft.id?.tokenId}] Image Resolution:`, {
+      source,
+      url,
+      tokenId: nft.id?.tokenId,
+      contract: nft.contract?.address
+    });
+  };
+
+  // Check for audio NFT
+  const isAudioNFT = 
+    nft.metadata?.mimeType === 'audio/mpeg' ||
+    nft.metadata?.animation_url?.includes('audio') ||
+    nft.attributes?.some(attr => 
+      attr.trait_type?.toLowerCase().includes('audio') ||
+      attr.trait_type?.toLowerCase().includes('song') ||
+      attr.trait_type?.toLowerCase().includes('music')
+    );
+
+  if (isAudioNFT) {
+    logDebug('Audio NFT detected', null);
+    return 'https://via.placeholder.com/400?text=Audio+NFT';
+  }
+
+  // Gather all possible image sources
   const possibleSources = [
-    nft.metadata?.image_url,
-    nft.metadata?.image,
-    nft.media?.[0]?.gateway,
-    nft.imageUrl,
-    nft.metadata?.external_url
+    { key: 'artwork.uri', value: nft.metadata?.artwork?.uri },
+    { key: 'metadata.image', value: nft.metadata?.image },
+    { key: 'metadata.image_url', value: nft.metadata?.image_url },
+    { key: 'media.gateway', value: nft.media?.[0]?.gateway },
+    { key: 'tokenUri', value: nft.tokenUri },
+    { key: 'external_url', value: nft.metadata?.external_url }
   ];
 
-  for (let source of possibleSources) {
-    if (source) {
-      // Check if the source is an SVG string
-      if (source.startsWith('data:image/svg+xml,')) {
-        return source;
-      }
-      // Check if it's already a valid URL (including IPFS gateways)
-      if (source.startsWith('http://') || source.startsWith('https://')) {
-        return source;
-      }
-      // Handle IPFS protocol
-      if (source.startsWith('ipfs://')) {
-        const hash = source.replace('ipfs://', '');
-        return `https://ipfs.io/ipfs/${hash}`;
-      }
-      // Handle Arweave protocol
-      if (source.startsWith('ar://')) {
-        const hash = source.replace('ar://', '');
-        return `https://arweave.net/${hash}`;
+  logDebug('Possible image sources', possibleSources);
+
+  for (const source of possibleSources) {
+    if (source.value) {
+      logDebug('Processing source', source);
+
+      try {
+        const validatedUrl = await validateTokenUri(source.value);
+        if (validatedUrl) {
+          logDebug('Valid URL found', validatedUrl);
+          return validatedUrl;
+        }
+      } catch (error) {
+        logDebug('Error processing source', {
+          source: source.value,
+          error: error.message
+        });
       }
     }
   }
 
+  logDebug('No valid image URL found', null);
   return 'https://via.placeholder.com/400?text=No+Image';
 };
 

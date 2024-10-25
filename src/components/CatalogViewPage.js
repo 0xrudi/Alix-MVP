@@ -8,10 +8,6 @@ import {
   HStack,
   Text,
   useToast,
-  Slider,
-  SliderTrack,
-  SliderFilledTrack,
-  SliderThumb,
   IconButton,
   Flex,
   Collapse,
@@ -19,6 +15,8 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  ButtonGroup,
+  useColorModeValue,
 } from "@chakra-ui/react";
 import { FaList, FaThLarge, FaChevronDown, FaChevronUp, FaSearch } from 'react-icons/fa';
 import NFTCard from './NFTCard';
@@ -26,15 +24,32 @@ import ListViewItem from './ListViewItem';
 import { selectCatalogNFTs, selectCatalogCount } from '../redux/slices/catalogSlice';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 
+const VIEW_MODES = {
+  LIST: 'list',
+  SMALL: 'small',
+  MEDIUM: 'medium',
+  LARGE: 'large'
+};
+
+const VIEW_SIZES = {
+  [VIEW_MODES.LIST]: 0, // Not used for list view
+  [VIEW_MODES.SMALL]: 160,
+  [VIEW_MODES.MEDIUM]: 240,
+  [VIEW_MODES.LARGE]: 320
+};
+
 const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam }) => {
   const [selectedNFTs, setSelectedNFTs] = useState([]);
-  const [cardSize, setCardSize] = useState(270);
-  const [isListView, setIsListView] = useState(true);
+  const [viewMode, setViewMode] = useState(VIEW_MODES.MEDIUM);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const catalogNFTs = useSelector(state => selectCatalogNFTs(state, catalog.id)) || [];
   const nftCount = useSelector(state => selectCatalogCount(state, catalog.id));
   const toast = useToast();
+  const borderColor = useColorModeValue('gray.200', 'gray.600');
+
+  const isListView = viewMode === VIEW_MODES.LIST;
+  const cardSize = VIEW_SIZES[viewMode];
 
   const filteredNFTs = catalogNFTs.filter(nft => 
     nft && (
@@ -73,7 +88,7 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
       </Flex>
       <Text mb={4}>{nftCount} NFTs in this catalog</Text>
       
-      <StyledCard mb={4}>
+      <StyledCard mb={4} maxW="600px">
         <Flex justify="space-between" align="center" mb={2}>
           <Heading as="h3" size="md">Display Settings</Heading>
           <IconButton
@@ -83,40 +98,36 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
           />
         </Flex>
         <Collapse in={isSettingsExpanded}>
-          <VStack spacing={4} align="stretch">
+          <VStack spacing={4} align="stretch" pt={2}>
             <Flex align="center" justify="space-between">
-              <Text>Card Size:</Text>
-              <Slider
-                min={100}
-                max={300}
-                step={10}
-                value={cardSize}
-                onChange={setCardSize}
-                width="200px"
-              >
-                <SliderTrack>
-                  <SliderFilledTrack />
-                </SliderTrack>
-                <SliderThumb />
-              </Slider>
-              <Text width="60px" textAlign="right">{cardSize}px</Text>
-            </Flex>
-            <Flex align="center" justify="space-between">
-              <Text>View:</Text>
-              <HStack spacing={2}>
-                <IconButton
-                  icon={<FaList />}
-                  onClick={() => setIsListView(true)}
-                  aria-label="List view"
+              <Text>View Mode:</Text>
+              <ButtonGroup size="sm" isAttached variant="outline">
+                <Button
+                  onClick={() => setViewMode(VIEW_MODES.LIST)}
                   colorScheme={isListView ? "blue" : "gray"}
-                />
-                <IconButton
-                  icon={<FaThLarge />}
-                  onClick={() => setIsListView(false)}
-                  aria-label="Grid view"
-                  colorScheme={!isListView ? "blue" : "gray"}
-                />
-              </HStack>
+                  leftIcon={<FaList />}
+                >
+                  List
+                </Button>
+                <Button
+                  onClick={() => setViewMode(VIEW_MODES.SMALL)}
+                  colorScheme={viewMode === VIEW_MODES.SMALL ? "blue" : "gray"}
+                >
+                  Small
+                </Button>
+                <Button
+                  onClick={() => setViewMode(VIEW_MODES.MEDIUM)}
+                  colorScheme={viewMode === VIEW_MODES.MEDIUM ? "blue" : "gray"}
+                >
+                  Medium
+                </Button>
+                <Button
+                  onClick={() => setViewMode(VIEW_MODES.LARGE)}
+                  colorScheme={viewMode === VIEW_MODES.LARGE ? "blue" : "gray"}
+                >
+                  Large
+                </Button>
+              </ButtonGroup>
             </Flex>
           </VStack>
         </Collapse>

@@ -1,5 +1,18 @@
-import React from 'react';
-import { Box, Image, Text, Button, VStack, HStack, Badge, useColorModeValue, AspectRatio, Checkbox, Tooltip } from "@chakra-ui/react";
+import React, { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Image, 
+  Text, 
+  Button, 
+  VStack, 
+  HStack, 
+  Badge, 
+  useColorModeValue, 
+  AspectRatio, 
+  Checkbox, 
+  Tooltip,
+  Skeleton
+} from "@chakra-ui/react";
 import { FaExclamationTriangle, FaPlus, FaInfoCircle } from 'react-icons/fa';
 import { getImageUrl } from '../utils/web3Utils';
 import { isERC1155 } from '../utils/nftUtils';
@@ -19,8 +32,38 @@ const NFTCard = ({
   const { catalogs } = useAppContext();
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
+  const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const imageUrl = getImageUrl(nft);
+  useEffect(() => {
+    let mounted = true;
+
+    const loadImage = async () => {
+      try {
+        setIsLoading(true);
+        const url = await getImageUrl(nft);
+        if (mounted) {
+          setImageUrl(url || 'https://via.placeholder.com/400?text=No+Image');
+        }
+      } catch (error) {
+        console.error('Error loading NFT image:', error);
+        if (mounted) {
+          setImageUrl('https://via.placeholder.com/400?text=Error+Loading+Image');
+        }
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadImage();
+
+    return () => {
+      mounted = false;
+    };
+  }, [nft]);
+
   const quantity = isERC1155(nft) ? parseInt(nft.balance) || 1 : 1;
 
   const handleCardClick = () => {
@@ -36,7 +79,6 @@ const NFTCard = ({
     onAddToCatalog(nft);
   };
 
-  // Determine the network display value
   const networkDisplay = nft.network || (nft.chainId ? `Chain ID: ${nft.chainId}` : 'Unknown');
 
   return (
@@ -66,21 +108,24 @@ const NFTCard = ({
         />
       )}
       <AspectRatio ratio={1}>
-        {imageUrl.startsWith('data:image/svg+xml,') ? (
-          <Box 
-            dangerouslySetInnerHTML={{ __html: decodeURIComponent(imageUrl.split(',')[1]) }} 
-            width="100%"
-            height="100%"
-          />
-        ) : (
-          <Image
-            src={imageUrl}
-            alt={nft.title || 'NFT'}
-            objectFit="cover"
-            width="100%"
-            height="100%"
-          />
-        )}
+        <Skeleton isLoaded={!isLoading}>
+          {typeof imageUrl === 'string' && imageUrl.startsWith('data:image/svg+xml,') ? (
+            <Box 
+              dangerouslySetInnerHTML={{ __html: decodeURIComponent(imageUrl.split(',')[1]) }} 
+              width="100%"
+              height="100%"
+            />
+          ) : (
+            <Image
+              src={imageUrl}
+              alt={nft.title || 'NFT'}
+              objectFit="cover"
+              width="100%"
+              height="100%"
+              fallbackSrc="https://via.placeholder.com/400?text=Error+Loading+Image"
+            />
+          )}
+        </Skeleton>
       </AspectRatio>
       <VStack p={2} spacing={1} align="stretch">
         <Text fontWeight="bold" fontSize="sm" noOfLines={1}>{nft.title || `Token ID: ${nft.id?.tokenId}`}</Text>

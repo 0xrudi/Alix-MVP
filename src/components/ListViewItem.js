@@ -1,12 +1,50 @@
-// src/components/ListViewItem.js
-
-import React from 'react';
-import { Flex, Text, Checkbox, IconButton, Image, Box, Badge, Tooltip } from "@chakra-ui/react";
+import React, { useState, useEffect } from 'react';
+import { 
+  Flex, 
+  Text, 
+  Checkbox, 
+  IconButton, 
+  Image, 
+  Box, 
+  Badge, 
+  Tooltip,
+  Skeleton
+} from "@chakra-ui/react";
 import { FaTrash, FaExclamationTriangle } from 'react-icons/fa';
 import { getImageUrl } from '../utils/web3Utils';
 
 const ListViewItem = ({ nft, isSelected, onSelect, onRemove, isSpamFolder }) => {
-  const imageUrl = getImageUrl(nft);
+  const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadImage = async () => {
+      try {
+        setIsLoading(true);
+        const url = await getImageUrl(nft);
+        if (mounted) {
+          setImageUrl(url || 'https://via.placeholder.com/400?text=No+Image');
+        }
+      } catch (error) {
+        console.error('Error loading NFT image:', error);
+        if (mounted) {
+          setImageUrl('https://via.placeholder.com/400?text=Error+Loading+Image');
+        }
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadImage();
+
+    return () => {
+      mounted = false;
+    };
+  }, [nft]);
 
   return (
     <Flex
@@ -24,14 +62,17 @@ const ListViewItem = ({ nft, isSelected, onSelect, onRemove, isSpamFolder }) => 
         onChange={onSelect}
         mr={4}
       />
-      <Image 
-        src={imageUrl}
-        alt={nft.title || 'NFT'} 
-        boxSize="50px"
-        objectFit="cover"
-        borderRadius="md"
-        mr={4}
-      />
+      <Skeleton isLoaded={!isLoading} borderRadius="md">
+        <Image 
+          src={imageUrl}
+          alt={nft.title || 'NFT'} 
+          boxSize="50px"
+          objectFit="cover"
+          borderRadius="md"
+          mr={4}
+          fallbackSrc="https://via.placeholder.com/400?text=Error+Loading+Image"
+        />
+      </Skeleton>
       <Flex flex={1} direction="column">
         <Text fontWeight="bold" fontSize="md">
           {nft.title || `Token ID: ${nft.id?.tokenId || 'Unknown'}`}

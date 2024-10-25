@@ -23,23 +23,46 @@ Alix is a comprehensive Web3 artifact management system designed to help users o
 * Network-specific NFT organization with collapsible sections
 * Improved metadata handling and display
 
-### 3. Spam Detection and Management
+### 3. Enhanced Media Handling
+* Robust async image loading system with fallbacks
+* Support for multiple media protocols (IPFS, Arweave, HTTP)
+* Loading states and placeholders for better UX
+* Automatic detection and handling of audio NFTs
+* SVG rendering support
+* Error recovery for failed media loads
+* Comprehensive validation of media sources
+* Intelligent CORS and timeout handling
+
+### 4. Spam Detection and Management
 * Enhanced automatic spam detection via Moralis API
 * Improved manual spam marking/unmarking capabilities
 * Dedicated spam folder with advanced management features
 * Real-time spam statistics and tracking
 * Bulk spam management operations
 * Automatic spam synchronization across views
+* Customizable list and grid views for spam management
 
-### 4. Catalog System
+### 5. Catalog System
 * Create and manage custom NFT collections with improved organization
 * Enhanced cross-network artifact support
 * Catalog statistics and overview with real-time updates
 * Efficient bulk operations for catalog management
 * Improved artifact selection and management interface
 * Better catalog state persistence
+* Multiple view modes (list, small cards, medium cards, large cards)
+* Advanced display settings with customizable layouts
 
-### 5. Redux State Management
+### 6. Artifact Detail View
+* Comprehensive metadata display
+* Interactive media viewer
+* Technical information panel
+* Trait and attribute display
+* Enhanced media source information
+* Loading states for better UX
+* Error handling and fallbacks
+* Cross-catalog integration
+
+### 7. Redux State Management
 * Centralized state management with Redux Toolkit
 * Optimized data access with memoized selectors
 * Enhanced async operations handling with Redux Thunk
@@ -49,7 +72,7 @@ Alix is a comprehensive Web3 artifact management system designed to help users o
 * Improved error handling and state recovery
 * Enhanced performance through proper state normalization
 
-### 6. User Interface
+### 8. User Interface
 * Responsive design for all devices
 * Dark/Light mode support
 * Intuitive navigation system
@@ -57,36 +80,27 @@ Alix is a comprehensive Web3 artifact management system designed to help users o
 * Enhanced error handling and user feedback
 * Persistent selection overlay
 * Improved grid/list view options
+* Customizable display settings
 
 ## Recent Improvements
 
-### State Management
-* Implemented robust NFT deduplication system
-* Enhanced Redux state management with proper normalization
-* Improved selector performance with memoization
-* Added better error handling and recovery
-* Enhanced async operation management
+### Enhanced Media Handling
+* Implemented robust async image loading across all components
+* Added comprehensive media validation system
+* Improved handling of various media protocols
+* Enhanced error recovery for media loading
+* Added loading states and placeholders
+* Improved CORS and timeout handling
+* Better support for different media types
 
-### Network Support
-* Added robust Base network support with proper address handling
-* Improved network detection and validation
-* Enhanced multi-network artifact management
-* Better handling of network-specific quirks
-* Improved cross-network compatibility
-
-### Data Handling
-* Enhanced serialization for blockchain data
-* Improved address validation and normalization
-* Better handling of ERC-1155 token balances
-* Enhanced metadata processing and display
-* Improved spam detection and management
-
-### Performance
-* Optimized NFT loading and display
-* Improved state updates and re-renders
-* Enhanced selector performance
-* Better memory management
-* Reduced duplicate data storage
+### Catalog View Enhancements
+* Added multiple view modes (list, small, medium, large)
+* Improved display settings interface
+* Enhanced image loading in list view
+* Better organization of catalog controls
+* Improved search functionality
+* Enhanced bulk operations
+* Better visual feedback for selections
 
 ### Error Handling
 * Improved error recovery mechanisms
@@ -94,6 +108,17 @@ Alix is a comprehensive Web3 artifact management system designed to help users o
 * Better logging and debugging capabilities
 * Improved error boundary implementation
 * More robust error state management
+* Better handling of network issues
+* Enhanced validation error handling
+
+### Performance Optimizations
+* Implemented lazy loading for images
+* Improved component mount/unmount handling
+* Enhanced state updates and re-renders
+* Better memory management
+* Reduced unnecessary API calls
+* Improved caching mechanisms
+* Enhanced loading states
 
 ## Installation
 
@@ -136,7 +161,7 @@ src/
     MenuModal.js
     NFTCard.js
     NFTGrid.js
-    WalletNFTGrid.js     # New component for wallet-specific NFT display
+    WalletNFTGrid.js
     ProfilePage.js
     SelectedArtifactsOverlay.js
     UserProfile.js
@@ -157,8 +182,6 @@ src/
     thunks/             # Async action creators
       walletThunks.js
     store.js
-    selectors/          # Redux selectors
-      nftSelectors.js
   utils/                # Utility functions
     errorUtils.js
     logger.js
@@ -170,24 +193,20 @@ src/
   styles/               # Styling utilities
     commonStyles.js
   App.js
-  global.css
-  global.js
-  index.css
   index.js
-  polyfills.js
 ```
 
 ## Technologies Used
-
-* **React**: Frontend library
-* **Redux Toolkit**: State management
-* **Redux Thunk**: Async action handling
-* **Chakra UI**: Component library
-* **Moralis**: Web3 development platform
-* **Axios**: HTTP client
-* **Ethers.js**: Ethereum library
-* **React Router**: Navigation
-* **React Icons**: Icon library
+* React 18
+* Redux Toolkit
+* Chakra UI
+* Moralis
+* Ethers.js
+* Web3.js
+* Solana Web3.js
+* Axios
+* React Router
+* React Icons
 
 ## Component Architecture
 

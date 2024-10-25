@@ -23,8 +23,8 @@ import {
   StatArrow,
   StatGroup
 } from "@chakra-ui/react";
-import { FaSync, FaTrash } from 'react-icons/fa';
-import { addLogListener, removeLogListener } from '../utils/logger';
+import { FaSync, FaTrash, FaDownload } from 'react-icons/fa';
+import { addLogListener, removeLogListener, downloadLogs, logger } from '../utils/logger';
 
 const AdminPage = () => {
   const [logs, setLogs] = useState([]);
@@ -40,8 +40,18 @@ const AdminPage = () => {
 
   useEffect(() => {
     const logHandler = (logEntry) => {
-      setLogs(prevLogs => [logEntry, ...prevLogs].slice(0, 100)); // Keep only last 100 logs
+      if (logEntry.type === 'clear') {
+        setLogs([]);
+      } else {
+        setLogs(prevLogs => {
+          const newLogs = [logEntry, ...prevLogs];
+          return newLogs.slice(0, 100); // Keep only last 100 logs
+        });
+      }
     };
+
+    // Initialize with existing logs
+    setLogs(logger.getLogHistory().slice(-100).reverse());
 
     addLogListener(logHandler);
 
@@ -62,7 +72,12 @@ const AdminPage = () => {
   }, []);
 
   const handleClearLogs = () => {
+    logger.clearLogs();
     setLogs([]);
+  };
+
+  const handleDownloadLogs = () => {
+    downloadLogs();
   };
 
   const handleRefreshStats = () => {
@@ -83,6 +98,18 @@ const AdminPage = () => {
       case 'DEBUG': return 'purple';
       case 'LOG': return 'green';
       default: return 'gray';
+    }
+  };
+
+  // Function to format log details
+  const renderLogDetails = (details) => {
+    if (!details) return '';
+    try {
+      // Try to pretty print if it's JSON
+      const parsed = JSON.parse(details);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return details;
     }
   };
 
@@ -137,34 +164,47 @@ const AdminPage = () => {
           <Flex align="center" mb={4}>
             <Heading as="h2" size="lg">System Logs</Heading>
             <Spacer />
-            <Button leftIcon={<FaTrash />} onClick={handleClearLogs}>Clear Logs</Button>
+            <Button onClick={handleDownloadLogs} leftIcon={<FaDownload />}>
+              Download Logs
+            </Button>
+            <Button 
+              ml={2} 
+              leftIcon={<FaTrash />} 
+              onClick={handleClearLogs}
+            >
+              Clear Logs
+            </Button>
           </Flex>
-            <Box overflowY="auto" maxHeight="400px">
-                <Table variant="simple">
-                <Thead>
-                    <Tr>
-                    <Th>Timestamp</Th>
-                    <Th>Level</Th>
-                    <Th>Message</Th>
-                    <Th>Details</Th>
-                    </Tr>
-                </Thead>
-                <Tbody>
+          <Box overflowY="auto" maxHeight="400px">
+            <Table variant="simple">
+              <Thead position="sticky" top={0} bg={bgColor} zIndex={1}>
+                <Tr>
+                  <Th>Timestamp</Th>
+                  <Th>Level</Th>
+                  <Th>Message</Th>
+                  <Th>Details</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
                 {logs.map((log, index) => (
-                    <Tr key={index}>
-                        <Td>{new Date(log.timestamp).toLocaleString()}</Td>
-                        <Td>
-                        <Badge colorScheme={getBadgeColor(log.level)}>
-                            {log.level}
-                        </Badge>
-                        </Td>
-                        <Td>{log.message}</Td>
-                        <Td>{log.details}</Td>
-                    </Tr>
-                    ))}
-                </Tbody>
-                </Table>
-            </Box>
+                  <Tr key={`${log.timestamp}-${index}`}>
+                    <Td width="200px">{new Date(log.timestamp).toLocaleString()}</Td>
+                    <Td width="100px">
+                      <Badge colorScheme={getBadgeColor(log.level)}>
+                        {log.level}
+                      </Badge>
+                    </Td>
+                    <Td style={{ whiteSpace: 'pre-wrap', maxWidth: '300px', overflow: 'auto' }}>
+                      {log.message}
+                    </Td>
+                    <Td style={{ whiteSpace: 'pre-wrap', maxWidth: '400px', overflow: 'auto' }}>
+                      {renderLogDetails(log.details)}
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </Box>
         </Box>
       </VStack>
     </Box>
