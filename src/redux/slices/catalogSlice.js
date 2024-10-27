@@ -15,19 +15,26 @@ const compareNFTIds = (id1, id2) =>
   id1.contractAddress === id2.contractAddress &&
   id1.network === id2.network;
 
-  const catalogSlice = createSlice({
-    name: 'catalogs',
-    initialState: {
-      list: [{
-        id: 'spam',
-        name: 'Spam',
-        nftIds: [],
-        isSystem: true
-      }],
-      isLoading: false,
-      error: null
-    },
-    reducers: {
+const catalogSlice = createSlice({
+  name: 'catalogs',
+  initialState: {
+    list: [{
+      id: 'spam',
+      name: 'Spam',
+      nftIds: [],
+      isSystem: true,
+      type: 'automated'
+    }, {
+      id: 'unorganized',
+      name: 'Unorganized Artifacts',
+      nftIds: [], // This will be populated with NFTs not in any user catalogs
+      isSystem: true,
+      type: 'automated'
+    }],
+    isLoading: false,
+    error: null
+  },
+  reducers: {
     setCatalogs: (state, action) => {
       state.list = action.payload;
     },
@@ -58,6 +65,18 @@ const compareNFTIds = (id1, id2) =>
           walletId: nft?.walletId || ''
         })).filter(id => id.tokenId && id.contractAddress); // Filter out invalid entries
       }
+    },
+    updateUnorganizedCatalog: (state, action) => {
+      const unorganizedNFTs = Array.isArray(action.payload) ? action.payload : [];
+      const unorganizedCatalog = state.list.find(cat => cat.id === 'unorganized');
+      if (unorganizedCatalog) {
+        unorganizedCatalog.nftIds = unorganizedNFTs.map(nft => ({
+          tokenId: nft?.id?.tokenId || '',
+          contractAddress: nft?.contract?.address || '',
+          network: nft?.network || '',
+          walletId: nft?.walletId || ''
+        })).filter(id => id.tokenId && id.contractAddress);
+      }
     }
   }
 });
@@ -67,13 +86,16 @@ export const {
   addCatalog, 
   updateCatalog, 
   removeCatalog,
-  updateSpamCatalog 
+  updateSpamCatalog,
+  updateUnorganizedCatalog
 } = catalogSlice.actions;
 
 // Add selectors
 export const selectAllCatalogs = (state) => state.catalogs.list;
 export const selectCatalogById = (state, catalogId) => 
   state.catalogs.list.find(catalog => catalog.id === catalogId);
+export const selectAutomatedCatalogs = (state) => 
+  state.catalogs.list.filter(catalog => catalog.type === 'automated');
 
 export const selectCatalogNFTs = (state, catalogId) => {
   const catalog = state.catalogs.list.find(cat => cat.id === catalogId);

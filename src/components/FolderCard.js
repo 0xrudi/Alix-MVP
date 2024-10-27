@@ -1,6 +1,6 @@
-// src/components/CatalogCard.js
 import React from 'react';
 import {
+  Box,
   VStack,
   Text,
   IconButton,
@@ -8,12 +8,40 @@ import {
   Flex,
   useColorModeValue,
 } from "@chakra-ui/react";
-import { FaBook, FaEdit, FaTrash } from 'react-icons/fa';
+import { FaFolder, FaEdit, FaTrash } from 'react-icons/fa';
+import { useSelector } from 'react-redux';
+import { selectCatalogsInFolder } from '../redux/slices/folderSlice';
 import { StyledCard } from '../styles/commonStyles';
 import { cardSizes } from '../constants/sizes';
 
-const CatalogCard = ({ catalog, onView, onEdit, onDelete, cardSize = "md" }) => {
-  const catalogColor = useColorModeValue('purple.400', 'purple.600');
+const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
+  const catalogIds = useSelector(state => selectCatalogsInFolder(state, folder.id));
+  const folderColor = useColorModeValue('blue.400', 'blue.600');
+  
+  // Define size mappings
+  const sizes = {
+    sm: {
+      icon: '1.5rem',
+      fontSize: 'sm',
+      padding: 2,
+      width: '150px', // Base width for small cards
+      spacing: 0.5,
+    },
+    md: {
+      icon: '2rem',
+      fontSize: 'md',
+      padding: 3,
+      width: '200px', // Base width for medium cards
+      spacing: 1,
+    },
+    lg: {
+      icon: '3rem',
+      fontSize: 'lg',
+      padding: 4,
+      width: '250px', // Base width for large cards
+      spacing: 2,
+    }
+  };
   
   return (
     <StyledCard 
@@ -42,7 +70,7 @@ const CatalogCard = ({ catalog, onView, onEdit, onDelete, cardSize = "md" }) => 
       >
         <IconButton
           icon={<FaEdit />}
-          aria-label="Edit catalog"
+          aria-label="Edit folder"
           size="sm"
           variant="ghost"
           colorScheme="blue"
@@ -57,7 +85,7 @@ const CatalogCard = ({ catalog, onView, onEdit, onDelete, cardSize = "md" }) => 
         />
         <IconButton
           icon={<FaTrash />}
-          aria-label="Delete catalog"
+          aria-label="Delete folder"
           size="sm"
           variant="ghost"
           colorScheme="red"
@@ -70,7 +98,7 @@ const CatalogCard = ({ catalog, onView, onEdit, onDelete, cardSize = "md" }) => 
           height="auto"
         />
       </Flex>
-
+  
       {/* Main content */}
       <VStack 
         spacing={cardSizes[cardSize].spacing} 
@@ -78,9 +106,9 @@ const CatalogCard = ({ catalog, onView, onEdit, onDelete, cardSize = "md" }) => 
         my={cardSizes[cardSize].marginY}
       >
         <Icon 
-          as={FaBook} 
+          as={FaFolder} 
           boxSize={cardSizes[cardSize].icon}
-          color={catalogColor} 
+          color={folderColor} 
         />
         <Text 
           fontSize={cardSizes[cardSize].fontSize}
@@ -88,16 +116,15 @@ const CatalogCard = ({ catalog, onView, onEdit, onDelete, cardSize = "md" }) => 
           textAlign="center"
           noOfLines={2}
         >
-          {catalog.name}
+          {folder.name}
         </Text>
-        {catalog.nftIds && (
-          <Text fontSize="xs" color="gray.500">
-            {catalog.nftIds.length} {catalog.nftIds.length === 1 ? 'Artifact' : 'Artifacts'}
-          </Text>
-        )}
+        <Text fontSize="xs" color="gray.500">
+          {catalogIds.length} {catalogIds.length === 1 ? 'Catalog' : 'Catalogs'}
+        </Text>
       </VStack>
     </StyledCard>
   );
 };
 
-export default CatalogCard;
+
+export default FolderCard;

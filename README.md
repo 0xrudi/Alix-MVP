@@ -82,6 +82,44 @@ Alix is a comprehensive Web3 artifact management system designed to help users o
 * Improved grid/list view options
 * Customizable display settings
 
+### 5. Enhanced Organization System
+
+#### Folder Management
+* Create and manage folders to organize catalogs
+* Dynamic folder structure with intuitive navigation
+* Multi-catalog support (catalogs can belong to multiple folders)
+* Flexible folder operations (create, edit, delete)
+* Visual folder navigation with intuitive UI
+* Responsive grid layout for folder display
+* Hover actions for quick operations
+* Dynamic card sizing with slider control
+
+#### Catalog System
+[Previous catalog system content remains]
+Additional features:
+* Integration with folder system
+* Enhanced visual representation
+* Improved catalog navigation through folders
+* Smart catalog organization with unassigned catalogs section
+* Consistent UI/UX patterns with folder system
+* Dynamic grid layouts matching folder display
+* Unified card sizing system across folders and catalogs
+
+### 6. Enhanced UI/UX Features
+[Previous UI section content remains]
+Additional features:
+* Dynamic card sizing system with slider control
+* Responsive grid layouts that adapt to card size
+* Consistent spacing and alignment across components
+* Improved hover interactions for cards
+* Unified visual language between folders and catalogs
+* Streamlined navigation between folders and catalogs
+* Enhanced visual hierarchy for organization
+* Compact card designs with efficient space usage
+* Smart action button reveal on hover
+* Responsive grid system for all screen sizes
+
+
 ## Recent Improvements
 
 ### Enhanced Media Handling
@@ -119,6 +157,17 @@ Alix is a comprehensive Web3 artifact management system designed to help users o
 * Reduced unnecessary API calls
 * Improved caching mechanisms
 * Enhanced loading states
+
+### Library Management
+* Implemented comprehensive folder management system
+* Added dynamic card sizing functionality
+* Enhanced grid layouts for better organization
+* Improved visual consistency across components
+* Added folder-catalog relationship management
+* Implemented unified card design system
+* Enhanced navigation between folders and catalogs
+* Added responsive grid layouts
+* Improved space efficiency in card designs
 
 ## Installation
 
@@ -230,6 +279,23 @@ src/
 * Supports both ERC-721 and ERC-1155 display
 * Network-aware display capabilities
 
+#### New Components
+
+##### FolderCard
+* Handles folder display and interactions
+* Manages hover states and action buttons
+* Integrates with card sizing system
+* Provides consistent visual styling
+* Handles folder operations (view, edit, delete)
+
+##### EditFolderModal
+* Manages folder editing operations
+* Handles catalog assignments
+* Provides folder metadata management
+* Integrates with Redux store
+* Maintains state consistency
+
+
 ### Enhanced Redux Store Structure
 ```javascript
 {
@@ -260,7 +326,12 @@ src/
   },
   user: {
     profile: {},
-    preferences: {}
+    preferences: {},
+  folders: {
+    list: [], // Array of folder objects
+    catalogFolders: {}, // Maps catalog IDs to folder IDs
+    loading: false,
+    error: null
   }
 }
 ```
@@ -276,6 +347,11 @@ const spamNFTs = useSelector(selectTotalSpamNFTs);
 // Catalog Selectors
 const catalogs = useSelector(selectAllCatalogs);
 const userCatalogs = useSelector(selectUserCatalogs);
+
+// Folder Selectors
+const folders = useSelector(selectAllFolders);
+const folderCatalogs = useSelector(state => selectCatalogsInFolder(state, folderId));
+const catalogFolders = useSelector(state => selectFoldersForCatalog(state, catalogId));
 ```
 
 ### Component Integration
@@ -340,6 +416,13 @@ dispatch(fetchWalletNFTs({ walletId, address, networks }));
 * Improve artifact deduplication system
 * Enhance spam detection accuracy
 * Optimize selector performance
+* Enhance folder management capabilities
+* Implement folder sharing features
+* Add batch operations for folders
+* Improve folder navigation experience
+* Enhance folder-catalog relationships
+* Optimize folder view performance
+* Add folder metadata enhancements
 
 ### Future Development Plans
 * Implement metadata caching
