@@ -28,7 +28,11 @@ import {
   ModalHeader,
   ModalFooter,
   ModalBody,
-  ModalCloseButton
+  ModalCloseButton,
+  Slider, 
+  SliderTrack, 
+  SliderFilledTrack, 
+  SliderThumb
 } from "@chakra-ui/react";
 import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaTrash, FaTimes, FaCheck, FaFolderPlus } from 'react-icons/fa';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -43,12 +47,18 @@ import { useErrorHandler } from '../utils/errorUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
-import { addCatalog, updateCatalog, removeCatalog, setCatalogs, selectAllCatalogs, updateSpamCatalog } from '../redux/slices/catalogSlice';
+import { addCatalog, updateCatalog, removeCatalog, setCatalogs, selectAllCatalogs, updateSpamCatalog, selectAutomatedCatalogs } from '../redux/slices/catalogSlice';
 import { fetchNFTsStart, fetchNFTsSuccess, fetchNFTsFailure, updateNFT, selectTotalNFTs, selectTotalSpamNFTs, selectNFTStructure, selectFlattenedWalletNFTs, selectSpamNFTs } from '../redux/slices/nftSlice';
 import debounce from 'lodash/debounce';
 import WalletNFTGrid from './WalletNFTGrid';
-import CatalogCard from './catalogCard';
+import CatalogCard from './CatalogCard';
 import { fetchWalletNFTs } from '../redux/thunks/walletThunks'
+import NewFolderModal from './NewFolderModal';
+import FolderCard from './FolderCard';
+import { selectAllFolders, removeFolder, selectFoldersForCatalog, selectCatalogsInFolder } from '../redux/slices/folderSlice';
+import EditFolderModal from './EditFolderModal';
+import { cardSizes } from '../constants/sizes';
+
 
 const LibraryPage = () => {
   const dispatch = useDispatch();
@@ -59,6 +69,8 @@ const LibraryPage = () => {
   const totalNFTs = useSelector(selectTotalNFTs);
   const spamNFTs = useSelector(selectTotalSpamNFTs);
   const nftStructure = useSelector(selectNFTStructure);
+  const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false);
+  const folders = useSelector(selectAllFolders);
 
   const { bgColor, cardBg, textColor, borderColor } = useCustomColorMode();
   const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast();
@@ -78,9 +90,39 @@ const LibraryPage = () => {
   const [isAddToCatalogOpen, setIsAddToCatalogOpen] = useState(false);
   const [selectedCatalogs, setSelectedCatalogs] = useState([]);
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [viewingFolder, setViewingFolder] = useState(null);
+  const [isEditFolderModalOpen, setIsEditFolderModalOpen] = useState(false);
+  const [selectedFolder, setSelectedFolder] = useState(null);
+  const [cardSize, setCardSize] = useState("md");
+  const automatedCatalogs = useSelector(selectAutomatedCatalogs);
+  
 
   const location = useLocation();
   const navigate = useNavigate();
+
+  const sizes = {
+    sm: {
+      icon: '1.5rem',
+      fontSize: 'sm',
+      padding: 2,
+      width: '150px', // Base width for small cards
+      spacing: 0.5,
+    },
+    md: {
+      icon: '2rem',
+      fontSize: 'md',
+      padding: 3,
+      width: '200px', // Base width for medium cards
+      spacing: 1,
+    },
+    lg: {
+      icon: '3rem',
+      fontSize: 'lg',
+      padding: 4,
+      width: '250px', // Base width for large cards
+      spacing: 2,
+    }
+  };
 
   useEffect(() => {
     try {
@@ -113,7 +155,30 @@ const LibraryPage = () => {
         isSystem: true // Flag to identify system catalogs
       }));
     }
-  }, []);
+  }, [catalogs, dispatch]);
+
+  const handleSizeChange = (value) => {
+    const sizes = {
+      0: "sm",
+      1: "md",
+      2: "lg"
+    };
+    setCardSize(sizes[value]);
+  };
+
+  const handleDeleteFolder = (folderId) => {
+    dispatch(removeFolder(folderId));
+    showInfoToast("Folder Deleted", "The folder has been deleted successfully.");
+  };
+  
+  const handleOpenFolder = (folder) => {
+    setViewingFolder(folder);
+  };
+  
+  const handleEditFolder = (folder) => {
+    setSelectedFolder(folder);
+    setIsEditFolderModalOpen(true);
+  };
 
   const handleNFTClick = useCallback((nft) => {
     navigate('/artifact', { state: { nft } });
@@ -145,6 +210,49 @@ const LibraryPage = () => {
         : [...prev, walletId]
     );
   }, []);
+
+  const renderFolderView = () => {
+    if (!viewingFolder) return null;
+    
+    return (
+      <Box>
+        <Flex justify="space-between" align="center" mb={6}>
+          <Heading as="h2" size="lg">{viewingFolder.name}</Heading>
+          <StyledButton onClick={() => setViewingFolder(null)}>
+            Back to Library
+          </StyledButton>
+        </Flex>
+        
+        {viewingFolder.description && (
+          <Text mb={6} color="gray.600">{viewingFolder.description}</Text>
+        )}
+  
+        <SimpleGrid 
+          columns={{ 
+            base: 2,
+            sm: 3,
+            md: 4,
+            lg: 6
+          }} 
+          spacing={2}
+          width="100%"
+        >
+          {catalogs
+            .filter(catalog => viewingFolder.catalogIds?.includes(catalog.id))
+            .map(catalog => (
+              <CatalogCard
+                key={catalog.id}
+                catalog={catalog}
+                onView={() => handleOpenCatalog(catalog)}
+                onEdit={() => handleOpenCatalog(catalog)}
+                onDelete={() => handleDeleteCatalog(catalog.id)}
+                cardSize={cardSize}
+              />
+            ))}
+        </SimpleGrid>
+      </Box>
+    );
+  };
 
   const handleCreateCatalog = useCallback(() => {
     if (catalogName.trim() === '') {
@@ -231,6 +339,13 @@ const handleRefreshNFTs = async () => {
     [catalogs, catalogSearch]
   );
 
+  const catalogFoldersMap = useSelector(state => 
+    filteredCatalogs.reduce((acc, catalog) => {
+      acc[catalog.id] = selectFoldersForCatalog(state, catalog.id);
+      return acc;
+    }, {})
+  );
+
   if (viewingCatalog) {
     return (
       <CatalogViewPage
@@ -246,6 +361,9 @@ const handleRefreshNFTs = async () => {
     );
   }
 
+  if (viewingFolder) {
+    return renderFolderView();
+  }
 
   return (
     <StyledContainer>
@@ -307,7 +425,7 @@ const handleRefreshNFTs = async () => {
         <Tabs index={activeTab} onChange={setActiveTab} variant="enclosed">
           <TabList>
             <Tab fontSize="1rem">Artifacts</Tab>
-            <Tab fontSize="1rem">Catalogs</Tab>
+            <Tab fontSize="1rem">Library</Tab>
           </TabList>
           <TabPanels>
             <TabPanel>
@@ -382,17 +500,111 @@ const handleRefreshNFTs = async () => {
             </TabPanel>
             
             <TabPanel>
-              <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing="1rem">
-                {filteredCatalogs.map((catalog) => (
-                  <CatalogCard
-                    key={catalog.id}
-                    catalog={catalog}
-                    onView={() => handleOpenCatalog(catalog)}
-                    onEdit={() => handleOpenCatalog(catalog)}
-                    onDelete={() => handleDeleteCatalog(catalog.id)}
-                  />
-                ))}
-              </SimpleGrid>
+              <Flex justify="space-between" align="center" mb={4}>
+                <Button
+                  leftIcon={<FaFolderPlus />}
+                  onClick={() => setIsNewFolderModalOpen(true)}
+                  colorScheme="blue"
+                >
+                  New Folder
+                </Button>
+              </Flex>
+
+              <Flex align="center" gap={4} mb={4}>
+                <Text fontSize="sm" whiteSpace="nowrap">Card Size:</Text>
+                <Slider
+                  defaultValue={1}
+                  min={0}
+                  max={2}
+                  step={1}
+                  onChange={handleSizeChange}
+                  width="150px"
+                >
+                  <SliderTrack>
+                    <SliderFilledTrack />
+                  </SliderTrack>
+                  <SliderThumb />
+                </Slider>
+              </Flex>
+
+              <VStack spacing={6} align="stretch">
+                {/* Folders Section */}
+                {folders.length > 0 && (
+                  <Box>
+                    <Heading as="h3" size="md" mb={4}>
+                      Folders
+                    </Heading>
+                    <SimpleGrid 
+                      columns={cardSizes[cardSize].columns}
+                      spacing={2}
+                      width="100%"
+                    >
+                      {folders.map((folder) => (
+                        <FolderCard
+                          key={folder.id}
+                          folder={folder}
+                          onView={() => handleOpenFolder(folder)}
+                          onEdit={() => handleEditFolder(folder)}
+                          onDelete={() => handleDeleteFolder(folder.id)}
+                          cardSize={cardSize}
+                        />
+                      ))}
+                    </SimpleGrid>
+                  </Box>
+                )}
+
+                {/* Automated Catalogs Section */}
+                <Box>
+                  <Heading as="h3" size="md" mb={4}>
+                    Automated Catalogs
+                  </Heading>
+                  <SimpleGrid 
+                    columns={cardSizes[cardSize].columns}
+                    spacing={2}
+                    width="100%"
+                  >
+                    {automatedCatalogs.map((catalog) => (
+                      <CatalogCard
+                        key={catalog.id}
+                        catalog={catalog}
+                        onView={() => handleOpenCatalog(catalog)}
+                        onEdit={() => handleOpenCatalog(catalog)}
+                        onDelete={() => handleDeleteCatalog(catalog.id)}
+                        cardSize={cardSize}
+                        isSystem={true}
+                      />
+                    ))}
+                  </SimpleGrid>
+                </Box>
+
+                {/* Unassigned Catalogs Section */}
+                <Box>
+                  <Heading as="h3" size="md" mb={4}>
+                    Unassigned Catalogs
+                  </Heading>
+                  <SimpleGrid 
+                    columns={cardSizes[cardSize].columns}
+                    spacing={2}
+                    width="100%"
+                  >
+                    {filteredCatalogs
+                      .filter(catalog => 
+                        !catalog.type === 'automated' && 
+                        catalogFoldersMap[catalog.id]?.length === 0
+                      )
+                      .map((catalog) => (
+                        <CatalogCard
+                          key={catalog.id}
+                          catalog={catalog}
+                          onView={() => handleOpenCatalog(catalog)}
+                          onEdit={() => handleOpenCatalog(catalog)}
+                          onDelete={() => handleDeleteCatalog(catalog.id)}
+                          cardSize={cardSize}
+                        />
+                      ))}
+                  </SimpleGrid>
+                </Box>
+              </VStack>
             </TabPanel>
           </TabPanels>
         </Tabs>
@@ -406,6 +618,18 @@ const handleRefreshNFTs = async () => {
           onAddToExistingCatalog={() => setIsAddToCatalogOpen(true)}
         />
       )}
+      <NewFolderModal 
+        isOpen={isNewFolderModalOpen}
+        onClose={() => setIsNewFolderModalOpen(false)}
+      />
+      <EditFolderModal
+        isOpen={isEditFolderModalOpen}
+        onClose={() => {
+          setIsEditFolderModalOpen(false);
+          setSelectedFolder(null);
+        }}
+        folder={selectedFolder}
+      />
     </StyledContainer>
   );
 };
