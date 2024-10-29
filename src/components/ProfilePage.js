@@ -7,8 +7,13 @@ import {
   TabPanels, 
   Tab, 
   TabPanel, 
-  Text,
-  Flex
+  Flex,
+  Box,
+  StatGroup,
+  Stat,
+  StatLabel,
+  StatNumber,
+  VStack,
 } from "@chakra-ui/react";
 import UserProfile from './UserProfile';
 import WalletManager from './WalletManager';
@@ -16,12 +21,39 @@ import { useAppContext } from '../context/AppContext';
 import { useCustomToast } from '../utils/toastUtils';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 import { useResponsive } from '../hooks/useResponsive';
+import { selectTotalNFTs, selectTotalSpamNFTs } from '../redux/slices/nftSlice';
+
+const ProfileStats = () => {
+  const totalArtifacts = useSelector(selectTotalNFTs);
+  const spamArtifacts = useSelector(selectTotalSpamNFTs);
+  const catalogs = useSelector(state => state.catalogs.list);
+
+  return (
+    <VStack spacing={6} align="stretch">
+      <StatGroup>
+        <Stat>
+          <StatLabel fontSize="1rem">Total Artifacts</StatLabel>
+          <StatNumber fontSize="2xl">{totalArtifacts}</StatNumber>
+        </Stat>
+
+        <Stat>
+          <StatLabel fontSize="1rem">Catalogs</StatLabel>
+          <StatNumber fontSize="2xl">{catalogs.length}</StatNumber>
+        </Stat>
+
+        <Stat>
+          <StatLabel fontSize="1rem">Spam Artifacts</StatLabel>
+          <StatNumber fontSize="2xl">{spamArtifacts}</StatNumber>
+        </Stat>
+      </StatGroup>
+    </VStack>
+  );
+};
 
 const ProfilePage = () => {
   const { userProfile, updateUserProfile } = useAppContext();
   const { showSuccessToast } = useCustomToast();
   const { buttonSize, headingSize } = useResponsive();
-  const wallets = useSelector(state => state.wallets.wallets);
 
   const handleSaveProfile = () => {
     showSuccessToast("Profile Saved", "Your profile has been updated successfully.");
@@ -31,35 +63,38 @@ const ProfilePage = () => {
     <StyledContainer>
       <Flex justify="space-between" align="center" mb={6}>
         <Heading as="h1" size={headingSize}>Your Profile</Heading>
-        <StyledButton 
-          onClick={handleSaveProfile} 
-          size={buttonSize}
-        >
-          Save Profile
-        </StyledButton>
+        {userProfile.nickname && (
+          <StyledButton 
+            onClick={handleSaveProfile} 
+            size={buttonSize}
+          >
+            Save Profile
+          </StyledButton>
+        )}
       </Flex>
         
-      <StyledCard>
-        <Tabs variant="enclosed" size={buttonSize}>
-          <TabList>
-            <Tab>User Profile</Tab>
-            <Tab>Manage Wallets</Tab>
-          </TabList>
-          <TabPanels>
-            <TabPanel>
-              <UserProfile />
-            </TabPanel>
-            <TabPanel>
-              <WalletManager />
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-      </StyledCard>
-
-      <StyledCard title="Debug Info" mt={6}>
-        <Text fontSize="sm">Wallet Count: {wallets ? wallets.length : 0}</Text>
-        <Text fontSize="sm">User Nickname: {userProfile?.nickname || 'Not set'}</Text>
-      </StyledCard>
+      <Box maxW="600px">
+        <StyledCard>
+          <Tabs variant="enclosed" size={buttonSize}>
+            <TabList>
+              <Tab>User Profile</Tab>
+              <Tab>Manage Wallets</Tab>
+              <Tab>Profile Stats</Tab>
+            </TabList>
+            <TabPanels>
+              <TabPanel>
+                <UserProfile />
+              </TabPanel>
+              <TabPanel>
+                <WalletManager />
+              </TabPanel>
+              <TabPanel>
+                <ProfileStats />
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </StyledCard>
+      </Box>
     </StyledContainer>
   );
 };
