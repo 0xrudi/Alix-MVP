@@ -22,24 +22,16 @@ import {
   Flex,
   Checkbox,
   Progress,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
   Slider, 
   SliderTrack, 
   SliderFilledTrack, 
   SliderThumb
 } from "@chakra-ui/react";
-import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaTrash, FaTimes, FaCheck, FaFolderPlus } from 'react-icons/fa';
+import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaFolderPlus } from 'react-icons/fa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import NFTGrid from './NFTGrid';
 import CatalogViewPage from './CatalogViewPage';
-import { fetchNFTs } from '../utils/web3Utils';
 import { logger } from '../utils/logger';
 import { useCustomColorMode } from '../hooks/useColorMode';
 import { useCustomToast } from '../utils/toastUtils';
@@ -47,38 +39,41 @@ import { useErrorHandler } from '../utils/errorUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
-import { addCatalog, updateCatalog, removeCatalog, setCatalogs, selectAllCatalogs, updateSpamCatalog, selectAutomatedCatalogs } from '../redux/slices/catalogSlice';
-import { fetchNFTsStart, fetchNFTsSuccess, fetchNFTsFailure, updateNFT, selectTotalNFTs, selectTotalSpamNFTs, selectNFTStructure, selectFlattenedWalletNFTs, selectSpamNFTs } from '../redux/slices/nftSlice';
-import debounce from 'lodash/debounce';
+import { selectAllCatalogs, selectAutomatedCatalogs } from '../redux/slices/catalogSlice';
+import { selectTotalNFTs, selectTotalSpamNFTs, selectNFTStructure, selectFlattenedWalletNFTs, updateNFT } from '../redux/slices/nftSlice';
 import WalletNFTGrid from './WalletNFTGrid';
 import CatalogCard from './CatalogCard';
-import { fetchWalletNFTs } from '../redux/thunks/walletThunks'
+import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
 import NewFolderModal from './NewFolderModal';
+import NewCatalogModal from './NewCatalogModal';
 import FolderCard from './FolderCard';
-import { selectAllFolders, removeFolder, selectFoldersForCatalog, selectCatalogsInFolder } from '../redux/slices/folderSlice';
-import EditFolderModal from './EditFolderModal';
+import { selectAllFolders, removeFolder } from '../redux/slices/folderSlice';
 import { cardSizes } from '../constants/sizes';
-
+import { removeCatalog, updateCatalog } from '../redux/slices/catalogSlice';
+import EditCatalogModal from './EditCatalogModal';
 
 const LibraryPage = () => {
   const dispatch = useDispatch();
 
+  // Redux Selectors
   const wallets = useSelector(state => state.wallets.list);
   const nfts = useSelector(state => state.nfts.byWallet);
   const catalogs = useSelector(selectAllCatalogs);
   const totalNFTs = useSelector(selectTotalNFTs);
   const spamNFTs = useSelector(selectTotalSpamNFTs);
   const nftStructure = useSelector(selectNFTStructure);
-  const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false);
   const folders = useSelector(selectAllFolders);
+  const automatedCatalogs = useSelector(selectAutomatedCatalogs);
 
+  // Custom Hooks
   const { bgColor, cardBg, textColor, borderColor } = useCustomColorMode();
   const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast();
   const { handleError } = useErrorHandler();
   const { buttonSize, headingSize, showFullText, gridColumns } = useResponsive();
+  const [editingCatalog, setEditingCatalog] = useState(null);
   
+  // Local State
   const [selectedNFTs, setSelectedNFTs] = useState([]);
-  const [catalogName, setCatalogName] = useState('');
   const [selectedWallets, setSelectedWallets] = useState(wallets.map(w => w.id));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState(0);
@@ -86,58 +81,15 @@ const LibraryPage = () => {
   const [viewingCatalog, setViewingCatalog] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
   const [isSelectMode, setIsSelectMode] = useState(false);
-  const [isCreateCatalogOpen, setIsCreateCatalogOpen] = useState(false);
-  const [isAddToCatalogOpen, setIsAddToCatalogOpen] = useState(false);
-  const [selectedCatalogs, setSelectedCatalogs] = useState([]);
-  const [catalogSearch, setCatalogSearch] = useState('');
+  const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false);
+  const [isNewCatalogModalOpen, setIsNewCatalogModalOpen] = useState(false);
   const [viewingFolder, setViewingFolder] = useState(null);
-  const [isEditFolderModalOpen, setIsEditFolderModalOpen] = useState(false);
-  const [selectedFolder, setSelectedFolder] = useState(null);
   const [cardSize, setCardSize] = useState("md");
-  const automatedCatalogs = useSelector(selectAutomatedCatalogs);
-  
 
   const location = useLocation();
   const navigate = useNavigate();
 
-  const sizes = {
-    sm: {
-      icon: '1.5rem',
-      fontSize: 'sm',
-      padding: 2,
-      width: '150px', // Base width for small cards
-      spacing: 0.5,
-    },
-    md: {
-      icon: '2rem',
-      fontSize: 'md',
-      padding: 3,
-      width: '200px', // Base width for medium cards
-      spacing: 1,
-    },
-    lg: {
-      icon: '3rem',
-      fontSize: 'lg',
-      padding: 4,
-      width: '250px', // Base width for large cards
-      spacing: 2,
-    }
-  };
-
-  useEffect(() => {
-    try {
-      if (Array.isArray(spamNFTs)) {
-        dispatch(updateSpamCatalog(spamNFTs));
-      } else {
-        console.warn('spamNFTs is not an array:', spamNFTs);
-        dispatch(updateSpamCatalog([]));
-      }
-    } catch (error) {
-      console.error('Error updating spam catalog:', error);
-      dispatch(updateSpamCatalog([]));
-    }
-  }, [dispatch, spamNFTs]);
-
+  // Initialize tab from URL if present
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
@@ -145,17 +97,28 @@ const LibraryPage = () => {
     if (tab === 'catalogs') setActiveTab(1);
   }, [location]);
 
-  useEffect(() => {
-    // Initialize with default spam catalog if none exists
-    if (!catalogs.some(cat => cat.name === "Spam")) {
-      dispatch(addCatalog({
-        id: 'spam',
-        name: 'Spam',
-        nftIds: [],
-        isSystem: true // Flag to identify system catalogs
-      }));
-    }
-  }, [catalogs, dispatch]);
+  const handleDeleteCatalog = useCallback((catalogId) => {
+    // First remove catalog from any folders it might be in
+    folders.forEach(folder => {
+      if (folder.catalogIds?.includes(catalogId)) {
+        dispatch(removeFolder({
+          folderId: folder.id,
+          catalogId
+        }));
+      }
+    });
+  
+    // Then remove the catalog itself
+    dispatch(removeCatalog(catalogId));
+    showSuccessToast(
+      "Catalog Deleted",
+      "The catalog has been successfully removed."
+    );
+  }, [dispatch, folders, showSuccessToast]);
+  
+  const handleEditCatalog = useCallback((catalog) => {
+    setEditingCatalog(catalog);
+  }, []);
 
   const handleSizeChange = (value) => {
     const sizes = {
@@ -174,43 +137,48 @@ const LibraryPage = () => {
   const handleOpenFolder = (folder) => {
     setViewingFolder(folder);
   };
-  
-  const handleEditFolder = (folder) => {
-    setSelectedFolder(folder);
-    setIsEditFolderModalOpen(true);
+
+  const handleOpenCatalog = useCallback((catalog) => {
+    setViewingCatalog(catalog);
+  }, []);
+
+  const handleRefreshNFTs = async () => {
+    setIsRefreshing(true);
+    setRefreshProgress(0);
+    
+    let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
+    let completedFetches = 0;
+
+    for (const wallet of wallets) {
+      try {
+        const result = await dispatch(fetchWalletNFTs({
+          walletId: wallet.id,
+          address: wallet.address,
+          networks: wallet.networks
+        })).unwrap();
+
+        if (result.hasNewNFTs) {
+          showSuccessToast(
+            "New NFTs Found", 
+            `Found new or updated NFTs for ${wallet.nickname || wallet.address}`
+          );
+        }
+        
+        completedFetches++;
+        setRefreshProgress((completedFetches / totalFetches) * 100);
+      } catch (error) {
+        handleError(error, `refreshing NFTs for ${wallet.address}`);
+      }
+    }
+
+    setIsRefreshing(false);
+    showSuccessToast(
+      "Refresh Complete", 
+      "Your NFT collection has been updated."
+    );
   };
 
-  const handleNFTClick = useCallback((nft) => {
-    navigate('/artifact', { state: { nft } });
-  }, [navigate]);
-
-  const handleWalletCollapse = useCallback((walletId) => {
-    setCollapsedWallets(prev => ({
-      ...prev,
-      [walletId]: !prev[walletId]
-    }));
-  }, []);
-
-  const handleMarkAsSpam = useCallback((walletId, nft) => {
-    dispatch(updateNFT({ 
-      walletId, 
-      nft: { ...nft, isSpam: !nft.isSpam } 
-    }));
-    
-    showInfoToast(
-      `Marked NFT as ${nft.isSpam ? 'Not Spam' : 'Spam'}`,
-      `The NFT has been ${nft.isSpam ? 'removed from' : 'moved to'} the Spam folder.`
-    );
-  }, [dispatch, showInfoToast]);
-
-  const handleWalletToggle = useCallback((walletId) => {
-    setSelectedWallets(prev => 
-      prev.includes(walletId)
-        ? prev.filter(id => id !== walletId)
-        : [...prev, walletId]
-    );
-  }, []);
-
+  // Render Folder View
   const renderFolderView = () => {
     if (!viewingFolder) return null;
     
@@ -228,12 +196,7 @@ const LibraryPage = () => {
         )}
   
         <SimpleGrid 
-          columns={{ 
-            base: 2,
-            sm: 3,
-            md: 4,
-            lg: 6
-          }} 
+          columns={cardSizes[cardSize].columns}
           spacing={2}
           width="100%"
         >
@@ -244,8 +207,6 @@ const LibraryPage = () => {
                 key={catalog.id}
                 catalog={catalog}
                 onView={() => handleOpenCatalog(catalog)}
-                onEdit={() => handleOpenCatalog(catalog)}
-                onDelete={() => handleDeleteCatalog(catalog.id)}
                 cardSize={cardSize}
               />
             ))}
@@ -254,109 +215,12 @@ const LibraryPage = () => {
     );
   };
 
-  const handleCreateCatalog = useCallback(() => {
-    if (catalogName.trim() === '') {
-      showErrorToast("Catalog Name Required", "Please enter a name for your catalog.");
-      return;
-    }
-  
-    if (selectedNFTs.length === 0) {
-      showErrorToast("No NFTs Selected", "Please select at least one NFT for your catalog.");
-      return;
-    }
-  
-    const newCatalog = {
-      id: `catalog-${Date.now()}`,
-      name: catalogName.trim(),
-      nftIds: selectedNFTs.map(nft => ({
-        tokenId: nft.id.tokenId,
-        contractAddress: nft.contract.address,
-        network: nft.network
-      })),
-      createdAt: new Date().toISOString(),
-      isSystem: false
-    };
-  
-    dispatch(addCatalog(newCatalog));
-    setCatalogName('');
-    setSelectedNFTs([]);
-    setIsCreateCatalogOpen(false);
-    showSuccessToast(
-      "Catalog Created", 
-      `Your catalog "${catalogName}" has been created successfully.`
-    );
-  }, [catalogName, selectedNFTs, dispatch, showErrorToast, showSuccessToast]);
-
-  const handleDeleteCatalog = useCallback((catalogId) => {
-    dispatch(removeCatalog(catalogId));
-    showInfoToast("Catalog Deleted", "The catalog has been deleted successfully.");
-  }, [dispatch, showInfoToast]);
-
-  const handleOpenCatalog = useCallback((catalog) => {
-    setViewingCatalog(catalog);
-  }, []);
-
-const handleRefreshNFTs = async () => {
-  setIsRefreshing(true);
-  setRefreshProgress(0);
-  
-  let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
-  let completedFetches = 0;
-
-  for (const wallet of wallets) {
-    try {
-      const result = await dispatch(fetchWalletNFTs({
-        walletId: wallet.id,
-        address: wallet.address,
-        networks: wallet.networks
-      })).unwrap();
-
-      if (result.hasNewNFTs) {
-        showSuccessToast(
-          "New NFTs Found", 
-          `Found new or updated NFTs for ${wallet.nickname || wallet.address}`
-        );
-      }
-      
-      completedFetches++;
-      setRefreshProgress((completedFetches / totalFetches) * 100);
-    } catch (error) {
-      handleError(error, `refreshing NFTs for ${wallet.address}`);
-    }
-  }
-
-  setIsRefreshing(false);
-  showSuccessToast(
-    "Refresh Complete", 
-    "Your NFT collection has been updated."
-  );
-};
-
-  const filteredCatalogs = useMemo(() => 
-    catalogs.filter(catalog => 
-      catalog.name.toLowerCase().includes(catalogSearch.toLowerCase())
-    ),
-    [catalogs, catalogSearch]
-  );
-
-  const catalogFoldersMap = useSelector(state => 
-    filteredCatalogs.reduce((acc, catalog) => {
-      acc[catalog.id] = selectFoldersForCatalog(state, catalog.id);
-      return acc;
-    }, {})
-  );
-
+  // Render main content based on current view
   if (viewingCatalog) {
     return (
       <CatalogViewPage
         catalog={viewingCatalog}
         onBack={() => setViewingCatalog(null)}
-        onRemoveNFTs={(nftIds) => {
-          dispatch(updateCatalog({ 
-            id: viewingCatalog.id, 
-            nftIds: viewingCatalog.nftIds.filter(id => !nftIds.includes(id))
-          }));
-        }}
       />
     );
   }
@@ -385,68 +249,43 @@ const handleRefreshNFTs = async () => {
           <Progress value={refreshProgress} size="sm" colorScheme="blue" />
         )}
   
-        {/* Create Catalog Modal */}
-        <Modal isOpen={isCreateCatalogOpen} onClose={() => setIsCreateCatalogOpen(false)}>
-          <ModalOverlay />
-          <ModalContent>
-            <ModalHeader>Create New Catalog</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody>
-              <Input
-                placeholder="Enter catalog name"
-                value={catalogName}
-                onChange={(e) => setCatalogName(e.target.value)}
-              />
-            </ModalBody>
-            <ModalFooter>
-              <Button colorScheme="blue" mr={3} onClick={handleCreateCatalog}>
-                Create
-              </Button>
-              <Button variant="ghost" onClick={() => setIsCreateCatalogOpen(false)}>Cancel</Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
-  
         <Tabs index={activeTab} onChange={setActiveTab} variant="enclosed">
           <TabList>
             <Tab fontSize="1rem">Artifacts</Tab>
             <Tab fontSize="1rem">Library</Tab>
           </TabList>
           <TabPanels>
+            {/* Artifacts Tab */}
             <TabPanel>
               <Grid templateColumns="3fr 1fr" gap={6}>
                 <Box>
-                {wallets.map((wallet) => (
-                  <Box key={wallet.id} mt="2rem">
-                    <Flex align="center" mb="1rem">
-                      <StyledButton 
-                        leftIcon={collapsedWallets[wallet.id] ? <FaChevronRight /> : <FaChevronDown />}
-                        variant="ghost" 
-                        onClick={() => handleWalletCollapse(wallet.id)}
-                      >
-                        <Heading as="h3" size="md">
-                          {wallet.nickname || wallet.address}
-                        </Heading>
-                      </StyledButton>
-                    </Flex>
-                    {!collapsedWallets[wallet.id] && (
-                      <WalletNFTGrid 
-                        walletId={wallet.id}
-                        selectedNFTs={selectedNFTs}
-                        onNFTSelect={(nft) => setSelectedNFTs(prev => 
-                          prev.some(n => n.id === nft.id) 
-                            ? prev.filter(n => n.id !== nft.id) 
-                            : [...prev, nft]
-                        )}
-                        onMarkAsSpam={(nft) => handleMarkAsSpam(wallet.id, nft)}
-                        isSpamFolder={false}
-                        isSelectMode={isSelectMode}
-                        onNFTClick={handleNFTClick}
-                        gridColumns={gridColumns}
-                      />
-                    )}
-                  </Box>
-                ))}
+                  {wallets.map((wallet) => (
+                    <Box key={wallet.id} mt="2rem">
+                      <Flex align="center" mb="1rem">
+                        <StyledButton 
+                          leftIcon={collapsedWallets[wallet.id] ? <FaChevronRight /> : <FaChevronDown />}
+                          variant="ghost" 
+                          onClick={() => setCollapsedWallets(prev => ({
+                            ...prev,
+                            [wallet.id]: !prev[wallet.id]
+                          }))}
+                        >
+                          <Heading as="h3" size="md">
+                            {wallet.nickname || wallet.address}
+                          </Heading>
+                        </StyledButton>
+                      </Flex>
+                      {!collapsedWallets[wallet.id] && (
+                        <WalletNFTGrid 
+                          walletId={wallet.id}
+                          selectedNFTs={selectedNFTs}
+                          onNFTSelect={setSelectedNFTs}
+                          isSelectMode={isSelectMode}
+                          gridColumns={gridColumns}
+                        />
+                      )}
+                    </Box>
+                  ))}
                 </Box>
                 <VStack spacing={6}>
                   <StyledCard>
@@ -458,7 +297,11 @@ const handleRefreshNFTs = async () => {
                           <Checkbox
                             key={wallet.id}
                             isChecked={selectedWallets.includes(wallet.id)}
-                            onChange={() => handleWalletToggle(wallet.id)}
+                            onChange={() => setSelectedWallets(prev => 
+                              prev.includes(wallet.id)
+                                ? prev.filter(id => id !== wallet.id)
+                                : [...prev, wallet.id]
+                            )}
                             mb="0.25rem"
                           >
                             {wallet.nickname || wallet.address}
@@ -474,7 +317,10 @@ const handleRefreshNFTs = async () => {
                         {isSelectMode ? "Cancel Selection" : "Select Artifacts"}
                       </StyledButton>
                       {isSelectMode && (
-                        <StyledButton onClick={() => setIsCreateCatalogOpen(true)} width="100%">
+                        <StyledButton 
+                          onClick={() => setIsNewCatalogModalOpen(true)} 
+                          width="100%"
+                        >
                           Create Catalog
                         </StyledButton>
                       )}
@@ -484,6 +330,7 @@ const handleRefreshNFTs = async () => {
               </Grid>
             </TabPanel>
             
+            {/* Library Tab */}
             <TabPanel>
               <Flex justify="space-between" align="center" mb={4}>
                 <Button
@@ -492,6 +339,13 @@ const handleRefreshNFTs = async () => {
                   colorScheme="blue"
                 >
                   New Folder
+                </Button>
+                <Button
+                  leftIcon={<FaPlus />}
+                  onClick={() => setIsNewCatalogModalOpen(true)}
+                  colorScheme="blue"
+                >
+                  New Catalog
                 </Button>
               </Flex>
 
@@ -529,7 +383,6 @@ const handleRefreshNFTs = async () => {
                           key={folder.id}
                           folder={folder}
                           onView={() => handleOpenFolder(folder)}
-                          onEdit={() => handleEditFolder(folder)}
                           onDelete={() => handleDeleteFolder(folder.id)}
                           cardSize={cardSize}
                         />
@@ -553,8 +406,6 @@ const handleRefreshNFTs = async () => {
                         key={catalog.id}
                         catalog={catalog}
                         onView={() => handleOpenCatalog(catalog)}
-                        onEdit={() => handleOpenCatalog(catalog)}
-                        onDelete={() => handleDeleteCatalog(catalog.id)}
                         cardSize={cardSize}
                         isSystem={true}
                       />
@@ -572,17 +423,20 @@ const handleRefreshNFTs = async () => {
                     spacing={2}
                     width="100%"
                   >
-                    {filteredCatalogs
+                    {catalogs
                       .filter(catalog => 
-                        !catalog.type === 'automated' && 
-                        catalogFoldersMap[catalog.id]?.length === 0
+                        catalog.type !== 'automated' && // Changed from !catalog.type === 'automated'
+                        !catalog.isSystem &&
+                        !folders.some(folder => 
+                          folder.catalogIds?.includes(catalog.id)
+                        )
                       )
                       .map((catalog) => (
                         <CatalogCard
                           key={catalog.id}
                           catalog={catalog}
                           onView={() => handleOpenCatalog(catalog)}
-                          onEdit={() => handleOpenCatalog(catalog)}
+                          onEdit={() => handleEditCatalog(catalog)}
                           onDelete={() => handleDeleteCatalog(catalog.id)}
                           cardSize={cardSize}
                         />
@@ -594,27 +448,40 @@ const handleRefreshNFTs = async () => {
           </TabPanels>
         </Tabs>
       </VStack>
-      {isSelectMode && (
-        <SelectedArtifactsOverlay 
-          selectedArtifacts={selectedNFTs}
-          onRemoveArtifact={(nft) => setSelectedNFTs(prev => prev.filter(n => n.id !== nft.id))}
-          onAddToSpam={(nft) => handleMarkAsSpam(nft.walletId, nft)}
-          onCreateCatalog={() => setIsCreateCatalogOpen(true)}
-          onAddToExistingCatalog={() => setIsAddToCatalogOpen(true)}
-        />
-      )}
+
+      {/* Modals */}
       <NewFolderModal 
         isOpen={isNewFolderModalOpen}
         onClose={() => setIsNewFolderModalOpen(false)}
       />
-      <EditFolderModal
-        isOpen={isEditFolderModalOpen}
-        onClose={() => {
-          setIsEditFolderModalOpen(false);
-          setSelectedFolder(null);
-        }}
-        folder={selectedFolder}
+
+      <NewCatalogModal 
+        isOpen={isNewCatalogModalOpen}
+        onClose={() => setIsNewCatalogModalOpen(false)}
       />
+
+      <EditCatalogModal 
+        isOpen={editingCatalog !== null}
+        onClose={() => setEditingCatalog(null)}
+        catalog={editingCatalog}
+      />
+
+      {/* Selected Artifacts Overlay */}
+      {isSelectMode && (
+        <SelectedArtifactsOverlay 
+          selectedArtifacts={selectedNFTs}
+          onRemoveArtifact={(nft) => setSelectedNFTs(prev => 
+            prev.filter(n => n.id !== nft.id)
+          )}
+          onAddToSpam={(nft) => {
+            dispatch(updateNFT({ 
+              walletId: nft.walletId, 
+              nft: { ...nft, isSpam: true } 
+            }));
+          }}
+          onCreateCatalog={() => setIsNewCatalogModalOpen(true)}
+        />
+      )}
     </StyledContainer>
   );
 };
