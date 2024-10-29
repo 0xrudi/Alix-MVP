@@ -107,7 +107,7 @@ const convertToGatewayUrl = (uri) => {
 };
 
 
-const validateTokenUri = async (uri) => {
+export const validateTokenUri = async (uri) => {
   try {
     logger.debug('[TokenURI Validation] Validating URI:', uri);
 

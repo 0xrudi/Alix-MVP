@@ -384,21 +384,6 @@ const handleRefreshNFTs = async () => {
         {isRefreshing && (
           <Progress value={refreshProgress} size="sm" colorScheme="blue" />
         )}
-      
-        <StatGroup>
-          <Stat>
-            <StatLabel fontSize="1rem">Total Artifacts</StatLabel>
-            <StatNumber fontSize="1.5rem">{totalNFTs}</StatNumber>
-          </Stat>
-          <Stat>
-            <StatLabel fontSize="1rem">Catalogs</StatLabel>
-            <StatNumber fontSize="1.5rem">{catalogs.length}</StatNumber>
-          </Stat>
-          <Stat>
-            <StatLabel fontSize="1rem">Spam Artifacts</StatLabel>
-            <StatNumber fontSize="1.5rem">{spamNFTs}</StatNumber>
-          </Stat>
-        </StatGroup>
   
         {/* Create Catalog Modal */}
         <Modal isOpen={isCreateCatalogOpen} onClose={() => setIsCreateCatalogOpen(false)}>
