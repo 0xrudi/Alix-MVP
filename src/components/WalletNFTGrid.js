@@ -1,4 +1,3 @@
-// src/components/WalletNFTGrid.js
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { selectFlattenedWalletNFTs } from '../redux/slices/nftSlice';
@@ -9,21 +8,25 @@ const WalletNFTGrid = ({
   selectedNFTs, 
   onNFTSelect, 
   onMarkAsSpam,
-  isSpamFolder,
   isSelectMode,
   onNFTClick,
   gridColumns 
 }) => {
-  const nfts = useSelector(state => selectFlattenedWalletNFTs(state, walletId));
+  const nfts = useSelector(state => selectFlattenedWalletNFTs(state, walletId)) || [];
+
+  // Ensure NFTs have walletId
+  const nftsWithWallet = nfts.map(nft => ({
+    ...nft,
+    walletId // Add walletId to each NFT
+  }));
 
   return (
     <NFTGrid 
-      nfts={nfts || []}
-      selectedNFTs={selectedNFTs}
+      nfts={nftsWithWallet}
+      selectedNFTs={selectedNFTs || []} // Ensure it's always an array
       onNFTSelect={onNFTSelect}
       onMarkAsSpam={onMarkAsSpam}
-      walletId={walletId}
-      isSpamFolder={isSpamFolder}
+      isSpamFolder={false}
       isSelectMode={isSelectMode}
       onNFTClick={onNFTClick}
       gridColumns={gridColumns}

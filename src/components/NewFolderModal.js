@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -10,22 +10,18 @@ import {
   Input,
   Button,
   VStack,
-  HStack,
-  Box,
   Tag,
   TagLabel,
   TagCloseButton,
-  Select,
-  Text,
-  Icon,
+  Wrap,
+  Box,
   Alert,
   AlertIcon,
-  Wrap
+  Text,
 } from "@chakra-ui/react";
 import { useDispatch, useSelector } from 'react-redux';
 import { addFolder } from '../redux/slices/folderSlice';
 import { selectAllCatalogs } from '../redux/slices/catalogSlice';
-import { FaExclamationCircle } from 'react-icons/fa';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
 
 const NewFolderModal = ({ isOpen, onClose }) => {
@@ -35,20 +31,16 @@ const NewFolderModal = ({ isOpen, onClose }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedCatalogs, setSelectedCatalogs] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
   const [showError, setShowError] = useState(false);
 
   // Format catalogs for the select component
-  const catalogOptions = useMemo(() => 
-    catalogs
-      .filter(cat => !cat.isSystem)
-      .map(catalog => ({
-        value: catalog.id,
-        label: catalog.name
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label)),
-    [catalogs]
-  );
+  const catalogOptions = catalogs
+    .filter(cat => !cat.isSystem && !selectedCatalogs.find(sc => sc.value === cat.id))
+    .map(catalog => ({
+      value: catalog.id,
+      label: catalog.name
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   const handleSubmit = () => {
     if (!name.trim()) {
@@ -69,9 +61,14 @@ const NewFolderModal = ({ isOpen, onClose }) => {
     setName('');
     setDescription('');
     setSelectedCatalogs([]);
-    setSearchTerm('');
     setShowError(false);
     onClose();
+  };
+
+  const handleCatalogSelect = (option) => {
+    if (option) {
+      setSelectedCatalogs(prev => [...prev, option]);
+    }
   };
 
   const removeSelectedCatalog = (catalogToRemove) => {
@@ -100,7 +97,7 @@ const NewFolderModal = ({ isOpen, onClose }) => {
               />
               {showError && (
                 <Alert status="error" mt={2} py={2} px={3} borderRadius="md" opacity={0.8}>
-                  <AlertIcon as={FaExclamationCircle} />
+                  <AlertIcon />
                   <Text fontSize="sm">Folder name is required</Text>
                 </Alert>
               )}
@@ -115,12 +112,10 @@ const NewFolderModal = ({ isOpen, onClose }) => {
 
             <Box width="100%">
               <ChakraReactSelect
-                isMulti
                 options={catalogOptions}
-                value={selectedCatalogs}
-                onChange={setSelectedCatalogs}
+                onChange={handleCatalogSelect}
+                value={null} // Always keep the select empty
                 placeholder="Search catalogs"
-                closeMenuOnSelect={false}
                 chakraStyles={{
                   placeholder: (provided) => ({
                     ...provided,

@@ -97,6 +97,39 @@ const LibraryPage = () => {
     if (tab === 'catalogs') setActiveTab(1);
   }, [location]);
 
+  const handleMarkAsSpam = useCallback((nft) => {
+    dispatch(updateNFT({ 
+      walletId: nft.walletId, 
+      nft: { ...nft, isSpam: true } 
+    }));
+    showSuccessToast('NFT marked as spam', 'The NFT has been moved to your spam folder.');
+  }, [dispatch, showSuccessToast]);
+  
+  const handleNFTClick = useCallback((nft) => {
+    navigate('/artifact', { state: { nft } });
+  }, [navigate]);
+
+  const handleNFTSelect = useCallback((nft) => {
+    setSelectedNFTs(prev => {
+      // Ensure prev is an array
+      const currentSelected = Array.isArray(prev) ? prev : [];
+      
+      const isSelected = currentSelected.some(selected => 
+        selected.id?.tokenId === nft.id?.tokenId &&
+        selected.contract?.address === nft.contract?.address
+      );
+
+      if (isSelected) {
+        return currentSelected.filter(selected => 
+          selected.id?.tokenId !== nft.id?.tokenId ||
+          selected.contract?.address !== nft.contract?.address
+        );
+      } else {
+        return [...currentSelected, nft];
+      }
+    });
+  }, []);
+
   const handleDeleteCatalog = useCallback((catalogId) => {
     // First remove catalog from any folders it might be in
     folders.forEach(folder => {
@@ -279,8 +312,10 @@ const LibraryPage = () => {
                         <WalletNFTGrid 
                           walletId={wallet.id}
                           selectedNFTs={selectedNFTs}
-                          onNFTSelect={setSelectedNFTs}
+                          onNFTSelect={handleNFTSelect}
+                          onMarkAsSpam={handleMarkAsSpam}
                           isSelectMode={isSelectMode}
+                          onNFTClick={handleNFTClick}
                           gridColumns={gridColumns}
                         />
                       )}
