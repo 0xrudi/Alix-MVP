@@ -1,4 +1,3 @@
-// src/components/NFTGrid.js
 import React, { useState } from 'react';
 import { 
   SimpleGrid, 
@@ -15,20 +14,9 @@ import NFTCard from './NFTCard';
 import { filterAndSortNFTs } from '../utils/nftUtils';
 import { StyledContainer } from '../styles/commonStyles';
 
-/**
- * NFTGrid - A reusable grid component for displaying NFTs with filtering and sorting capabilities
- * @param {Object[]} nfts - Array of NFT objects to display
- * @param {Object[]} selectedNFTs - Array of currently selected NFTs
- * @param {Function} onNFTSelect - Callback when an NFT is selected
- * @param {Function} onMarkAsSpam - Callback when an NFT is marked as spam
- * @param {boolean} isSpamFolder - Whether this grid is displaying spam NFTs
- * @param {boolean} isSelectMode - Whether the grid is in selection mode
- * @param {Function} onNFTClick - Callback when an NFT is clicked
- * @param {number} gridColumns - Number of columns to display
- */
 const NFTGrid = ({ 
   nfts = [], 
-  selectedNFTs = [], 
+  selectedNFTs = [], // Ensure this has a default value
   onNFTSelect, 
   onMarkAsSpam, 
   isSpamFolder = false,
@@ -39,7 +27,7 @@ const NFTGrid = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState('title');
 
-  const filteredAndSortedNFTs = filterAndSortNFTs(nfts, searchTerm, sortOption, isSpamFolder);
+  const filteredAndSortedNFTs = filterAndSortNFTs(nfts, searchTerm, sortOption);
 
   return (
     <StyledContainer>
@@ -88,7 +76,6 @@ const NFTGrid = ({
               isSpamFolder={isSpamFolder}
               isSelectMode={isSelectMode}
               onClick={() => onNFTClick(nft)}
-              network={nft.network}
             />
           ))}
         </SimpleGrid>
