@@ -1,15 +1,26 @@
+// src/utils/toastUtils.js
 import { useToast } from "@chakra-ui/react";
 
 export const useCustomToast = () => {
   const toast = useToast();
+
+  const customToastConfig = {
+    position: 'right',
+    duration: 3000,
+    isClosable: true,
+    containerStyle: {
+      marginRight: '20px', // Provide some spacing from the right edge
+      width: '300px',
+      maxWidth: '300px'
+    }
+  };
 
   const showSuccessToast = (title, description) => {
     toast({
       title,
       description,
       status: "success",
-      duration: 3000,
-      isClosable: true,
+      ...customToastConfig
     });
   };
 
@@ -19,7 +30,7 @@ export const useCustomToast = () => {
       description,
       status: "error",
       duration: 5000,
-      isClosable: true,
+      ...customToastConfig
     });
   };
 
@@ -28,8 +39,7 @@ export const useCustomToast = () => {
       title,
       description,
       status: "info",
-      duration: 3000,
-      isClosable: true,
+      ...customToastConfig
     });
   };
 
@@ -39,7 +49,7 @@ export const useCustomToast = () => {
       description,
       status: "warning",
       duration: 4000,
-      isClosable: true,
+      ...customToastConfig
     });
   };
 
