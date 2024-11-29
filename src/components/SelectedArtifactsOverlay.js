@@ -1,25 +1,29 @@
-// src/components/SelectedArtifactsOverlay.js
-
 import React, { useState } from 'react';
 import {
   Box,
   Flex,
   Text,
-  Image,
   VStack,
   IconButton,
   Button,
   Collapse,
-  Badge,
   CloseButton,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
 } from "@chakra-ui/react";
 import { FaChevronUp, FaChevronDown, FaTrash, FaPlus, FaFolderPlus } from 'react-icons/fa';
-import { getImageUrl } from '../utils/web3Utils';
 
-const SelectedArtifactsOverlay = ({ selectedArtifacts, onRemoveArtifact, onAddToSpam, onCreateCatalog, onAddToExistingCatalog }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const toggleExpand = () => setIsExpanded(!isExpanded);
+const SelectedArtifactsOverlay = ({ 
+  selectedArtifacts,
+  onRemoveArtifact,
+  onAddToSpam,
+  onCreateCatalog,
+  onAddToExistingCatalog,
+  catalogs,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true);
 
   return (
     <Box
@@ -31,117 +35,99 @@ const SelectedArtifactsOverlay = ({ selectedArtifacts, onRemoveArtifact, onAddTo
       boxShadow="lg"
       borderTopRadius="md"
       zIndex={1000}
+      maxHeight="80vh"
+      display="flex"
+      flexDirection="column"
     >
+      {/* Header */}
       <Flex
         justify="space-between"
         align="center"
         p={3}
         borderBottom="1px solid"
         borderColor="gray.200"
+        onClick={() => setIsExpanded(!isExpanded)}
+        cursor="pointer"
       >
-        <Flex align="center" flex={1}>
-          <Text fontWeight="bold" mr={2}>
-            Selected Artifacts: {selectedArtifacts.length}
-          </Text>
-          <IconButton
-            icon={isExpanded ? <FaChevronDown /> : <FaChevronUp />}
-            variant="ghost"
-            size="sm"
-            aria-label={isExpanded ? "Collapse" : "Expand"}
-            onClick={toggleExpand}
-          />
-        </Flex>
-        {!isExpanded && (
-          <Flex>
-            <IconButton
-              icon={<FaTrash />}
-              variant="ghost"
-              size="sm"
-              aria-label="Add to Spam"
-              onClick={onAddToSpam}
-              mr={1}
-            />
-            <IconButton
-              icon={<FaPlus />}
-              variant="ghost"
-              size="sm"
-              aria-label="Create Catalog"
-              onClick={onCreateCatalog}
-              mr={1}
-            />
-            <IconButton
-              icon={<FaFolderPlus />}
-              variant="ghost"
-              size="sm"
-              aria-label="Add to Existing Catalog"
-              onClick={onAddToExistingCatalog}
-            />
-          </Flex>
-        )}
+        <Text fontWeight="bold">
+          Selected Artifacts: {selectedArtifacts.length}
+        </Text>
+        <IconButton
+          icon={isExpanded ? <FaChevronDown /> : <FaChevronUp />}
+          variant="ghost"
+          size="sm"
+          aria-label={isExpanded ? "Collapse" : "Expand"}
+        />
       </Flex>
-      <Collapse in={isExpanded}>
-        <VStack spacing={2} p={3} align="stretch">
+
+      <Collapse in={isExpanded} style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Action Buttons - Always Visible */}
+        <VStack p={3} spacing={2} borderBottom="1px solid" borderColor="gray.200">
           <Button
             leftIcon={<FaTrash />}
+            colorScheme="red"
             size="sm"
+            width="100%"
             onClick={onAddToSpam}
-            fontSize="xs"
           >
             Add to Spam
           </Button>
+
           <Button
             leftIcon={<FaPlus />}
+            colorScheme="blue"
             size="sm"
+            width="100%"
             onClick={onCreateCatalog}
-            fontSize="xs"
           >
-            Create Catalog
+            Create New Catalog
           </Button>
-          <Button
-            leftIcon={<FaFolderPlus />}
-            size="sm"
-            onClick={onAddToExistingCatalog}
-            fontSize="xs"
-          >
-            Add to Existing Catalog
-          </Button>
-        </VStack>
-        <VStack
-          maxHeight="300px"
-          overflowY="auto"
-          spacing={2}
-          p={3}
-          align="stretch"
-        >
-          {selectedArtifacts.map((artifact) => (
-            <Flex
-              key={`${artifact.contract?.address}-${artifact.id?.tokenId}`}
-              align="center"
-              bg="gray.50"
-              p={2}
-              borderRadius="md"
+
+          <Menu>
+            <MenuButton
+              as={Button}
+              leftIcon={<FaFolderPlus />}
+              size="sm"
+              width="100%"
             >
-              <Image
-                src={getImageUrl(artifact)}
-                alt={artifact.title || 'NFT'}
-                boxSize="40px"
-                objectFit="cover"
-                mr={3}
-                borderRadius="md"
-              />
-              <Text fontSize="sm" flex={1} isTruncated>
-                {artifact.title || `Token ID: ${artifact.id?.tokenId}`}
-              </Text>
-              <Badge colorScheme="purple" mr={2}>
-                {artifact.network}
-              </Badge>
-              <CloseButton
-                size="sm"
-                onClick={() => onRemoveArtifact(artifact)}
-              />
-            </Flex>
-          ))}
+              Add to Existing Catalog
+            </MenuButton>
+            <MenuList>
+              {catalogs?.map(catalog => (
+                <MenuItem
+                  key={catalog.id}
+                  onClick={() => onAddToExistingCatalog(catalog.id)}
+                >
+                  {catalog.name}
+                </MenuItem>
+              ))}
+            </MenuList>
+          </Menu>
         </VStack>
+
+        {/* Scrollable Selected Items */}
+        <Box overflowY="auto" p={3} maxHeight="300px">
+          <VStack spacing={1}>
+            {selectedArtifacts.map((artifact) => (
+              <Flex
+                key={`${artifact.contract?.address}-${artifact.id?.tokenId}`}
+                align="center"
+                bg="gray.50"
+                p={2}
+                borderRadius="md"
+                width="100%"
+              >
+                <Text fontSize="sm" flex={1} noOfLines={1}>
+                  {artifact.title || `Token ID: ${artifact.id?.tokenId}`}
+                </Text>
+                <CloseButton
+                  size="sm"
+                  onClick={() => onRemoveArtifact(artifact)}
+                />
+              </Flex>
+            ))}
+          </VStack>
+        </Box>
       </Collapse>
     </Box>
   );

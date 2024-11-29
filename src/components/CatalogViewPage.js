@@ -38,7 +38,13 @@ const VIEW_SIZES = {
   [VIEW_MODES.LARGE]: 320
 };
 
-const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam }) => {
+const CatalogViewPage = ({ 
+  catalog, 
+  onBack, 
+  onRemoveNFTs, 
+  onClose, 
+  onSpamToggle  // Changed from onUnmarkSpam
+}) => {
   const [selectedNFTs, setSelectedNFTs] = useState([]);
   const [viewMode, setViewMode] = useState(VIEW_MODES.MEDIUM);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
@@ -50,6 +56,14 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
 
   const isListView = viewMode === VIEW_MODES.LIST;
   const cardSize = VIEW_SIZES[viewMode];
+
+  // Determine catalog type for rendering
+  const getCatalogType = () => {
+    if (catalog.id === 'spam') return 'spam';
+    if (catalog.id === 'unorganized') return 'unorganized';
+    if (catalog.isSystem) return 'system';
+    return 'user';
+  };
 
   const filteredNFTs = catalogNFTs.filter(nft => 
     nft && (
@@ -78,6 +92,21 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
       duration: 3000,
       isClosable: true,
     });
+  };
+
+  // Handle spam/unspam actions
+  const handleSpamAction = (nft) => {
+    if (onSpamToggle) {
+      onSpamToggle(nft);
+    } else {
+      toast({
+        title: "Action Not Available",
+        description: "Unable to toggle spam state at this time.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
   };
 
   return (
@@ -162,10 +191,9 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
                 item.contract?.address === nft.contract?.address
               )}
               onSelect={() => handleNFTSelect(nft)}
-              onRemove={catalog.id === 'spam' ? 
-                () => onUnmarkSpam(nft) : 
-                () => onRemoveNFTs([nft])}
+              onMarkAsSpam={() => handleSpamAction(nft)}
               isSpamFolder={catalog.id === 'spam'}
+              catalogType={getCatalogType()}
             />
           ))}
         </VStack>
@@ -176,15 +204,15 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onClose, onUnmarkSpam 
               key={`${nft.contract?.address}-${nft.id?.tokenId}`}
               nft={nft}
               isSelected={selectedNFTs.some(item => 
-                item.id?.tokenId === nft.id?.tokenId && 
+                item.id?.tokenId === nft.id?.tokenId &&
                 item.contract?.address === nft.contract?.address
               )}
               onSelect={() => handleNFTSelect(nft)}
-              onRemove={catalog.id === 'spam' ? 
-                () => onUnmarkSpam(nft) : 
-                () => onRemoveNFTs([nft])}
-              cardSize={cardSize}
+              onMarkAsSpam={() => handleSpamAction(nft)}  // Updated to use handleSpamAction
               isSpamFolder={catalog.id === 'spam'}
+              catalogType={getCatalogType()}
+              cardSize={cardSize}
+              onClick={() => {}} // Add appropriate click handler if needed
             />
           ))}
         </SimpleGrid>
