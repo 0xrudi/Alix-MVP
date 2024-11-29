@@ -105,7 +105,7 @@ const LibraryPage = () => {
       })
     );
     setFilteredNFTs(allNFTs);
-  }, [nfts]);
+  }, [nfts]); // Only re-run when nfts change
 
   // Callback handlers
   const getSpamCount = useCallback(() => {
@@ -134,6 +134,27 @@ const LibraryPage = () => {
       })
     );
   }, [nfts, catalogs]);
+
+  const handleRemoveFromCatalog = (catalogId, nftsToRemove) => {
+    const catalog = catalogs.find(c => c.id === catalogId);
+    if (!catalog) return;
+  
+    const updatedCatalog = {
+      ...catalog,
+      nftIds: catalog.nftIds.filter(nftId => 
+        !nftsToRemove.some(nft => 
+          nft.id.tokenId === nftId.tokenId && 
+          nft.contract.address === nftId.contractAddress
+        )
+      )
+    };
+  
+    dispatch(updateCatalog(updatedCatalog));
+    showSuccessToast(
+      "NFTs Removed",
+      `${nftsToRemove.length} NFT(s) removed from ${catalog.name}`
+    );
+  };
 
   const handleClearSelections = useCallback(() => {
     setSelectedNFTs([]);
@@ -231,6 +252,23 @@ const LibraryPage = () => {
     setCardSize(sizes[value]);
   };
 
+  const handleCreateCatalogFromOverlay = () => {
+    // This ensures we pass the currently selected artifacts when opening the modal
+    setIsNewCatalogModalOpen(true);
+  };
+  
+  // Update the SelectedArtifactsOverlay usage
+  {isSelectMode && selectedNFTs.length > 0 && (
+    <SelectedArtifactsOverlay 
+      selectedArtifacts={selectedNFTs}
+      onRemoveArtifact={handleRemoveFromSelection}
+      onAddToSpam={handleMarkSelectedAsSpam}
+      onCreateCatalog={handleCreateCatalogFromOverlay}  // Use our new handler
+      onAddToExistingCatalog={handleAddToExistingCatalog}
+      catalogs={catalogs.filter(c => !c.isSystem)}
+    />
+  )}
+
   // Utility functions
   const getWalletNickname = useCallback((walletId) => {
     const wallet = wallets.find(w => w.id === walletId);
@@ -301,7 +339,7 @@ const LibraryPage = () => {
   // Filter NFTs based on search term
   const filteredAndSortedNFTs = useMemo(() => 
     filteredNFTs.filter(nft => 
-      !nft.isSpam && ( // Exclude spam NFTs
+      !nft.isSpam && (
         nft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         nft.contract?.name?.toLowerCase().includes(searchTerm.toLowerCase())
       )
@@ -642,6 +680,8 @@ return (
     <NewCatalogModal 
       isOpen={isNewCatalogModalOpen}
       onClose={() => setIsNewCatalogModalOpen(false)}
+      folders={folders}  // Make sure folders is defined
+      selectedArtifacts={selectedNFTs}
     />
 
     <EditCatalogModal 

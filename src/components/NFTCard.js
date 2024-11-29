@@ -102,23 +102,24 @@ const NFTCard = ({
       console.error('NFT missing walletId:', nft);
       return;
     }
-
-    // Toggle spam status
+  
     const updatedNFT = {
       ...nft,
       isSpam: !nft.isSpam
     };
-
+  
+    // First dispatch the NFT update
     dispatch(updateNFT({
       walletId: nft.walletId,
       nft: updatedNFT
     }));
-
-    // Call the passed handler if it exists
+  
+    // Then call the passed handler if it exists
     if (onMarkAsSpam) {
       onMarkAsSpam(updatedNFT);
     }
   };
+  
 
   const handleAddToCatalog = (e) => {
     e.stopPropagation();

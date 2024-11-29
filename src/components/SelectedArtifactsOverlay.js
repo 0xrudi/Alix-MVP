@@ -3,12 +3,10 @@ import {
   Box,
   Flex,
   Text,
-  Image,
   VStack,
   IconButton,
   Button,
   Collapse,
-  Badge,
   CloseButton,
   Menu,
   MenuButton,
@@ -25,9 +23,7 @@ const SelectedArtifactsOverlay = ({
   onAddToExistingCatalog,
   catalogs,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const toggleExpand = () => setIsExpanded(!isExpanded);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   return (
     <Box
@@ -39,14 +35,18 @@ const SelectedArtifactsOverlay = ({
       boxShadow="lg"
       borderTopRadius="md"
       zIndex={1000}
+      maxHeight="80vh"
+      display="flex"
+      flexDirection="column"
     >
+      {/* Header */}
       <Flex
         justify="space-between"
         align="center"
         p={3}
         borderBottom="1px solid"
         borderColor="gray.200"
-        onClick={toggleExpand}
+        onClick={() => setIsExpanded(!isExpanded)}
         cursor="pointer"
       >
         <Text fontWeight="bold">
@@ -57,16 +57,17 @@ const SelectedArtifactsOverlay = ({
           variant="ghost"
           size="sm"
           aria-label={isExpanded ? "Collapse" : "Expand"}
-          onClick={toggleExpand}
         />
       </Flex>
 
-      <Collapse in={isExpanded}>
-        <VStack spacing={2} p={3} align="stretch">
+      <Collapse in={isExpanded} style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Action Buttons - Always Visible */}
+        <VStack p={3} spacing={2} borderBottom="1px solid" borderColor="gray.200">
           <Button
             leftIcon={<FaTrash />}
             colorScheme="red"
             size="sm"
+            width="100%"
             onClick={onAddToSpam}
           >
             Add to Spam
@@ -76,6 +77,7 @@ const SelectedArtifactsOverlay = ({
             leftIcon={<FaPlus />}
             colorScheme="blue"
             size="sm"
+            width="100%"
             onClick={onCreateCatalog}
           >
             Create New Catalog
@@ -101,8 +103,11 @@ const SelectedArtifactsOverlay = ({
               ))}
             </MenuList>
           </Menu>
+        </VStack>
 
-          <VStack spacing={1} mt={2}>
+        {/* Scrollable Selected Items */}
+        <Box overflowY="auto" p={3} maxHeight="300px">
+          <VStack spacing={1}>
             {selectedArtifacts.map((artifact) => (
               <Flex
                 key={`${artifact.contract?.address}-${artifact.id?.tokenId}`}
@@ -115,9 +120,6 @@ const SelectedArtifactsOverlay = ({
                 <Text fontSize="sm" flex={1} noOfLines={1}>
                   {artifact.title || `Token ID: ${artifact.id?.tokenId}`}
                 </Text>
-                <Badge colorScheme="purple" mr={2}>
-                  {artifact.network}
-                </Badge>
                 <CloseButton
                   size="sm"
                   onClick={() => onRemoveArtifact(artifact)}
@@ -125,7 +127,7 @@ const SelectedArtifactsOverlay = ({
               </Flex>
             ))}
           </VStack>
-        </VStack>
+        </Box>
       </Collapse>
     </Box>
   );
