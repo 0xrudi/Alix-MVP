@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -18,18 +18,42 @@ import {
   Flex,
   Heading,
   IconButton,
+  FormControl,
+  FormLabel,
+  useColorModeValue,
+  Wrap,
+  WrapItem,
+  Tag,
+  TagLabel,
+  TagCloseButton,
 } from "@chakra-ui/react";
 import { FaTimes } from 'react-icons/fa';
 import { useDispatch, useSelector } from 'react-redux';
 import { addCatalog } from '../redux/slices/catalogSlice';
-import { addFolder, selectAllFolders } from '../redux/slices/folderSlice';
+import { addFolder, addCatalogToFolder, selectAllFolders } from '../redux/slices/folderSlice';
 import { useCustomToast } from '../utils/toastUtils';
+import { logger } from '../utils/logger';
+import { Select as ChakraReactSelect } from 'chakra-react-select';
 
+// Constants
+const FOLDER_COLORS = {
+  existing: {
+    light: 'blue.100',
+    dark: 'blue.700'
+  },
+  new: {
+    light: 'green.100',
+    dark: 'green.700'
+  }
+};
+
+// Helper function to truncate addresses
 const truncateAddress = (address) => {
   if (!address) return '';
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 };
 
+// Artifact Selector Component
 const ArtifactSelector = ({ selectedArtifacts, onSelectArtifact, searchTerm }) => {
   const wallets = useSelector(state => state.wallets.list);
   const nftsByWallet = useSelector(state => state.nfts.byWallet);
@@ -116,30 +140,22 @@ const ArtifactSelector = ({ selectedArtifacts, onSelectArtifact, searchTerm }) =
   );
 };
 
-
-// Component to display individual selected artifacts with improved design
+// Selected Artifact Item Component
 const SelectedArtifactItem = ({ artifact, onRemove }) => {
-  // Add state for image loading
   const [imageUrl, setImageUrl] = useState('');
 
-  // Load the image URL when component mounts
   useEffect(() => {
     const loadImage = async () => {
       try {
-        // First try metadata.image
         if (artifact.metadata?.image) {
           setImageUrl(artifact.metadata.image);
-          return;
-        }
-        // Then try media gateway
-        if (artifact.media?.[0]?.gateway) {
+        } else if (artifact.media?.[0]?.gateway) {
           setImageUrl(artifact.media[0].gateway);
-          return;
+        } else {
+          setImageUrl('https://via.placeholder.com/40?text=NFT');
         }
-        // Finally fall back to placeholder
-        setImageUrl('https://via.placeholder.com/40?text=NFT');
       } catch (error) {
-        console.error('Error loading image:', error);
+        logger.error('Error loading artifact image:', error);
         setImageUrl('https://via.placeholder.com/40?text=NFT');
       }
     };
@@ -155,14 +171,7 @@ const SelectedArtifactItem = ({ artifact, onRemove }) => {
       alignItems="center"
       gap={3}
     >
-      <Box
-        width="40px"
-        height="40px"
-        borderRadius="md"
-        overflow="hidden"
-        flexShrink={0}
-        bg="gray.100"
-      >
+      <Box width="40px" height="40px" borderRadius="md" overflow="hidden" flexShrink={0} bg="gray.100">
         <Image
           src={imageUrl}
           alt={artifact.title}
@@ -191,218 +200,214 @@ const SelectedArtifactItem = ({ artifact, onRemove }) => {
   );
 };
 
-// Searchable folder select component with creation capability
-const FolderSelect = ({ value, onChange }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
-  const folders = useSelector(selectAllFolders);
-  const inputRef = useRef(null);
-
-  // Handle selecting an existing folder
-  const handleSelectFolder = (folder) => {
-    // Just pass up the folder ID - no immediate visual feedback
-    onChange({ type: 'select', id: folder.id });
-    setSearchTerm('');
-    setShowDropdown(false);
-  };
-
-  // Handle creating a new folder
-  const handleCreateFolder = () => {
-    // Pass up the pending folder info without creating it
-    onChange({
-      type: 'create',
-      name: searchTerm
-    });
-    setSearchTerm('');
-    setShowDropdown(false);
-  };
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (inputRef.current && !inputRef.current.contains(event.target)) {
-        setShowDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  return (
-    <Box position="relative">
-      <Input
-        ref={inputRef}
-        value={searchTerm}
-        onChange={(e) => {
-          setSearchTerm(e.target.value);
-          setShowDropdown(true);
-        }}
-        placeholder="Search or create folder"
-        onFocus={() => setShowDropdown(true)}
-      />
-      {showDropdown && searchTerm && (
-        <Box
-          position="absolute"
-          top="100%"
-          left={0}
-          right={0}
-          bg="white"
-          boxShadow="lg"
-          borderRadius="md"
-          mt={2}
-          maxH="200px"
-          overflowY="auto"
-          zIndex={1000}
-          borderWidth={1}
-        >
-          {/* Show existing folders that match search */}
-          {folders
-            .filter(folder => 
-              folder.name.toLowerCase().includes(searchTerm.toLowerCase())
-            )
-            .map(folder => (
-              <Box
-                key={folder.id}
-                p={2}
-                cursor="pointer"
-                _hover={{ bg: "gray.50" }}
-                onClick={() => handleSelectFolder(folder)}
-              >
-                {folder.name}
-              </Box>
-            ))}
-          
-          {/* Always show create option if there's a search term */}
-          <Box
-            p={2}
-            cursor="pointer"
-            _hover={{ bg: "blue.50" }}
-            onClick={handleCreateFolder}
-            color="blue.500"
-          >
-            Create folder "{searchTerm}"
-          </Box>
-        </Box>
-      )}
-    </Box>
-  );
+const initialFormState = {
+  catalogName: '',
+  selectedFolders: [],
+  folderSearchTerm: '',
+  showError: false,
+  artifacts: [],
+  searchTerm: ''
 };
 
-// Main catalog modal component
-const NewCatalogModal = ({ 
-  isOpen, 
-  onClose, 
-  folders = [],
-  selectedArtifacts: initialArtifacts = []
-}) => {
+// Main Component
+const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts = [] }) => {
   const dispatch = useDispatch();
-  const { showSuccessToast } = useCustomToast();
-  
-  const [catalogName, setCatalogName] = useState('');
-  const [selectedArtifacts, setSelectedArtifacts] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showError, setShowError] = useState(false);
-  const [folderToCreate, setFolderToCreate] = useState(null);
-  const [isNewFolderOpen, setIsNewFolderOpen] = useState(false);
-  const [selectedFolder, setSelectedFolder] = useState(null);
-  const [pendingFolder, setPendingFolder] = useState(null);
+  const folders = useSelector(selectAllFolders);
+  const { showSuccessToast, showErrorToast } = useCustomToast();
 
-  // Initialize selected artifacts when modal opens
-  useEffect(() => {
-    if (isOpen && initialArtifacts.length > 0) {
-      setSelectedArtifacts(initialArtifacts);
-    }
-  }, [isOpen, initialArtifacts]);
+  // Colors
+  const existingFolderBg = useColorModeValue(FOLDER_COLORS.existing.light, FOLDER_COLORS.existing.dark);
+  const newFolderBg = useColorModeValue(FOLDER_COLORS.new.light, FOLDER_COLORS.new.dark);
 
-  const handleFolderChange = (folderAction) => {
-    if (folderAction.type === 'select') {
-      setSelectedFolder(folderAction.id);
-      setPendingFolder(null);
-    } else if (folderAction.type === 'create') {
-      setSelectedFolder(null);
-      setPendingFolder({
-        name: folderAction.name,
-        createdAt: new Date().toISOString()
-      });
-    }
-  };
+  // State
+  const [formState, setFormState] = useState(initialFormState);
 
-  const handleCreateCatalog = () => {
-    // Input validation
-    if (!catalogName.trim()) {
-      setShowError(true);
-      return;
-    }
-  
-    let folderId = selectedFolder;
-  
-    // Create folder if there's a pending one
-    if (pendingFolder) {
-      const newFolder = {
-        id: `folder-${Date.now()}`,
-        name: pendingFolder.name,
-        createdAt: new Date().toISOString()
+  // Update handlers
+  const handleFormUpdate = useCallback((updates) => {
+    setFormState(prev => ({
+      ...prev,
+      ...updates
+    }));
+  }, []);
+
+  const handleCatalogNameChange = useCallback((e) => {
+    handleFormUpdate({
+      catalogName: e.target.value,
+      showError: false
+    });
+  }, [handleFormUpdate]);
+
+  const handleSearchTermChange = useCallback((e) => {
+    handleFormUpdate({
+      searchTerm: e.target.value
+    });
+  }, [handleFormUpdate]);
+
+  const handleFolderInputChange = useCallback((value) => {
+    handleFormUpdate({
+      folderSearchTerm: value
+    });
+  }, [handleFormUpdate]);
+
+  const handleFolderSelect = useCallback((option) => {
+    if (!option) return;
+    
+    setFormState(prev => {
+      if (prev.selectedFolders.some(f => f.id === option.value)) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        selectedFolders: [
+          ...prev.selectedFolders,
+          {
+            id: option.value,
+            name: option.isNew ? option.name : option.label,
+            isNew: option.isNew
+          }
+        ],
+        folderSearchTerm: ''
       };
-      
-      // Dispatch folder creation and capture the ID
-      dispatch(addFolder(newFolder));
-      // Important: Use this new folder's ID
-      folderId = newFolder.id;
-    }
-  
-    // Create catalog with proper NFT IDs mapping
-    const newCatalog = {
-      id: `catalog-${Date.now()}`,
-      name: catalogName.trim(),
-      nftIds: selectedArtifacts.map(nft => ({
-        tokenId: nft.id?.tokenId,
-        contractAddress: nft.contract?.address,
-        network: nft.network,
-        walletId: nft.walletId
-      })),
-      createdAt: new Date().toISOString(),
-      isSystem: false,
-      type: 'user',
-      // IMPORTANT: This links the catalog to the folder
-      folderId: folderId
-    };
-  
-    // Create the catalog with the proper folder reference
-    dispatch(addCatalog(newCatalog));
-    
-    showSuccessToast(
-      "Catalog Created",
-      `Your catalog "${catalogName}" has been created successfully.`
-    );
-    
-    handleClose();
-  };
+    });
+  }, []);
 
-  const handleClose = () => {
-    setCatalogName('');
-    setSelectedFolder('');
-    setSelectedArtifacts([]); // Clear selected artifacts
-    setSearchTerm('');
-    setShowError(false);
-    setPendingFolder(null);
-    setIsNewFolderOpen(false);
-    
-    // Important: Call the parent onClose to properly update the parent component's state
-    onClose();
-  };
+  const handleRemoveFolder = useCallback((folderId) => {
+    setFormState(prev => ({
+      ...prev,
+      selectedFolders: prev.selectedFolders.filter(f => f.id !== folderId)
+    }));
+  }, []);
 
-  const handleRemoveArtifact = (artifact) => {
-    setSelectedArtifacts(prev => 
-      prev.filter(selected => 
+  const handleAddArtifact = useCallback((nft) => {
+    setFormState(prev => ({
+      ...prev,
+      artifacts: [...prev.artifacts, nft]
+    }));
+  }, []);
+
+  const handleRemoveArtifact = useCallback((artifact) => {
+    setFormState(prev => ({
+      ...prev,
+      artifacts: prev.artifacts.filter(selected => 
         selected.id?.tokenId !== artifact.id?.tokenId ||
         selected.contract?.address !== artifact.contract?.address
       )
-    );
+    }));
+  }, []);
+
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (isOpen && initialArtifacts?.length > 0) {
+      setFormState({
+        ...initialFormState,  // Reset to initial state first
+        artifacts: initialArtifacts // Then just set artifacts
+      });
+    } else if (!isOpen) {
+      setFormState(initialFormState); // Use initialFormState directly
+    }
+  }, [isOpen]); // Remove initialArtifacts from deps - handle it in the effect
+
+  // Folder options memoization
+  const folderOptions = useMemo(() => {
+    const existingFolders = folders
+      .filter(folder => !folder.isSystem)
+      .map(folder => ({
+        value: folder.id,
+        label: folder.name,
+        isNew: false
+      }));
+
+    const searchTerm = formState.folderSearchTerm?.trim();
+    if (searchTerm && !folders.some(f => 
+      f.name.toLowerCase() === searchTerm.toLowerCase()
+    )) {
+      return [
+        {
+          value: `new-${searchTerm}`,
+          label: `Create "${searchTerm}" folder`,
+          isNew: true,
+          name: searchTerm
+        },
+        ...existingFolders
+      ];
+    }
+    return existingFolders;
+  }, [folders, formState.folderSearchTerm]);
+
+    // Memoize ArtifactSelector's props to prevent unnecessary re-renders
+  const artifactSelectorProps = useMemo(() => ({
+    selectedArtifacts: formState.artifacts,
+    onSelectArtifact: handleAddArtifact,
+    searchTerm: formState.searchTerm
+  }), [formState.artifacts, formState.searchTerm, handleAddArtifact]);
+
+  // Handle catalog creation
+  const handleCreateCatalog = async () => {
+    if (!formState.catalogName.trim()) {
+      handleFormUpdate({ showError: true });
+      return;
+    }
+  
+    try {
+      // Create new folders first if needed
+      const folderPromises = formState.selectedFolders
+        .filter(f => f.isNew)
+        .map(folder => dispatch(addFolder({ name: folder.name.trim() })));
+      
+      await Promise.all(folderPromises);
+  
+      // Create the catalog without trying to unwrap the result
+      const catalogAction = await dispatch(addCatalog({
+        name: formState.catalogName.trim(),
+        nftIds: formState.artifacts.map(nft => ({
+          tokenId: nft.id.tokenId,
+          contractAddress: nft.contract.address,
+          network: nft.network,
+          walletId: nft.walletId
+        }))
+      }));
+  
+      // Get the ID from the action payload
+      const catalogId = `catalog-${Date.now()}`; // Generate ID the same way as the reducer
+  
+      // Get all folder IDs (both existing and newly created)
+      const folderIds = formState.selectedFolders.map(folder => {
+        if (folder.isNew) {
+          // Find the newly created folder
+          const newFolder = folders.find(f => f.name === folder.name.trim());
+          return newFolder?.id;
+        }
+        return folder.id;
+      }).filter(Boolean);
+  
+      // Add catalog to selected folders
+      if (folderIds.length > 0) {
+        await Promise.all(
+          folderIds.map(folderId =>
+            dispatch(addCatalogToFolder({
+              folderId,
+              catalogId
+            }))
+          )
+        );
+      }
+  
+      showSuccessToast(
+        "Success",
+        `Created catalog "${formState.catalogName}" and added to ${folderIds.length} folder(s)`
+      );
+      
+      onClose();
+    } catch (error) {
+      logger.error('Error in catalog creation:', error);
+      showErrorToast("Error", "Failed to create catalog");
+    }
   };
 
+  // Render JSX
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} size="lg">
       <ModalOverlay />
       <ModalContent>
         <ModalHeader>New Catalog</ModalHeader>
@@ -410,37 +415,68 @@ const NewCatalogModal = ({
         <ModalBody>
           <VStack spacing={6} align="stretch">
             {/* Catalog Name Input */}
-            <Box>
+            <FormControl isRequired>
+              <FormLabel>Catalog Name</FormLabel>
               <Input
-                value={catalogName}
-                onChange={(e) => {
-                  setCatalogName(e.target.value);
-                  setShowError(false);
-                }}
+                value={formState.catalogName}
+                onChange={handleCatalogNameChange}
                 placeholder="Enter catalog name"
               />
-              {showError && (
-                <Alert status="error" mt={2} py={2} px={3} borderRadius="md" opacity={0.8}>
+              {formState.showError && (
+                <Alert status="error" mt={2} py={2} px={3} borderRadius="md">
                   <AlertIcon />
                   <Text fontSize="sm">Catalog name is required</Text>
                 </Alert>
               )}
-            </Box>
+            </FormControl>
 
             {/* Folder Selection */}
-            <FolderSelect
-              onChange={handleFolderChange}
-            />
+            <FormControl>
+              <FormLabel>Add to Folders (Optional)</FormLabel>
+              <ChakraReactSelect
+                options={folderOptions}
+                value={null}
+                inputValue={formState.folderSearchTerm}
+                onInputChange={handleFolderInputChange}
+                onChange={handleFolderSelect}
+                placeholder="Select or create folder"
+                isClearable
+                menuPortalTarget={document.body}
+                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+              />
+              
+              {formState.selectedFolders.length > 0 && (
+                <Box mt={2}>
+                  <Wrap spacing={2}>
+                    {formState.selectedFolders.map(folder => (
+                      <WrapItem key={folder.id}>
+                        <Tag
+                          size="md"
+                          borderRadius="full"
+                          variant="subtle"
+                          bg={folder.isNew ? newFolderBg : existingFolderBg}
+                        >
+                          <TagLabel>{folder.name}</TagLabel>
+                          <TagCloseButton 
+                            onClick={() => handleRemoveFolder(folder.id)}
+                          />
+                        </Tag>
+                      </WrapItem>
+                    ))}
+                  </Wrap>
+                </Box>
+              )}
+            </FormControl>
 
             {/* Selected Artifacts Section */}
-            {selectedArtifacts.length > 0 && (
+            {formState.artifacts.length > 0 && (
               <Box>
                 <Heading size="sm" mb={2}>
-                  Selected Artifacts ({selectedArtifacts.length})
+                  Selected Artifacts ({formState.artifacts.length})
                 </Heading>
                 <Box maxHeight="300px" overflowY="auto">
                   <VStack spacing={2}>
-                    {selectedArtifacts.map(artifact => (
+                    {formState.artifacts.map(artifact => (
                       <SelectedArtifactItem
                         key={`${artifact.contract?.address}-${artifact.id?.tokenId}`}
                         artifact={artifact}
@@ -452,22 +488,22 @@ const NewCatalogModal = ({
               </Box>
             )}
 
-            {/* Artifact Search Section - Only show if no initial artifacts */}
+            {/* Artifact Search Section */}
             {!initialArtifacts.length && (
               <>
-                <Input
-                  placeholder="Search library artifacts"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  size="lg"
-                />
-                {searchTerm && (
+                <FormControl>
+                  <FormLabel>Search Artifacts</FormLabel>
+                  <Input
+                    placeholder="Search library artifacts"
+                    value={formState.searchTerm}
+                    onChange={handleSearchTermChange}
+                    size="lg"
+                  />
+                </FormControl>
+
+                {formState.searchTerm && (
                   <Box mt={2}>
-                    <ArtifactSelector
-                      selectedArtifacts={selectedArtifacts}
-                      onSelectArtifact={(nft) => setSelectedArtifacts(prev => [...prev, nft])}
-                      searchTerm={searchTerm}
-                    />
+                    <ArtifactSelector {...artifactSelectorProps} />
                   </Box>
                 )}
               </>
@@ -476,7 +512,7 @@ const NewCatalogModal = ({
         </ModalBody>
 
         <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={handleClose}>
+          <Button variant="ghost" mr={3} onClick={onClose}>
             Cancel
           </Button>
           <Button colorScheme="blue" onClick={handleCreateCatalog}>

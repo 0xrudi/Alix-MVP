@@ -1,5 +1,4 @@
-// src/components/CatalogCard.js
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   VStack,
   Text,
@@ -11,13 +10,45 @@ import {
 import { FaBook, FaEdit, FaTrash } from 'react-icons/fa';
 import { StyledCard } from '../styles/commonStyles';
 import { cardSizes } from '../constants/sizes';
+import { logger } from '../utils/logger';
 
-const CatalogCard = ({ catalog, onView, onEdit, onDelete, cardSize = "md" }) => {
+const CatalogCard = ({ 
+  catalog, 
+  onView, 
+  onEdit, 
+  onDelete, 
+  cardSize = "md",
+  isSystem = false 
+}) => {
   const catalogColor = useColorModeValue('purple.400', 'purple.600');
   
+  const nftCount = useMemo(() => {
+    if (catalog.count !== undefined) return catalog.count;
+    return catalog.nftIds?.length || 0;
+  }, [catalog]);
+
+  const handleEdit = (e) => {
+    if (isSystem) return;
+    e.stopPropagation();
+    logger.log('Editing catalog:', { catalogId: catalog.id });
+    onEdit();
+  };
+
+  const handleDelete = (e) => {
+    if (isSystem) return;
+    e.stopPropagation();
+    logger.log('Deleting catalog:', { catalogId: catalog.id, nftCount });
+    onDelete();
+  };
+
+  const handleView = () => {
+    logger.log('Viewing catalog:', { catalogId: catalog.id });
+    onView();
+  };
+
   return (
     <StyledCard 
-      onClick={onView}
+      onClick={handleView}
       role="button"
       cursor="pointer"
       transition="transform 0.2s"
@@ -30,48 +61,42 @@ const CatalogCard = ({ catalog, onView, onEdit, onDelete, cardSize = "md" }) => 
       width={cardSizes[cardSize].width}
       maxW="100%"
     >
-      {/* Action buttons container */}
-      <Flex 
-        position="absolute"
-        top={1}
-        right={1}
-        className="action-buttons"
-        opacity={0}
-        transition="opacity 0.2s"
-        zIndex={2}
-      >
-        <IconButton
-          icon={<FaEdit />}
-          aria-label="Edit catalog"
-          size="sm"
-          variant="ghost"
-          colorScheme="blue"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          mr={1}
-          padding={1}
-          minW="auto"
-          height="auto"
-        />
-        <IconButton
-          icon={<FaTrash />}
-          aria-label="Delete catalog"
-          size="sm"
-          variant="ghost"
-          colorScheme="red"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          padding={1}
-          minW="auto"
-          height="auto"
-        />
-      </Flex>
+      {!isSystem && (
+        <Flex 
+          position="absolute"
+          top={1}
+          right={1}
+          className="action-buttons"
+          opacity={0}
+          transition="opacity 0.2s"
+          zIndex={2}
+        >
+          <IconButton
+            icon={<FaEdit />}
+            aria-label="Edit catalog"
+            size="sm"
+            variant="ghost"
+            colorScheme="blue"
+            onClick={handleEdit}
+            mr={1}
+            padding={1}
+            minW="auto"
+            height="auto"
+          />
+          <IconButton
+            icon={<FaTrash />}
+            aria-label="Delete catalog"
+            size="sm"
+            variant="ghost"
+            colorScheme="red"
+            onClick={handleDelete}
+            padding={1}
+            minW="auto"
+            height="auto"
+          />
+        </Flex>
+      )}
 
-      {/* Main content */}
       <VStack 
         spacing={cardSizes[cardSize].spacing} 
         align="center"
@@ -90,11 +115,9 @@ const CatalogCard = ({ catalog, onView, onEdit, onDelete, cardSize = "md" }) => 
         >
           {catalog.name}
         </Text>
-        {catalog.nftIds && (
-          <Text fontSize="xs" color="gray.500">
-            {catalog.nftIds.length} {catalog.nftIds.length === 1 ? 'Artifact' : 'Artifacts'}
-          </Text>
-        )}
+        <Text fontSize="xs" color="gray.500">
+          {nftCount} {nftCount === 1 ? 'Artifact' : 'Artifacts'}
+        </Text>
       </VStack>
     </StyledCard>
   );

@@ -1,37 +1,33 @@
 // src/redux/slices/folderSlice.js
-
 import { createSlice } from '@reduxjs/toolkit';
+import { logger } from '../../utils/logger';
 
 const folderSlice = createSlice({
   name: 'folders',
   initialState: {
     list: [],
     catalogFolders: {}, // Maps catalog IDs to folder IDs
+    relationships: {}, // New field for folder-catalog relationships
     loading: false,
     error: null
   },
   reducers: {
     addFolder: (state, action) => {
-      // Add new folder
       const newFolder = {
         id: `folder-${Date.now()}`,
         name: action.payload.name,
         description: action.payload.description || '',
         createdAt: new Date().toISOString(),
-        catalogIds: action.payload.catalogIds || [],
+        catalogIds: [], // Initialize as array instead of Set
         updatedAt: new Date().toISOString()
       };
       
       state.list.push(newFolder);
-
-      // Update catalog to folder mappings
-      newFolder.catalogIds.forEach(catalogId => {
-        if (!state.catalogFolders[catalogId]) {
-          state.catalogFolders[catalogId] = [];
-        }
-        state.catalogFolders[catalogId].push(newFolder.id);
-      });
+      state.relationships[newFolder.id] = []; // Initialize as array
+      
+      logger.log('Added new folder:', newFolder);
     },
+
     updateFolder: (state, action) => {
       const { id, name, description, catalogIds } = action.payload;
       const folder = state.list.find(f => f.id === id);
@@ -49,6 +45,9 @@ const folderSlice = createSlice({
         folder.catalogIds = catalogIds;
         folder.updatedAt = new Date().toISOString();
 
+        // Update relationships
+        state.relationships[id] = new Set(catalogIds);
+
         // Add new catalog mappings
         catalogIds.forEach(catalogId => {
           if (!state.catalogFolders[catalogId]) {
@@ -58,8 +57,11 @@ const folderSlice = createSlice({
             state.catalogFolders[catalogId].push(id);
           }
         });
+
+        logger.log('Updated folder:', { id, name, catalogCount: catalogIds.length });
       }
     },
+
     removeFolder: (state, action) => {
       const folderId = action.payload;
       const folder = state.list.find(f => f.id === folderId);
@@ -71,10 +73,16 @@ const folderSlice = createSlice({
             ?.filter(id => id !== folderId) || [];
         });
 
+        // Remove relationships
+        delete state.relationships[folderId];
+
         // Remove folder
         state.list = state.list.filter(f => f.id !== folderId);
+        
+        logger.log('Removed folder:', folderId);
       }
     },
+
     addCatalogToFolder: (state, action) => {
       const { folderId, catalogId } = action.payload;
       const folder = state.list.find(f => f.id === folderId);
@@ -83,12 +91,21 @@ const folderSlice = createSlice({
         folder.catalogIds.push(catalogId);
         folder.updatedAt = new Date().toISOString();
         
+        // Update relationships
+        if (!state.relationships[folderId]) {
+          state.relationships[folderId] = new Set();
+        }
+        state.relationships[folderId].add(catalogId);
+        
         if (!state.catalogFolders[catalogId]) {
           state.catalogFolders[catalogId] = [];
         }
         state.catalogFolders[catalogId].push(folderId);
+        
+        logger.log('Added catalog to folder:', { folderId, catalogId });
       }
     },
+
     removeCatalogFromFolder: (state, action) => {
       const { folderId, catalogId } = action.payload;
       const folder = state.list.find(f => f.id === folderId);
@@ -97,21 +114,19 @@ const folderSlice = createSlice({
         folder.catalogIds = folder.catalogIds.filter(id => id !== catalogId);
         folder.updatedAt = new Date().toISOString();
         
+        // Update relationships
+        if (state.relationships[folderId]) {
+          state.relationships[folderId].delete(catalogId);
+        }
+        
         state.catalogFolders[catalogId] = state.catalogFolders[catalogId]
           ?.filter(id => id !== folderId) || [];
+        
+        logger.log('Removed catalog from folder:', { folderId, catalogId });
       }
     }
   }
 });
-
-// Export actions
-export const {
-  addFolder,
-  updateFolder,
-  removeFolder,
-  addCatalogToFolder,
-  removeCatalogFromFolder
-} = folderSlice.actions;
 
 // Selectors
 export const selectAllFolders = state => state.folders.list;
@@ -123,5 +138,14 @@ export const selectCatalogsInFolder = (state, folderId) => {
   const folder = state.folders.list.find(f => f.id === folderId);
   return folder ? folder.catalogIds : [];
 };
+export const selectFolderRelationships = state => state.folders.relationships;
+
+export const {
+  addFolder,
+  updateFolder,
+  removeFolder,
+  addCatalogToFolder,
+  removeCatalogFromFolder
+} = folderSlice.actions;
 
 export default folderSlice.reducer;

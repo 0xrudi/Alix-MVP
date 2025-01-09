@@ -20,36 +20,52 @@ import {
   SliderFilledTrack, 
   SliderThumb,
 } from "@chakra-ui/react";
-import { FaPlus, FaSync, FaChevronRight, FaChevronDown, FaFolderPlus } from 'react-icons/fa';
+import { FaPlus, FaSync, FaFolderPlus } from 'react-icons/fa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
+import { 
+  selectAllCatalogs, 
+  selectAutomatedCatalogs,
+  removeCatalog,
+  updateCatalog,
+  addCatalog
+} from '../redux/slices/catalogSlice';
+import { 
+  selectTotalNFTs, 
+  selectNFTStructure, 
+  updateNFT 
+} from '../redux/slices/nftSlice';
+import { 
+  selectAllFolders, 
+  removeFolder,
+  removeCatalogFromFolder
+} from '../redux/slices/folderSlice';
+import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
+import { networks } from '../utils/web3Utils';
+import { logger } from '../utils/logger';
+import { cardSizes } from '../constants/sizes';
+
+// Components
 import NFTCard from './NFTCard';
 import LibraryControls from './LibraryControls';
 import CatalogViewPage from './CatalogViewPage';
+import CatalogCard from './CatalogCard';
+import NewFolderModal from './NewFolderModal';
+import NewCatalogModal from './NewCatalogModal';
+import FolderCard from './FolderCard';
+import EditCatalogModal from './EditCatalogModal';
+import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
+
+// Hooks
 import { useCustomColorMode } from '../hooks/useColorMode';
 import { useCustomToast } from '../utils/toastUtils';
 import { useErrorHandler } from '../utils/errorUtils';
 import { useResponsive } from '../hooks/useResponsive';
-import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
-import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
-import { selectAllCatalogs, selectAutomatedCatalogs } from '../redux/slices/catalogSlice';
-import { selectTotalNFTs, selectTotalSpamNFTs, selectNFTStructure, selectFlattenedWalletNFTs, updateNFT } from '../redux/slices/nftSlice';
-import CatalogCard from './CatalogCard';
-import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
-import NewFolderModal from './NewFolderModal';
-import NewCatalogModal from './NewCatalogModal';
-import FolderCard from './FolderCard';
-import { selectAllFolders, removeFolder } from '../redux/slices/folderSlice';
-import { cardSizes } from '../constants/sizes';
-import { removeCatalog, updateCatalog } from '../redux/slices/catalogSlice';
-import EditCatalogModal from './EditCatalogModal';
-import { networks } from '../utils/web3Utils';
+import { StyledButton, StyledContainer } from '../styles/commonStyles';
 
-// Helper function to truncate addresses
-const truncateAddress = (address) => {
-  if (!address) return '';
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-};
+// Helper function
+const truncateAddress = (address) => 
+  address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
 
 const LibraryPage = () => {
   const dispatch = useDispatch();
@@ -60,9 +76,33 @@ const LibraryPage = () => {
   const wallets = useSelector(state => state.wallets.list);
   const nfts = useSelector(state => state.nfts.byWallet);
   const catalogs = useSelector(selectAllCatalogs);
-  const totalNFTs = useSelector(selectTotalNFTs);
   const folders = useSelector(selectAllFolders);
+  const folderRelationships = useSelector(state => state.folders.relationships);
+  const totalNFTs = useSelector(selectTotalNFTs);
   const automatedCatalogs = useSelector(selectAutomatedCatalogs);
+
+    // Memoized Selectors
+    const unassignedCatalogs = useMemo(() => {
+      // Log the current state of catalogs and relationships
+      console.log('Current catalogs state:', catalogs);
+      console.log('Current folder relationships:', folderRelationships);
+    
+      const allCatalogs = [
+        ...Object.values(catalogs.items || {}),
+        ...Object.values(catalogs.systemCatalogs || {})
+      ];
+      
+      const unassigned = allCatalogs.filter(catalog => 
+        catalog.type !== 'automated' &&
+        !catalog.isSystem &&
+        !Object.values(folderRelationships).some(relationships => 
+          relationships.has(catalog.id)
+        )
+      );
+    
+      console.log('Filtered unassigned catalogs:', unassigned);
+      return unassigned;
+    }, [catalogs, folderRelationships]);
 
   // Custom Hooks
   const { showSuccessToast, showInfoToast } = useCustomToast();
@@ -90,7 +130,7 @@ const LibraryPage = () => {
     const tab = params.get('tab');
     if (tab === 'nfts') setActiveTab(0);
     if (tab === 'catalogs') setActiveTab(1);
-  }, [location]);
+  }, [location.search]); // Only depend on search params
 
   // Initialize all NFTs
   useEffect(() => {
@@ -105,7 +145,7 @@ const LibraryPage = () => {
       })
     );
     setFilteredNFTs(allNFTs);
-  }, [nfts]); // Only re-run when nfts change
+  }, [nfts, setFilteredNFTs]); // Add proper dependencies
 
   // Callback handlers
   const getSpamCount = useCallback(() => {
@@ -119,17 +159,24 @@ const LibraryPage = () => {
   }, [nfts]);
 
   const getUnorganizedNFTs = useCallback(() => {
-    return Object.values(nfts).flatMap(walletNFTs =>
-      Object.values(walletNFTs).flatMap(networkNFTs => {
+    // Create a Set of all NFTs in catalogs for faster lookup
+    const allCatalogs = [
+      ...Object.values(catalogs.items || {}),
+      ...Object.values(catalogs.systemCatalogs || {})
+    ];
+    
+    const catalogedNFTs = new Set(
+      allCatalogs.flatMap(catalog => 
+        catalog.nftIds?.map(nft => `${nft.tokenId}-${nft.contractAddress}`) || []
+      )
+    );
+  
+    return Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
+      Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
         const allNFTs = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
         return allNFTs.filter(nft => 
-          !nft.isSpam && // Exclude spam NFTs
-          !catalogs.some(catalog => 
-            catalog.nftIds?.some(catalogNft => 
-              catalogNft.tokenId === nft.id.tokenId &&
-              catalogNft.contractAddress === nft.contract.address
-            )
-          )
+          !nft.isSpam && 
+          !catalogedNFTs.has(`${nft.id.tokenId}-${nft.contract.address}`)
         );
       })
     );
@@ -164,28 +211,38 @@ const LibraryPage = () => {
   const handleAddToExistingCatalog = useCallback((catalogId) => {
     const existingCatalog = catalogs.find(c => c.id === catalogId);
     if (!existingCatalog) return;
-  
-    const updatedCatalog = {
-      ...existingCatalog,
-      nftIds: [
-        ...(existingCatalog.nftIds || []),
-        ...selectedNFTs.map(nft => ({
-          tokenId: nft.id.tokenId,
-          contractAddress: nft.contract.address,
-          network: nft.network,
-          walletId: nft.walletId
-        }))
-      ]
-    };
-  
-    dispatch(updateCatalog(updatedCatalog));
-    setSelectedNFTs([]); // Clear selections
-    setIsSelectMode(false); // Exit select mode
+
+    const existingNftIds = new Set(
+      existingCatalog.nftIds.map(nft => `${nft.tokenId}-${nft.contractAddress}`)
+    );
+
+    const newNftIds = selectedNFTs
+      .filter(nft => !existingNftIds.has(`${nft.id.tokenId}-${nft.contract.address}`))
+      .map(nft => ({
+        tokenId: nft.id.tokenId,
+        contractAddress: nft.contract.address,
+        network: nft.network,
+        walletId: nft.walletId
+      }));
+
+    if (newNftIds.length === 0) {
+      showInfoToast("No Changes", "These artifacts are already in the catalog");
+      return;
+    }
+
+    dispatch(updateCatalog({
+      id: catalogId,
+      nftIds: [...existingCatalog.nftIds, ...newNftIds]
+    }));
+
+    setSelectedNFTs([]);
+    setIsSelectMode(false);
     showSuccessToast(
       "Added to Catalog",
-      `${selectedNFTs.length} artifacts added to ${existingCatalog.name}`
+      `${newNftIds.length} artifacts added to ${existingCatalog.name}`
     );
-  }, [catalogs, selectedNFTs, dispatch, showSuccessToast]);
+    logger.log('Added NFTs to catalog:', { catalogId, count: newNftIds.length });
+  }, [catalogs, selectedNFTs, dispatch, showSuccessToast, showInfoToast]);
 
   const handleEditCatalog = useCallback((catalog) => {
     setEditingCatalog(catalog);
@@ -265,7 +322,10 @@ const LibraryPage = () => {
       onAddToSpam={handleMarkSelectedAsSpam}
       onCreateCatalog={handleCreateCatalogFromOverlay}  // Use our new handler
       onAddToExistingCatalog={handleAddToExistingCatalog}
-      catalogs={catalogs.filter(c => !c.isSystem)}
+      catalogs={Object.values({
+        ...catalogs.items,
+        ...catalogs.systemCatalogs
+      }).filter(c => !c.isSystem)}
     />
   )}
 
@@ -399,21 +459,18 @@ const handleDeleteFolder = (folderId) => {
 };
 
 const handleDeleteCatalog = useCallback((catalogId) => {
-  folders.forEach(folder => {
-    if (folder.catalogIds?.includes(catalogId)) {
-      dispatch(removeFolder({
-        folderId: folder.id,
-        catalogId
-      }));
-    }
-  });
+  if (Object.keys(folderRelationships).length > 0) {
+    Object.entries(folderRelationships).forEach(([folderId, catalogs]) => {
+      if (catalogs.has(catalogId)) {
+        dispatch(removeCatalogFromFolder({ folderId, catalogId }));
+      }
+    });
+  }
 
   dispatch(removeCatalog(catalogId));
-  showSuccessToast(
-    "Catalog Deleted",
-    "The catalog has been successfully removed."
-  );
-}, [dispatch, folders, showSuccessToast]);
+  showSuccessToast("Catalog Deleted", "The catalog has been successfully removed.");
+  logger.log('Catalog deleted:', { catalogId });
+}, [dispatch, folderRelationships, showSuccessToast]);
 
 // Render Folder View
 const renderFolderView = () => {
@@ -438,7 +495,9 @@ const renderFolderView = () => {
         width="100%"
       >
         {catalogs
-          .filter(catalog => viewingFolder.catalogIds?.includes(catalog.id))
+          .filter(catalog => 
+            folderRelationships[viewingFolder.id]?.has(catalog.id)
+          )
           .map(catalog => (
             <CatalogCard
               key={catalog.id}
@@ -637,32 +696,22 @@ return (
 
               {/* Unassigned Catalogs Section */}
               <Box>
-                <Heading as="h3" size="md" mb={4}>
-                  Unassigned Catalogs
-                </Heading>
+                <Heading as="h3" size="md" mb={4}>Unassigned Catalogs</Heading>
                 <SimpleGrid 
                   columns={cardSizes[cardSize].columns}
                   spacing={2}
                   width="100%"
                 >
-                  {catalogs
-                    .filter(catalog => 
-                      catalog.type !== 'automated' &&
-                      !catalog.isSystem &&
-                      !folders.some(folder => 
-                        folder.catalogIds?.includes(catalog.id)
-                      )
-                    )
-                    .map((catalog) => (
-                      <CatalogCard
-                        key={catalog.id}
-                        catalog={catalog}
-                        onView={() => handleOpenCatalog(catalog)}  // This was previously undefined
-                        onEdit={() => handleEditCatalog(catalog)}
-                        onDelete={() => handleDeleteCatalog(catalog.id)}
-                        cardSize={cardSize}
-                      />
-                    ))}
+                  {unassignedCatalogs.map((catalog) => (
+                    <CatalogCard
+                      key={catalog.id}
+                      catalog={catalog}
+                      onView={() => handleOpenCatalog(catalog)}
+                      onEdit={() => handleEditCatalog(catalog)}
+                      onDelete={() => handleDeleteCatalog(catalog.id)}
+                      cardSize={cardSize}
+                    />
+                  ))}
                 </SimpleGrid>
               </Box>
             </VStack>
@@ -698,7 +747,10 @@ return (
         onAddToSpam={handleMarkSelectedAsSpam}
         onCreateCatalog={() => setIsNewCatalogModalOpen(true)}
         onAddToExistingCatalog={handleAddToExistingCatalog}
-        catalogs={catalogs.filter(c => !c.isSystem)}
+        catalogs={Object.values({
+          ...catalogs.items,
+          ...catalogs.systemCatalogs
+        }).filter(c => !c.isSystem)}
       />
     )}
   </StyledContainer>

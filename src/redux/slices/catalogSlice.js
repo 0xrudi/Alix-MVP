@@ -1,9 +1,14 @@
 // src/redux/slices/catalogSlice.js
-import { createSlice } from '@reduxjs/toolkit';
-import { selectSpamNFTs } from '../slices/nftSlice';
+import { createSlice, createSelector } from '@reduxjs/toolkit';
+import { selectSpamNFTs } from './nftSlice';
+import { logger } from '../../utils/logger';
 
+// Base selectors
+const selectCatalogItems = state => state.catalogs.items;
+const selectSystemCatalogsBase = state => state.catalogs.systemCatalogs;
 
-const createSpamNFTId = (nft) => ({
+// Helper functions
+const createNFTId = (nft) => ({
   tokenId: nft.id.tokenId,
   contractAddress: nft.contract.address,
   network: nft.network,
@@ -15,133 +20,158 @@ const compareNFTIds = (id1, id2) =>
   id1.contractAddress === id2.contractAddress &&
   id1.network === id2.network;
 
-const catalogSlice = createSlice({
-  name: 'catalogs',
-  initialState: {
-    list: [{
+const initialState = {
+  items: {},
+  systemCatalogs: {
+    spam: {
       id: 'spam',
       name: 'Spam',
       nftIds: [],
-      isSystem: true,
-      type: 'automated'
-    }, {
+      type: 'system',
+      isSystem: true
+    },
+    unorganized: {
       id: 'unorganized',
       name: 'Unorganized Artifacts',
-      nftIds: [], // This will be populated with NFTs not in any user catalogs
-      isSystem: true,
-      type: 'automated'
-    }],
-    isLoading: false,
-    error: null
+      nftIds: [],
+      type: 'system',
+      isSystem: true
+    }
   },
+  isLoading: false,
+  error: null
+};
+
+const catalogSlice = createSlice({
+  name: 'catalogs',
+  initialState,
   reducers: {
-    setCatalogs: (state, action) => {
-      state.list = action.payload;
-    },
     addCatalog: (state, action) => {
-      state.list.push(action.payload);
+      const { name, nftIds = [] } = action.payload;
+      const id = `catalog-${Date.now()}`;
+          
+      state.items[id] = {
+        id,
+        name,
+        nftIds,
+        type: 'user',
+        isSystem: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+          
+      logger.log('Created new catalog:', { id, name });
     },
+    
     updateCatalog: (state, action) => {
-      const index = state.list.findIndex(catalog => catalog.id === action.payload.id);
-      if (index !== -1) {
-        state.list[index] = {
-          ...state.list[index],
-          ...action.payload,
-          nftIds: action.payload.nftIds || state.list[index].nftIds
+      const { id, name, nftIds } = action.payload;
+      if (state.items[id]) {
+        state.items[id] = {
+          ...state.items[id],
+          name: name || state.items[id].name,
+          nftIds: nftIds || state.items[id].nftIds,
+          updatedAt: new Date().toISOString()
         };
+        logger.log('Updated catalog:', { id, name });
       }
     },
+    
     removeCatalog: (state, action) => {
-      state.list = state.list.filter(catalog => catalog.id !== action.payload);
+      const id = action.payload;
+      delete state.items[id];
+      logger.log('Removed catalog:', id);
     },
+
     updateSpamCatalog: (state, action) => {
       const spamNFTs = Array.isArray(action.payload) ? action.payload : [];
-      const spamCatalog = state.list.find(cat => cat.id === 'spam');
-      if (spamCatalog) {
-        spamCatalog.nftIds = spamNFTs.map(nft => ({
-          tokenId: nft?.id?.tokenId || '',
-          contractAddress: nft?.contract?.address || '',
-          network: nft?.network || '',
-          walletId: nft?.walletId || ''
-        })).filter(id => id.tokenId && id.contractAddress); // Filter out invalid entries
-      }
+      state.systemCatalogs.spam.nftIds = spamNFTs.map(createNFTId)
+        .filter(id => id.tokenId && id.contractAddress);
+      logger.log('Updated spam catalog:', { count: state.systemCatalogs.spam.nftIds.length });
     },
+
     updateUnorganizedCatalog: (state, action) => {
       const unorganizedNFTs = Array.isArray(action.payload) ? action.payload : [];
-      const unorganizedCatalog = state.list.find(cat => cat.id === 'unorganized');
-      if (unorganizedCatalog) {
-        unorganizedCatalog.nftIds = unorganizedNFTs.map(nft => ({
-          tokenId: nft?.id?.tokenId || '',
-          contractAddress: nft?.contract?.address || '',
-          network: nft?.network || '',
-          walletId: nft?.walletId || ''
-        })).filter(id => id.tokenId && id.contractAddress);
-      }
+      state.systemCatalogs.unorganized.nftIds = unorganizedNFTs.map(createNFTId)
+        .filter(id => id.tokenId && id.contractAddress);
+      logger.log('Updated unorganized catalog:', { count: state.systemCatalogs.unorganized.nftIds.length });
     }
   }
 });
 
-export const { 
-  setCatalogs, 
-  addCatalog, 
-  updateCatalog, 
+// Memoized Selectors
+export const selectAllCatalogs = createSelector(
+  [selectCatalogItems, selectSystemCatalogsBase],
+  (items, systemCatalogs) => {
+    const itemArray = Object.values(items || {});
+    const systemArray = Object.values(systemCatalogs || {});
+    return [...itemArray, ...systemArray];
+  }
+);
+
+export const selectUserCatalogs = createSelector(
+  [selectCatalogItems],
+  (items) => Object.values(items || {})
+);
+
+export const selectSystemCatalogs = createSelector(
+  [selectSystemCatalogsBase],
+  (systemCatalogs) => Object.values(systemCatalogs || {})
+);
+
+export const selectCatalogById = (state, id) => 
+  state.catalogs.items[id] || state.catalogs.systemCatalogs[id];
+
+export const selectCatalogNFTs = createSelector(
+  [(state) => state, (_, catalogId) => catalogId],
+  (state, catalogId) => {
+    const catalog = selectCatalogById(state, catalogId);
+    if (!catalog) return [];
+
+    if (catalog.id === 'spam') {
+      return selectSpamNFTs(state);
+    }
+
+    return catalog.nftIds.map(nftId => {
+      let foundNFT = null;
+      Object.entries(state.nfts.byWallet).some(([walletId, walletNfts]) => {
+        Object.entries(walletNfts).some(([network, networkNfts]) => {
+          const nft = [...networkNfts.ERC721, ...networkNfts.ERC1155].find(nft => 
+            compareNFTIds(createNFTId(nft), nftId)
+          );
+          if (nft) {
+            foundNFT = { ...nft, walletId, network };
+            return true;
+          }
+          return false;
+        });
+        return !!foundNFT;
+      });
+      return foundNFT;
+    }).filter(Boolean);
+  }
+);
+
+// Add the missing selectCatalogCount selector
+export const selectCatalogCount = createSelector(
+  [(state, catalogId) => selectCatalogById(state, catalogId)],
+  (catalog) => {
+    if (!catalog) return 0;
+    return catalog.nftIds?.length || 0;
+  }
+);
+
+export const selectAutomatedCatalogs = createSelector(
+  [selectSystemCatalogsBase],
+  (systemCatalogs) => Object.values(systemCatalogs)
+    .filter(catalog => catalog.type === 'system')
+);
+
+export const {
+  addCatalog,
+  updateCatalog,
   removeCatalog,
   updateSpamCatalog,
   updateUnorganizedCatalog
 } = catalogSlice.actions;
-
-// Add selectors
-export const selectAllCatalogs = (state) => state.catalogs.list;
-export const selectCatalogById = (state, catalogId) => 
-  state.catalogs.list.find(catalog => catalog.id === catalogId);
-export const selectAutomatedCatalogs = (state) => 
-  state.catalogs.list.filter(catalog => catalog.type === 'automated');
-
-export const selectCatalogNFTs = (state, catalogId) => {
-  const catalog = state.catalogs.list.find(cat => cat.id === catalogId);
-  if (!catalog) return [];
-
-  if (catalog.id === 'spam') {
-    return selectSpamNFTs(state);
-  }
-
-  return catalog.nftIds.map(nftId => {
-    // Find the NFT in the wallet's collection
-    let foundNFT = null;
-    Object.entries(state.nfts.byWallet).some(([walletId, walletNfts]) => {
-      Object.entries(walletNfts).some(([network, networkNfts]) => {
-        const nft = [...networkNfts.ERC721, ...networkNfts.ERC1155].find(nft => 
-          compareNFTIds(createSpamNFTId(nft), nftId)
-        );
-        if (nft) {
-          foundNFT = { ...nft, walletId, network };
-          return true;
-        }
-        return false;
-      });
-      return !!foundNFT;
-    });
-    return foundNFT;
-  }).filter(Boolean); // Remove any null entries
-};
-
-export const selectCatalogCount = (state, catalogId) => {
-  const catalog = state.catalogs.list.find(cat => cat.id === catalogId);
-  if (!catalog) return 0;
-
-  // Special handling for spam catalog
-  if (catalog.id === 'spam') {
-    return Object.values(state.nfts.byWallet).reduce((total, walletNfts) => {
-      return total + Object.values(walletNfts).reduce((networkTotal, networkNfts) => {
-        return networkTotal + 
-          (networkNfts.ERC721?.filter(nft => nft.isSpam)?.length || 0) +
-          (networkNfts.ERC1155?.filter(nft => nft.isSpam)?.length || 0);
-      }, 0);
-    }, 0);
-  }
-
-  // Regular catalogs
-  return catalog.nftIds?.length || 0;
-};
 
 export default catalogSlice.reducer;

@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Box,
   VStack,
   Text,
   IconButton,
@@ -10,42 +9,36 @@ import {
 } from "@chakra-ui/react";
 import { FaFolder, FaEdit, FaTrash } from 'react-icons/fa';
 import { useSelector } from 'react-redux';
-import { selectCatalogsInFolder } from '../redux/slices/folderSlice';
 import { StyledCard } from '../styles/commonStyles';
 import { cardSizes } from '../constants/sizes';
+import { logger } from '../utils/logger';
+import { selectFolderRelationships } from '../redux/slices/folderSlice';
 
 const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
-  const catalogIds = useSelector(state => selectCatalogsInFolder(state, folder.id));
   const folderColor = useColorModeValue('blue.400', 'blue.600');
-  
-  // Define size mappings
-  const sizes = {
-    sm: {
-      icon: '1.5rem',
-      fontSize: 'sm',
-      padding: 2,
-      width: '150px', // Base width for small cards
-      spacing: 0.5,
-    },
-    md: {
-      icon: '2rem',
-      fontSize: 'md',
-      padding: 3,
-      width: '200px', // Base width for medium cards
-      spacing: 1,
-    },
-    lg: {
-      icon: '3rem',
-      fontSize: 'lg',
-      padding: 4,
-      width: '250px', // Base width for large cards
-      spacing: 2,
-    }
+  const relationships = useSelector(selectFolderRelationships);
+  const catalogCount = relationships[folder.id]?.size || folder.catalogIds?.length || 0;
+
+  const handleEdit = (e) => {
+    e.stopPropagation();
+    logger.log('Editing folder:', { folderId: folder.id });
+    onEdit();
   };
-  
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    logger.log('Deleting folder:', { folderId: folder.id, catalogCount });
+    onDelete();
+  };
+
+  const handleView = () => {
+    logger.log('Viewing folder:', { folderId: folder.id });
+    onView();
+  };
+
   return (
     <StyledCard 
-      onClick={onView}
+      onClick={handleView}
       role="button"
       cursor="pointer"
       transition="transform 0.2s"
@@ -58,7 +51,6 @@ const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
       width={cardSizes[cardSize].width}
       maxW="100%"
     >
-      {/* Action buttons container */}
       <Flex 
         position="absolute"
         top={1}
@@ -74,10 +66,7 @@ const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
           size="sm"
           variant="ghost"
           colorScheme="blue"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
+          onClick={handleEdit}
           mr={1}
           padding={1}
           minW="auto"
@@ -89,17 +78,13 @@ const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
           size="sm"
           variant="ghost"
           colorScheme="red"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
+          onClick={handleDelete}
           padding={1}
           minW="auto"
           height="auto"
         />
       </Flex>
   
-      {/* Main content */}
       <VStack 
         spacing={cardSizes[cardSize].spacing} 
         align="center"
@@ -119,12 +104,11 @@ const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
           {folder.name}
         </Text>
         <Text fontSize="xs" color="gray.500">
-          {catalogIds.length} {catalogIds.length === 1 ? 'Catalog' : 'Catalogs'}
+          {catalogCount} {catalogCount === 1 ? 'Catalog' : 'Catalogs'}
         </Text>
       </VStack>
     </StyledCard>
   );
 };
-
 
 export default FolderCard;

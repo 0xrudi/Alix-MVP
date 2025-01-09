@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -18,42 +18,61 @@ import {
   Alert,
   AlertIcon,
   Text,
+  FormControl,
+  FormLabel,
 } from "@chakra-ui/react";
 import { useDispatch, useSelector } from 'react-redux';
-import { addFolder } from '../redux/slices/folderSlice';
+import { addFolder, addCatalogToFolder } from '../redux/slices/folderSlice';
 import { selectAllCatalogs } from '../redux/slices/catalogSlice';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
+import { useCustomToast } from '../utils/toastUtils';
+import { logger } from '../utils/logger';
 
 const NewFolderModal = ({ isOpen, onClose }) => {
   const dispatch = useDispatch();
   const catalogs = useSelector(selectAllCatalogs);
+  const { showSuccessToast, showErrorToast } = useCustomToast();
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedCatalogs, setSelectedCatalogs] = useState([]);
   const [showError, setShowError] = useState(false);
 
-  // Format catalogs for the select component
-  const catalogOptions = catalogs
-    .filter(cat => !cat.isSystem && !selectedCatalogs.find(sc => sc.value === cat.id))
-    .map(catalog => ({
-      value: catalog.id,
-      label: catalog.name
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  const catalogOptions = useMemo(() => {
+    const allCatalogs = [
+      ...Object.values(catalogs.items || {}),
+      ...Object.values(catalogs.systemCatalogs || {})
+    ];
+    
+    return allCatalogs
+      .filter(cat => !cat.isSystem && !selectedCatalogs.find(sc => sc.value === cat.id))
+      .map(catalog => ({
+        value: catalog.id,
+        label: catalog.name
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [catalogs, selectedCatalogs]);
 
   const handleSubmit = () => {
+    console.log("Folder submit triggered"); // Debug log
     if (!name.trim()) {
       setShowError(true);
       return;
     }
-
-    dispatch(addFolder({
+  
+    // Create new folder with initialized relationships
+    const newFolder = {
       name: name.trim(),
       description: description.trim(),
-      catalogIds: selectedCatalogs.map(cat => cat.value)
-    }));
-
+      relationships: new Set() // Initialize relationships
+    };
+  
+    // Log before dispatch
+    console.log("About to dispatch folder creation:", newFolder);
+    dispatch(addFolder(newFolder));
+    // Log after dispatch
+    console.log("Folder creation dispatched");
+  
     handleClose();
   };
 
@@ -68,6 +87,10 @@ const NewFolderModal = ({ isOpen, onClose }) => {
   const handleCatalogSelect = (option) => {
     if (option) {
       setSelectedCatalogs(prev => [...prev, option]);
+      logger.log('Catalog selected for new folder:', {
+        catalogId: option.value,
+        catalogName: option.label
+      });
     }
   };
 
@@ -75,6 +98,10 @@ const NewFolderModal = ({ isOpen, onClose }) => {
     setSelectedCatalogs(prev => 
       prev.filter(cat => cat.value !== catalogToRemove.value)
     );
+    logger.log('Catalog removed from selection:', {
+      catalogId: catalogToRemove.value,
+      catalogName: catalogToRemove.label
+    });
   };
 
   return (
@@ -85,7 +112,8 @@ const NewFolderModal = ({ isOpen, onClose }) => {
         <ModalCloseButton />
         <ModalBody>
           <VStack spacing={6}>
-            <Box width="100%">
+            <FormControl isRequired>
+              <FormLabel>Folder Name</FormLabel>
               <Input
                 value={name}
                 onChange={(e) => {
@@ -101,20 +129,24 @@ const NewFolderModal = ({ isOpen, onClose }) => {
                   <Text fontSize="sm">Folder name is required</Text>
                 </Alert>
               )}
-            </Box>
+            </FormControl>
 
-            <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Enter folder description (optional)"
-              _placeholder={{ color: 'gray.600' }}
-            />
+            <FormControl>
+              <FormLabel>Description (Optional)</FormLabel>
+              <Input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Enter folder description"
+                _placeholder={{ color: 'gray.600' }}
+              />
+            </FormControl>
 
-            <Box width="100%">
+            <FormControl>
+              <FormLabel>Add Catalogs (Optional)</FormLabel>
               <ChakraReactSelect
                 options={catalogOptions}
                 onChange={handleCatalogSelect}
-                value={null} // Always keep the select empty
+                value={null}
                 placeholder="Search catalogs"
                 chakraStyles={{
                   placeholder: (provided) => ({
@@ -144,7 +176,7 @@ const NewFolderModal = ({ isOpen, onClose }) => {
                   </Wrap>
                 </Box>
               )}
-            </Box>
+            </FormControl>
           </VStack>
         </ModalBody>
 
