@@ -1,4 +1,3 @@
-// src/components/EditCatalogModal.js
 import React, { useState, useEffect } from 'react';
 import {
   Modal,
@@ -19,26 +18,26 @@ import { useDispatch, useSelector } from 'react-redux';
 import { updateCatalog } from '../redux/slices/catalogSlice';
 import { selectAllFolders, addCatalogToFolder, removeCatalogFromFolder } from '../redux/slices/folderSlice';
 import { useCustomToast } from '../utils/toastUtils';
+import { logger } from '../utils/logger';
 
 const EditCatalogModal = ({ isOpen, onClose, catalog }) => {
   const dispatch = useDispatch();
   const folders = useSelector(selectAllFolders);
+  const folderRelationships = useSelector(state => state.folders.relationships);
   const { showSuccessToast, showErrorToast } = useCustomToast();
   
-  const [catalogName, setCatalogName] = useState(catalog?.name || '');
+  const [catalogName, setCatalogName] = useState('');
   const [selectedFolder, setSelectedFolder] = useState('');
 
-  // Update local state when catalog prop changes
   useEffect(() => {
     if (catalog) {
       setCatalogName(catalog.name);
-      // Find the folder that contains this catalog
-      const currentFolder = folders.find(folder => 
-        folder.catalogIds?.includes(catalog.id)
-      );
-      setSelectedFolder(currentFolder?.id || '');
+      // Find folder containing this catalog using relationships
+      const containingFolder = Object.entries(folderRelationships)
+        .find(([_, catalogs]) => catalogs.has(catalog.id))?.[0];
+      setSelectedFolder(containingFolder || '');
     }
-  }, [catalog, folders]);
+  }, [catalog, folderRelationships]);
 
   const handleSave = () => {
     if (!catalogName.trim()) {
@@ -46,40 +45,54 @@ const EditCatalogModal = ({ isOpen, onClose, catalog }) => {
       return;
     }
 
-    // Update catalog name
-    dispatch(updateCatalog({
-      id: catalog.id,
-      name: catalogName.trim()
-    }));
+    try {
+      // Update catalog name
+      dispatch(updateCatalog({
+        id: catalog.id,
+        name: catalogName.trim()
+      }));
 
-    // Handle folder assignment
-    const currentFolder = folders.find(folder => 
-      folder.catalogIds?.includes(catalog.id)
-    );
+      // Handle folder relationship changes
+      const currentFolderId = Object.entries(folderRelationships)
+        .find(([_, catalogs]) => catalogs.has(catalog.id))?.[0];
 
-    if (currentFolder?.id !== selectedFolder) {
-      // Remove from current folder if exists
-      if (currentFolder) {
-        dispatch(removeCatalogFromFolder({
-          folderId: currentFolder.id,
-          catalogId: catalog.id
-        }));
+      if (currentFolderId !== selectedFolder) {
+        // Remove from current folder if exists
+        if (currentFolderId) {
+          dispatch(removeCatalogFromFolder({
+            folderId: currentFolderId,
+            catalogId: catalog.id
+          }));
+        }
+
+        // Add to new folder if selected
+        if (selectedFolder) {
+          dispatch(addCatalogToFolder({
+            folderId: selectedFolder,
+            catalogId: catalog.id
+          }));
+        }
       }
 
-      // Add to new folder if selected
-      if (selectedFolder) {
-        dispatch(addCatalogToFolder({
-          folderId: selectedFolder,
-          catalogId: catalog.id
-        }));
-      }
+      logger.log('Catalog updated:', {
+        catalogId: catalog.id,
+        newName: catalogName,
+        oldFolderId: currentFolderId,
+        newFolderId: selectedFolder
+      });
+
+      showSuccessToast(
+        "Catalog Updated",
+        "The catalog has been updated successfully."
+      );
+      onClose();
+    } catch (error) {
+      logger.error('Error updating catalog:', error);
+      showErrorToast(
+        "Update Failed",
+        "Failed to update the catalog. Please try again."
+      );
     }
-
-    showSuccessToast(
-      "Catalog Updated",
-      "The catalog has been updated successfully."
-    );
-    onClose();
   };
 
   const handleClose = () => {

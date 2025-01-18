@@ -26,24 +26,27 @@ import { selectTotalNFTs, selectTotalSpamNFTs } from '../redux/slices/nftSlice';
 const ProfileStats = () => {
   const totalArtifacts = useSelector(selectTotalNFTs);
   const spamArtifacts = useSelector(selectTotalSpamNFTs);
-  const catalogs = useSelector(state => state.catalogs.list);
+  const catalogs = useSelector(state => state.catalogs.items);
+
+  // Calculate total user catalogs (excluding system catalogs)
+  const catalogCount = Object.keys(catalogs || {}).length;
 
   return (
     <VStack spacing={6} align="stretch">
       <StatGroup>
         <Stat>
           <StatLabel fontSize="1rem">Total Artifacts</StatLabel>
-          <StatNumber fontSize="2xl">{totalArtifacts}</StatNumber>
+          <StatNumber fontSize="2xl">{totalArtifacts || 0}</StatNumber>
         </Stat>
 
         <Stat>
           <StatLabel fontSize="1rem">Catalogs</StatLabel>
-          <StatNumber fontSize="2xl">{catalogs.length}</StatNumber>
+          <StatNumber fontSize="2xl">{catalogCount || 0}</StatNumber>
         </Stat>
 
         <Stat>
           <StatLabel fontSize="1rem">Spam Artifacts</StatLabel>
-          <StatNumber fontSize="2xl">{spamArtifacts}</StatNumber>
+          <StatNumber fontSize="2xl">{spamArtifacts || 0}</StatNumber>
         </Stat>
       </StatGroup>
     </VStack>

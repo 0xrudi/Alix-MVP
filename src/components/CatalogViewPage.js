@@ -1,13 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { 
   Box, 
   Heading, 
-  Button, 
   VStack,
-  HStack,
   Text,
-  useToast,
   IconButton,
   Flex,
   Collapse,
@@ -16,13 +13,17 @@ import {
   InputGroup,
   InputLeftElement,
   ButtonGroup,
+  Button,
   useColorModeValue,
 } from "@chakra-ui/react";
+import { useNavigate } from 'react-router-dom';
 import { FaList, FaThLarge, FaChevronDown, FaChevronUp, FaSearch } from 'react-icons/fa';
-import NFTCard from './NFTCard';
-import ListViewItem from './ListViewItem';
 import { selectCatalogNFTs, selectCatalogCount } from '../redux/slices/catalogSlice';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
+import { useCustomToast } from '../utils/toastUtils';
+import NFTCard from './NFTCard';
+import ListViewItem from './ListViewItem';
+import { logger } from '../utils/logger';
 
 const VIEW_MODES = {
   LIST: 'list',
@@ -32,32 +33,27 @@ const VIEW_MODES = {
 };
 
 const VIEW_SIZES = {
-  [VIEW_MODES.LIST]: 0, // Not used for list view
+  [VIEW_MODES.LIST]: 0,
   [VIEW_MODES.SMALL]: 160,
   [VIEW_MODES.MEDIUM]: 240,
   [VIEW_MODES.LARGE]: 320
 };
 
-const CatalogViewPage = ({ 
-  catalog, 
-  onBack, 
-  onRemoveNFTs, 
-  onClose, 
-  onSpamToggle  // Changed from onUnmarkSpam
-}) => {
+const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onSpamToggle }) => {
+  const { showSuccessToast, showWarningToast } = useCustomToast();
   const [selectedNFTs, setSelectedNFTs] = useState([]);
   const [viewMode, setViewMode] = useState(VIEW_MODES.MEDIUM);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const navigate = useNavigate();
+  
   const catalogNFTs = useSelector(state => selectCatalogNFTs(state, catalog.id)) || [];
   const nftCount = useSelector(state => selectCatalogCount(state, catalog.id));
-  const toast = useToast();
+  
   const borderColor = useColorModeValue('gray.200', 'gray.600');
-
   const isListView = viewMode === VIEW_MODES.LIST;
   const cardSize = VIEW_SIZES[viewMode];
 
-  // Determine catalog type for rendering
   const getCatalogType = () => {
     if (catalog.id === 'spam') return 'spam';
     if (catalog.id === 'unorganized') return 'unorganized';
@@ -65,59 +61,78 @@ const CatalogViewPage = ({
     return 'user';
   };
 
-  const filteredNFTs = catalogNFTs.filter(nft => 
-    nft && (
-      nft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      nft.id?.tokenId?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+  const filteredNFTs = useMemo(() => 
+    catalogNFTs.filter(nft => 
+      nft && (
+        nft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        nft.id?.tokenId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        nft.contract?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    ),
+    [catalogNFTs, searchTerm]
   );
 
   const handleNFTSelect = (nft) => {
-    setSelectedNFTs(prev => 
-      prev.some(item => item.id?.tokenId === nft.id?.tokenId && 
-                       item.contract?.address === nft.contract?.address)
-        ? prev.filter(item => item.id?.tokenId !== nft.id?.tokenId || 
-                            item.contract?.address !== nft.contract?.address)
-        : [...prev, nft]
-    );
-  };
-
-  const handleRemoveSelected = () => {
-    onRemoveNFTs(selectedNFTs);
-    setSelectedNFTs([]);
-    toast({
-      title: "NFTs Removed",
-      description: `${selectedNFTs.length} NFT(s) removed from the catalog.`,
-      status: "success",
-      duration: 3000,
-      isClosable: true,
+    setSelectedNFTs(prev => {
+      const nftKey = `${nft.id.tokenId}-${nft.contract.address}`;
+      const isSelected = prev.some(item => 
+        `${item.id.tokenId}-${item.contract.address}` === nftKey
+      );
+      
+      return isSelected
+        ? prev.filter(item => `${item.id.tokenId}-${item.contract.address}` !== nftKey)
+        : [...prev, nft];
     });
   };
 
-  // Handle spam/unspam actions
+  const handleRemoveSelected = () => {
+    try {
+      onRemoveNFTs(selectedNFTs);
+      setSelectedNFTs([]);
+      showSuccessToast(
+        "NFTs Removed",
+        `${selectedNFTs.length} NFT(s) removed from the catalog.`
+      );
+      logger.log('NFTs removed from catalog:', {
+        catalogId: catalog.id,
+        count: selectedNFTs.length
+      });
+    } catch (error) {
+      logger.error('Error removing NFTs:', error);
+      showWarningToast(
+        "Error",
+        "Failed to remove some NFTs. Please try again."
+      );
+    }
+  };
+
   const handleSpamAction = (nft) => {
     if (onSpamToggle) {
       onSpamToggle(nft);
-    } else {
-      toast({
-        title: "Action Not Available",
-        description: "Unable to toggle spam state at this time.",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
+      logger.log('Spam status toggled:', {
+        nftId: nft.id.tokenId,
+        catalogId: catalog.id
       });
+    } else {
+      showWarningToast(
+        "Action Not Available",
+        "Unable to toggle spam state at this time."
+      );
     }
   };
 
   return (
     <StyledContainer>
+      {/* Previous JSX remains the same */}
       <Flex justify="space-between" align="center" mb={6}>
         <Heading as="h2" size="xl">{catalog.name}</Heading>
         <StyledButton onClick={onBack}>Back to Catalogs</StyledButton>
       </Flex>
+
       <Text mb={4}>{nftCount} NFTs in this catalog</Text>
       
       <StyledCard mb={4} maxW="600px">
+        {/* Rest of the component JSX remains the same */}
         <Flex justify="space-between" align="center" mb={2}>
           <Heading as="h3" size="md">Display Settings</Heading>
           <IconButton
@@ -126,6 +141,7 @@ const CatalogViewPage = ({
             aria-label={isSettingsExpanded ? "Collapse settings" : "Expand settings"}
           />
         </Flex>
+
         <Collapse in={isSettingsExpanded}>
           <VStack spacing={4} align="stretch" pt={2}>
             <Flex align="center" justify="space-between">
@@ -208,11 +224,11 @@ const CatalogViewPage = ({
                 item.contract?.address === nft.contract?.address
               )}
               onSelect={() => handleNFTSelect(nft)}
-              onMarkAsSpam={() => handleSpamAction(nft)}  // Updated to use handleSpamAction
+              onMarkAsSpam={() => handleSpamAction(nft)}
               isSpamFolder={catalog.id === 'spam'}
               catalogType={getCatalogType()}
               cardSize={cardSize}
-              onClick={() => {}} // Add appropriate click handler if needed
+              onClick={() => navigate('/artifact', { state: { nft } })}  // Add proper navigation
             />
           ))}
         </SimpleGrid>

@@ -1,127 +1,163 @@
 // src/redux/slices/folderSlice.js
+import { createSlice, createSelector } from '@reduxjs/toolkit';
+import { logger } from '../../utils/logger';
 
-import { createSlice } from '@reduxjs/toolkit';
+const initialState = {
+  folders: {}, // { folderId: { id, name, description, createdAt, updatedAt } }
+  relationships: {}, // { folderId: string[] } // Array of catalog IDs
+  loading: false,
+  error: null
+};
 
 const folderSlice = createSlice({
   name: 'folders',
-  initialState: {
-    list: [],
-    catalogFolders: {}, // Maps catalog IDs to folder IDs
-    loading: false,
-    error: null
-  },
+  initialState,
   reducers: {
     addFolder: (state, action) => {
-      // Add new folder
-      const newFolder = {
-        id: `folder-${Date.now()}`,
+      const id = `folder-${Date.now()}`;
+      const folder = {
+        id,
         name: action.payload.name,
         description: action.payload.description || '',
         createdAt: new Date().toISOString(),
-        catalogIds: action.payload.catalogIds || [],
         updatedAt: new Date().toISOString()
       };
       
-      state.list.push(newFolder);
-
-      // Update catalog to folder mappings
-      newFolder.catalogIds.forEach(catalogId => {
-        if (!state.catalogFolders[catalogId]) {
-          state.catalogFolders[catalogId] = [];
-        }
-        state.catalogFolders[catalogId].push(newFolder.id);
+      state.folders[id] = folder;
+      state.relationships[id] = []; // Initialize as empty array
+      
+      // If catalogs were provided during folder creation, add them
+      if (action.payload.catalogIds && Array.isArray(action.payload.catalogIds)) {
+        state.relationships[id] = action.payload.catalogIds;
+      }
+      
+      logger.log('Added folder:', {
+        folder,
+        catalogIds: action.payload.catalogIds
       });
     },
+
     updateFolder: (state, action) => {
       const { id, name, description, catalogIds } = action.payload;
-      const folder = state.list.find(f => f.id === id);
+      const folder = state.folders[id];
       
       if (folder) {
-        // Remove old catalog mappings
-        folder.catalogIds.forEach(catalogId => {
-          state.catalogFolders[catalogId] = state.catalogFolders[catalogId]
-            ?.filter(fId => fId !== id) || [];
-        });
-
-        // Update folder
         folder.name = name;
         folder.description = description;
-        folder.catalogIds = catalogIds;
         folder.updatedAt = new Date().toISOString();
-
-        // Add new catalog mappings
-        catalogIds.forEach(catalogId => {
-          if (!state.catalogFolders[catalogId]) {
-            state.catalogFolders[catalogId] = [];
-          }
-          if (!state.catalogFolders[catalogId].includes(id)) {
-            state.catalogFolders[catalogId].push(id);
-          }
+        
+        // Update relationships if catalogIds provided
+        if (catalogIds) {
+          state.relationships[id] = catalogIds;
+        }
+        
+        logger.log('Updated folder:', { 
+          id, 
+          name,
+          catalogCount: catalogIds?.length || state.relationships[id]?.length 
         });
       }
     },
+
     removeFolder: (state, action) => {
-      const folderId = action.payload;
-      const folder = state.list.find(f => f.id === folderId);
-      
-      if (folder) {
-        // Remove catalog mappings
-        folder.catalogIds.forEach(catalogId => {
-          state.catalogFolders[catalogId] = state.catalogFolders[catalogId]
-            ?.filter(id => id !== folderId) || [];
-        });
-
-        // Remove folder
-        state.list = state.list.filter(f => f.id !== folderId);
+      const id = action.payload;
+      if (state.folders[id]) {
+        delete state.folders[id];
+        delete state.relationships[id];
+        logger.log('Removed folder:', id);
       }
     },
+
     addCatalogToFolder: (state, action) => {
       const { folderId, catalogId } = action.payload;
-      const folder = state.list.find(f => f.id === folderId);
-      
-      if (folder && !folder.catalogIds.includes(catalogId)) {
-        folder.catalogIds.push(catalogId);
-        folder.updatedAt = new Date().toISOString();
-        
-        if (!state.catalogFolders[catalogId]) {
-          state.catalogFolders[catalogId] = [];
+      if (state.folders[folderId]) {
+        if (!state.relationships[folderId]) {
+          state.relationships[folderId] = [];
         }
-        state.catalogFolders[catalogId].push(folderId);
+        if (!state.relationships[folderId].includes(catalogId)) {
+          state.relationships[folderId].push(catalogId);
+          state.folders[folderId].updatedAt = new Date().toISOString();
+          logger.log('Added catalog to folder:', { folderId, catalogId });
+        }
       }
     },
+
     removeCatalogFromFolder: (state, action) => {
       const { folderId, catalogId } = action.payload;
-      const folder = state.list.find(f => f.id === folderId);
-      
-      if (folder) {
-        folder.catalogIds = folder.catalogIds.filter(id => id !== catalogId);
-        folder.updatedAt = new Date().toISOString();
-        
-        state.catalogFolders[catalogId] = state.catalogFolders[catalogId]
-          ?.filter(id => id !== folderId) || [];
+      if (state.relationships[folderId]) {
+        state.relationships[folderId] = state.relationships[folderId]
+          .filter(id => id !== catalogId);
+        state.folders[folderId].updatedAt = new Date().toISOString();
+        logger.log('Removed catalog from folder:', { folderId, catalogId });
       }
+    },
+
+    moveCatalogToFolders: (state, action) => {
+      const { catalogId, folderIds } = action.payload;
+      // Remove from all current folders
+      Object.keys(state.relationships).forEach(folderId => {
+        state.relationships[folderId] = state.relationships[folderId]
+          .filter(id => id !== catalogId);
+      });
+      // Add to specified folders
+      folderIds.forEach(folderId => {
+        if (state.folders[folderId]) {
+          if (!state.relationships[folderId]) {
+            state.relationships[folderId] = [];
+          }
+          if (!state.relationships[folderId].includes(catalogId)) {
+            state.relationships[folderId].push(catalogId);
+            state.folders[folderId].updatedAt = new Date().toISOString();
+          }
+        }
+      });
+      logger.log('Moved catalog to folders:', { catalogId, folderIds });
     }
   }
 });
 
-// Export actions
+// Selectors
+export const selectAllFolders = createSelector(
+  [state => state.folders.folders],
+  (folders) => Object.values(folders)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+);
+
+export const selectFolderById = createSelector(
+  [state => state.folders.folders, (_, id) => id],
+  (folders, id) => folders[id]
+);
+
+export const selectCatalogsInFolder = createSelector(
+  [state => state.folders.relationships, (_, folderId) => folderId],
+  (relationships, folderId) => relationships[folderId] || []
+);
+
+export const selectFoldersForCatalog = createSelector(
+  [
+    state => state.folders.folders,
+    state => state.folders.relationships,
+    (_, catalogId) => catalogId
+  ],
+  (folders, relationships, catalogId) => {
+    const folderIds = Object.entries(relationships)
+      .filter(([_, catalogs]) => catalogs.includes(catalogId))
+      .map(([folderId]) => folderId);
+    
+    return folderIds
+      .map(id => folders[id])
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+);
+
 export const {
   addFolder,
   updateFolder,
   removeFolder,
   addCatalogToFolder,
-  removeCatalogFromFolder
+  removeCatalogFromFolder,
+  moveCatalogToFolders
 } = folderSlice.actions;
-
-// Selectors
-export const selectAllFolders = state => state.folders.list;
-export const selectFolderById = (state, folderId) =>
-  state.folders.list.find(folder => folder.id === folderId);
-export const selectFoldersForCatalog = (state, catalogId) =>
-  state.folders.catalogFolders[catalogId] || [];
-export const selectCatalogsInFolder = (state, folderId) => {
-  const folder = state.folders.list.find(f => f.id === folderId);
-  return folder ? folder.catalogIds : [];
-};
 
 export default folderSlice.reducer;

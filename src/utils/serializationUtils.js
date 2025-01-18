@@ -1,51 +1,63 @@
 // src/utils/serializationUtils.js
 import { logger } from './logger';
 
+/**
+ * Normalizes an Ethereum address from various possible formats
+ */
 export const serializeAddress = (address) => {
   try {
+    // Handle null/undefined
     if (!address) return null;
     
+    // Handle Moralis EvmAddress objects with their full structure
+    if (address instanceof Object && '_value' in address) {
+      return address._value.toLowerCase();
+    }
+
+    // Handle nested EvmAddress objects
+    if (address?.address?._value) {
+      return address.address._value.toLowerCase();
+    }
+
     // Handle string addresses
     if (typeof address === 'string') {
       return address.toLowerCase();
     }
-    
-    // Handle EvmAddress objects
-    if (address && typeof address === 'object') {
-      // Handle EvmAddress type
-      if (address._value) {
-        return address._value.toLowerCase();
-      }
-      // Handle cases where address might be a complex object
-      if (typeof address.toString === 'function') {
-        const stringAddr = address.toString();
-        if (stringAddr.startsWith('0x')) {
-          return stringAddr.toLowerCase();
-        }
-      }
-      if (address.address && typeof address.address === 'string') {
-        return address.address.toLowerCase();
-      }
-    }
-    
-    logger.warn('Unable to serialize address:', address);
+
+    logger.warn('Unhandled address format:', { 
+      type: typeof address,
+      hasValue: '_value' in (address || {}),
+      structure: JSON.stringify(address)
+    });
     return null;
+
   } catch (error) {
-    logger.error('Error serializing address:', error);
-    return String(address).toLowerCase(); // Fallback to string conversion
+    logger.error('Error serializing address:', { error, address });
+    return null;
   }
 };
 
+/**
+ * Validates Ethereum address format
+ */
+export const isValidAddress = (address) => {
+  const serialized = serializeAddress(address);
+  return serialized?.match(/^0x[a-f0-9]{40}$/i) !== null;
+};
+
+/**
+ * Normalizes contract information
+ */
 export const serializeContract = (contract) => {
   if (!contract) return null;
   
   try {
     return {
       ...contract,
-      address: serializeAddress(contract.address)
+      address: serializeAddress(contract.address) || contract.address
     };
   } catch (error) {
-    logger.error('Error serializing contract:', error);
+    logger.error('Error serializing contract:', error, { contract });
     return contract;
   }
 };
@@ -54,24 +66,32 @@ export const serializeNFT = (nft) => {
   try {
     if (!nft) return null;
 
+    // Handle tokenId first to ensure proper string conversion
+    const tokenId = nft.id?.tokenId?.toString() || '';
+
+    // Properly serialize the contract first
+    const serializedContract = serializeContract(nft.contract);
+    
     const serializedNFT = {
       ...nft,
       id: {
         ...nft.id,
-        tokenId: nft.id?.tokenId?.toString() || ''
+        tokenId
       },
-      contract: serializeContract(nft.contract),
-      balance: nft.balance?.toString() || '1'
+      contract: serializedContract,
+      balance: nft.balance?.toString() || '1',
+      // Generate a stable unique identifier
+      uniqueId: `${serializedContract?.address || ''}-${tokenId}-${nft.network || ''}`
     };
 
-    // Ensure address is properly serialized
+    // Clean up any leftover address properties
     if (serializedNFT.address) {
       serializedNFT.address = serializeAddress(serializedNFT.address);
     }
 
     return serializedNFT;
   } catch (error) {
-    logger.error('Error serializing NFT:', error);
-    return nft;
+    logger.error('Error serializing NFT:', error, { nft });
+    return null;  // Return null instead of raw NFT to prevent invalid data propagation
   }
 };

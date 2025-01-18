@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -18,29 +18,52 @@ import {
   Alert,
   AlertIcon,
   Text,
+  FormControl,
+  FormLabel,
 } from "@chakra-ui/react";
 import { useDispatch, useSelector } from 'react-redux';
 import { addFolder } from '../redux/slices/folderSlice';
-import { selectAllCatalogs } from '../redux/slices/catalogSlice';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
+import { useCustomToast } from '../utils/toastUtils';
+import { logger } from '../utils/logger';
 
 const NewFolderModal = ({ isOpen, onClose }) => {
   const dispatch = useDispatch();
-  const catalogs = useSelector(selectAllCatalogs);
+  const catalogs = useSelector(state => state.catalogs.items);
+  const { showSuccessToast, showErrorToast } = useCustomToast();
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedCatalogs, setSelectedCatalogs] = useState([]);
   const [showError, setShowError] = useState(false);
 
-  // Format catalogs for the select component
-  const catalogOptions = catalogs
-    .filter(cat => !cat.isSystem && !selectedCatalogs.find(sc => sc.value === cat.id))
-    .map(catalog => ({
-      value: catalog.id,
-      label: catalog.name
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  // Create catalog options from available catalogs
+  const catalogOptions = useMemo(() => {
+    return Object.values(catalogs)
+      .filter(catalog => !catalog.isSystem)
+      .map(catalog => ({
+        value: catalog.id,
+        label: catalog.name
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [catalogs]);
+
+  const handleCatalogSelect = (option) => {
+    if (option) {
+      setSelectedCatalogs(prev => {
+        // Prevent duplicates
+        if (prev.some(cat => cat.value === option.value)) {
+          return prev;
+        }
+        return [...prev, option];
+      });
+      
+      logger.log('Selected catalog for new folder:', {
+        catalogId: option.value,
+        catalogName: option.label
+      });
+    }
+  };
 
   const handleSubmit = () => {
     if (!name.trim()) {
@@ -48,13 +71,33 @@ const NewFolderModal = ({ isOpen, onClose }) => {
       return;
     }
 
-    dispatch(addFolder({
-      name: name.trim(),
-      description: description.trim(),
-      catalogIds: selectedCatalogs.map(cat => cat.value)
-    }));
+    try {
+      // Create new folder with catalog assignments
+      dispatch(addFolder({
+        name: name.trim(),
+        description: description.trim(),
+        catalogIds: selectedCatalogs.map(cat => cat.value)
+      }));
 
-    handleClose();
+      logger.log('Created new folder:', {
+        name: name.trim(),
+        catalogCount: selectedCatalogs.length,
+        catalogs: selectedCatalogs.map(cat => cat.value)
+      });
+
+      showSuccessToast(
+        "Folder Created",
+        `Created folder "${name.trim()}" with ${selectedCatalogs.length} catalogs`
+      );
+
+      handleClose();
+    } catch (error) {
+      logger.error('Error creating folder:', error);
+      showErrorToast(
+        "Error",
+        "Failed to create folder. Please try again."
+      );
+    }
   };
 
   const handleClose = () => {
@@ -65,16 +108,15 @@ const NewFolderModal = ({ isOpen, onClose }) => {
     onClose();
   };
 
-  const handleCatalogSelect = (option) => {
-    if (option) {
-      setSelectedCatalogs(prev => [...prev, option]);
-    }
-  };
-
   const removeSelectedCatalog = (catalogToRemove) => {
     setSelectedCatalogs(prev => 
       prev.filter(cat => cat.value !== catalogToRemove.value)
     );
+    
+    logger.log('Removed catalog from selection:', {
+      catalogId: catalogToRemove.value,
+      catalogName: catalogToRemove.label
+    });
   };
 
   return (
@@ -85,7 +127,8 @@ const NewFolderModal = ({ isOpen, onClose }) => {
         <ModalCloseButton />
         <ModalBody>
           <VStack spacing={6}>
-            <Box width="100%">
+            <FormControl isRequired>
+              <FormLabel>Folder Name</FormLabel>
               <Input
                 value={name}
                 onChange={(e) => {
@@ -101,27 +144,29 @@ const NewFolderModal = ({ isOpen, onClose }) => {
                   <Text fontSize="sm">Folder name is required</Text>
                 </Alert>
               )}
-            </Box>
+            </FormControl>
 
-            <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Enter folder description (optional)"
-              _placeholder={{ color: 'gray.600' }}
-            />
+            <FormControl>
+              <FormLabel>Description (Optional)</FormLabel>
+              <Input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Enter folder description"
+                _placeholder={{ color: 'gray.600' }}
+              />
+            </FormControl>
 
-            <Box width="100%">
+            <FormControl>
+              <FormLabel>Add Catalogs (Optional)</FormLabel>
               <ChakraReactSelect
                 options={catalogOptions}
+                value={null}
                 onChange={handleCatalogSelect}
-                value={null} // Always keep the select empty
                 placeholder="Search catalogs"
-                chakraStyles={{
-                  placeholder: (provided) => ({
-                    ...provided,
-                    color: 'gray.600'
-                  })
-                }}
+                isClearable
+                menuPortalTarget={document.body}
+                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+                noOptionsMessage={() => "No catalogs available"}
               />
               
               {selectedCatalogs.length > 0 && (
@@ -144,7 +189,7 @@ const NewFolderModal = ({ isOpen, onClose }) => {
                   </Wrap>
                 </Box>
               )}
-            </Box>
+            </FormControl>
           </VStack>
         </ModalBody>
 
