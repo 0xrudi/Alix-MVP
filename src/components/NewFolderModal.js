@@ -22,15 +22,14 @@ import {
   FormLabel,
 } from "@chakra-ui/react";
 import { useDispatch, useSelector } from 'react-redux';
-import { addFolder, addCatalogToFolder } from '../redux/slices/folderSlice';
-import { selectAllCatalogs } from '../redux/slices/catalogSlice';
+import { addFolder } from '../redux/slices/folderSlice';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
 import { useCustomToast } from '../utils/toastUtils';
 import { logger } from '../utils/logger';
 
 const NewFolderModal = ({ isOpen, onClose }) => {
   const dispatch = useDispatch();
-  const catalogs = useSelector(selectAllCatalogs);
+  const catalogs = useSelector(state => state.catalogs.items);
   const { showSuccessToast, showErrorToast } = useCustomToast();
   
   const [name, setName] = useState('');
@@ -38,42 +37,67 @@ const NewFolderModal = ({ isOpen, onClose }) => {
   const [selectedCatalogs, setSelectedCatalogs] = useState([]);
   const [showError, setShowError] = useState(false);
 
+  // Create catalog options from available catalogs
   const catalogOptions = useMemo(() => {
-    const allCatalogs = [
-      ...Object.values(catalogs.items || {}),
-      ...Object.values(catalogs.systemCatalogs || {})
-    ];
-    
-    return allCatalogs
-      .filter(cat => !cat.isSystem && !selectedCatalogs.find(sc => sc.value === cat.id))
+    return Object.values(catalogs)
+      .filter(catalog => !catalog.isSystem)
       .map(catalog => ({
         value: catalog.id,
         label: catalog.name
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [catalogs, selectedCatalogs]);
+  }, [catalogs]);
+
+  const handleCatalogSelect = (option) => {
+    if (option) {
+      setSelectedCatalogs(prev => {
+        // Prevent duplicates
+        if (prev.some(cat => cat.value === option.value)) {
+          return prev;
+        }
+        return [...prev, option];
+      });
+      
+      logger.log('Selected catalog for new folder:', {
+        catalogId: option.value,
+        catalogName: option.label
+      });
+    }
+  };
 
   const handleSubmit = () => {
-    console.log("Folder submit triggered"); // Debug log
     if (!name.trim()) {
       setShowError(true);
       return;
     }
-  
-    // Create new folder with initialized relationships
-    const newFolder = {
-      name: name.trim(),
-      description: description.trim(),
-      relationships: new Set() // Initialize relationships
-    };
-  
-    // Log before dispatch
-    console.log("About to dispatch folder creation:", newFolder);
-    dispatch(addFolder(newFolder));
-    // Log after dispatch
-    console.log("Folder creation dispatched");
-  
-    handleClose();
+
+    try {
+      // Create new folder with catalog assignments
+      dispatch(addFolder({
+        name: name.trim(),
+        description: description.trim(),
+        catalogIds: selectedCatalogs.map(cat => cat.value)
+      }));
+
+      logger.log('Created new folder:', {
+        name: name.trim(),
+        catalogCount: selectedCatalogs.length,
+        catalogs: selectedCatalogs.map(cat => cat.value)
+      });
+
+      showSuccessToast(
+        "Folder Created",
+        `Created folder "${name.trim()}" with ${selectedCatalogs.length} catalogs`
+      );
+
+      handleClose();
+    } catch (error) {
+      logger.error('Error creating folder:', error);
+      showErrorToast(
+        "Error",
+        "Failed to create folder. Please try again."
+      );
+    }
   };
 
   const handleClose = () => {
@@ -84,21 +108,12 @@ const NewFolderModal = ({ isOpen, onClose }) => {
     onClose();
   };
 
-  const handleCatalogSelect = (option) => {
-    if (option) {
-      setSelectedCatalogs(prev => [...prev, option]);
-      logger.log('Catalog selected for new folder:', {
-        catalogId: option.value,
-        catalogName: option.label
-      });
-    }
-  };
-
   const removeSelectedCatalog = (catalogToRemove) => {
     setSelectedCatalogs(prev => 
       prev.filter(cat => cat.value !== catalogToRemove.value)
     );
-    logger.log('Catalog removed from selection:', {
+    
+    logger.log('Removed catalog from selection:', {
       catalogId: catalogToRemove.value,
       catalogName: catalogToRemove.label
     });
@@ -145,15 +160,13 @@ const NewFolderModal = ({ isOpen, onClose }) => {
               <FormLabel>Add Catalogs (Optional)</FormLabel>
               <ChakraReactSelect
                 options={catalogOptions}
-                onChange={handleCatalogSelect}
                 value={null}
+                onChange={handleCatalogSelect}
                 placeholder="Search catalogs"
-                chakraStyles={{
-                  placeholder: (provided) => ({
-                    ...provided,
-                    color: 'gray.600'
-                  })
-                }}
+                isClearable
+                menuPortalTarget={document.body}
+                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+                noOptionsMessage={() => "No catalogs available"}
               />
               
               {selectedCatalogs.length > 0 && (

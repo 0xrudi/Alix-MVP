@@ -65,9 +65,7 @@ const ArtifactSelector = ({ selectedArtifacts, onSelectArtifact, searchTerm }) =
       const walletNFTs = nftsByWallet[wallet.id];
       if (walletNFTs) {
         Object.entries(walletNFTs).forEach(([network, networkNFTs]) => {
-          const tokens = [...(networkNFTs.ERC721 || []), ...(networkNFTs.ERC1155 || [])];
-          
-          tokens.forEach(nft => {
+          [...(networkNFTs.ERC721 || []), ...(networkNFTs.ERC1155 || [])].forEach(nft => {
             if (!nft.isSpam && nft.title && nft.contract?.address && nft.id?.tokenId) {
               const key = `${nft.contract.address}-${nft.id.tokenId}`;
               if (!nftMap.has(key)) {
@@ -94,9 +92,9 @@ const ArtifactSelector = ({ selectedArtifacts, onSelectArtifact, searchTerm }) =
     return allNFTs.filter(nft => {
       const titleMatch = (nft.title || '').toLowerCase().includes(searchLower);
       const tokenIdMatch = (nft.id?.tokenId || '').toString().toLowerCase().includes(searchLower);
-      const contractNameMatch = (nft.contract?.name || '').toLowerCase().includes(searchLower);
+      const contractMatch = (nft.contract?.name || '').toLowerCase().includes(searchLower);
       
-      return titleMatch || tokenIdMatch || contractNameMatch;
+      return titleMatch || tokenIdMatch || contractMatch;
     });
   }, [allNFTs, searchTerm]);
 
@@ -112,7 +110,7 @@ const ArtifactSelector = ({ selectedArtifacts, onSelectArtifact, searchTerm }) =
     <Box maxH="300px" overflowY="auto">
       {filteredNFTs.map(nft => (
         <Flex
-          key={`${nft.contract?.address}-${nft.id?.tokenId}`}
+          key={`${nft.contract?.address}-${nft.id?.tokenId}-${nft.network}`}
           p={2}
           borderRadius="md"
           alignItems="center"
@@ -151,8 +149,6 @@ const SelectedArtifactItem = ({ artifact, onRemove }) => {
           setImageUrl(artifact.metadata.image);
         } else if (artifact.media?.[0]?.gateway) {
           setImageUrl(artifact.media[0].gateway);
-        } else {
-          setImageUrl('https://via.placeholder.com/40?text=NFT');
         }
       } catch (error) {
         logger.error('Error loading artifact image:', error);
@@ -171,7 +167,7 @@ const SelectedArtifactItem = ({ artifact, onRemove }) => {
       alignItems="center"
       gap={3}
     >
-      <Box width="40px" height="40px" borderRadius="md" overflow="hidden" flexShrink={0} bg="gray.100">
+      <Box width="40px" height="40px" borderRadius="md" overflow="hidden" flexShrink={0}>
         <Image
           src={imageUrl}
           alt={artifact.title}
@@ -200,13 +196,15 @@ const SelectedArtifactItem = ({ artifact, onRemove }) => {
   );
 };
 
-const initialFormState = {
+// Initial form state constant
+const INITIAL_FORM_STATE = {
   catalogName: '',
   selectedFolders: [],
   folderSearchTerm: '',
   showError: false,
   artifacts: [],
-  searchTerm: ''
+  searchTerm: '',
+  isSubmitting: false
 };
 
 // Main Component
@@ -219,10 +217,22 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
   const existingFolderBg = useColorModeValue(FOLDER_COLORS.existing.light, FOLDER_COLORS.existing.dark);
   const newFolderBg = useColorModeValue(FOLDER_COLORS.new.light, FOLDER_COLORS.new.dark);
 
-  // State
-  const [formState, setFormState] = useState(initialFormState);
+  // Form state
+  const [formState, setFormState] = useState(INITIAL_FORM_STATE);
 
-  // Update handlers
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (isOpen && initialArtifacts?.length > 0) {
+      setFormState({
+        ...INITIAL_FORM_STATE,
+        artifacts: initialArtifacts
+      });
+    } else if (!isOpen) {
+      setFormState(INITIAL_FORM_STATE);
+    }
+  }, [isOpen, initialArtifacts]);
+
+  // Handlers
   const handleFormUpdate = useCallback((updates) => {
     setFormState(prev => ({
       ...prev,
@@ -253,20 +263,20 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
     if (!option) return;
     
     setFormState(prev => {
+      // Prevent duplicate folder selections
       if (prev.selectedFolders.some(f => f.id === option.value)) {
         return prev;
       }
 
+      const newFolder = {
+        id: option.value,
+        name: option.isNew ? option.name : option.label,
+        isNew: option.isNew
+      };
+
       return {
         ...prev,
-        selectedFolders: [
-          ...prev.selectedFolders,
-          {
-            id: option.value,
-            name: option.isNew ? option.name : option.label,
-            isNew: option.isNew
-          }
-        ],
+        selectedFolders: [...prev.selectedFolders, newFolder],
         folderSearchTerm: ''
       };
     });
@@ -280,10 +290,20 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
   }, []);
 
   const handleAddArtifact = useCallback((nft) => {
-    setFormState(prev => ({
-      ...prev,
-      artifacts: [...prev.artifacts, nft]
-    }));
+    setFormState(prev => {
+      // Prevent duplicate artifacts
+      if (prev.artifacts.some(a => 
+        a.id.tokenId === nft.id.tokenId && 
+        a.contract.address === nft.contract.address
+      )) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        artifacts: [...prev.artifacts, nft]
+      };
+    });
   }, []);
 
   const handleRemoveArtifact = useCallback((artifact) => {
@@ -296,19 +316,7 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
     }));
   }, []);
 
-  // Reset state when modal opens/closes
-  useEffect(() => {
-    if (isOpen && initialArtifacts?.length > 0) {
-      setFormState({
-        ...initialFormState,  // Reset to initial state first
-        artifacts: initialArtifacts // Then just set artifacts
-      });
-    } else if (!isOpen) {
-      setFormState(initialFormState); // Use initialFormState directly
-    }
-  }, [isOpen]); // Remove initialArtifacts from deps - handle it in the effect
-
-  // Folder options memoization
+  // Folder options
   const folderOptions = useMemo(() => {
     const existingFolders = folders
       .filter(folder => !folder.isSystem)
@@ -335,77 +343,76 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
     return existingFolders;
   }, [folders, formState.folderSearchTerm]);
 
-    // Memoize ArtifactSelector's props to prevent unnecessary re-renders
-  const artifactSelectorProps = useMemo(() => ({
-    selectedArtifacts: formState.artifacts,
-    onSelectArtifact: handleAddArtifact,
-    searchTerm: formState.searchTerm
-  }), [formState.artifacts, formState.searchTerm, handleAddArtifact]);
-
-  // Handle catalog creation
+  // Create catalog with proper error handling and state management
   const handleCreateCatalog = async () => {
     if (!formState.catalogName.trim()) {
       handleFormUpdate({ showError: true });
       return;
     }
   
-    try {
-      // Create new folders first if needed
-      const folderPromises = formState.selectedFolders
-        .filter(f => f.isNew)
-        .map(folder => dispatch(addFolder({ name: folder.name.trim() })));
-      
-      await Promise.all(folderPromises);
+    if (formState.isSubmitting) {
+      return;
+    }
   
-      // Create the catalog without trying to unwrap the result
-      const catalogAction = await dispatch(addCatalog({
+    try {
+      handleFormUpdate({ isSubmitting: true });
+      const newCatalogId = `catalog-${Date.now()}`;
+  
+      // Create catalog first
+      await dispatch(addCatalog({
+        id: newCatalogId,
         name: formState.catalogName.trim(),
-        nftIds: formState.artifacts.map(nft => ({
-          tokenId: nft.id.tokenId,
-          contractAddress: nft.contract.address,
-          network: nft.network,
-          walletId: nft.walletId
+        nftIds: formState.artifacts.map(artifact => ({
+          tokenId: artifact.id.tokenId,
+          contractAddress: artifact.contract.address,
+          network: artifact.network,
+          walletId: artifact.walletId
         }))
       }));
   
-      // Get the ID from the action payload
-      const catalogId = `catalog-${Date.now()}`; // Generate ID the same way as the reducer
-  
-      // Get all folder IDs (both existing and newly created)
-      const folderIds = formState.selectedFolders.map(folder => {
-        if (folder.isNew) {
-          // Find the newly created folder
-          const newFolder = folders.find(f => f.name === folder.name.trim());
-          return newFolder?.id;
+      // Handle folder assignments sequentially to avoid race conditions
+      if (formState.selectedFolders.length > 0) {
+        for (const folderInfo of formState.selectedFolders) {
+          if (folderInfo.isNew) {
+            await dispatch(addFolder({ 
+              name: folderInfo.name,
+              // Initialize with empty relationships
+              relationships: new Set()
+            }));
+          }
+          // Add catalog to folder
+          await dispatch(addCatalogToFolder({
+            folderId: folderInfo.id,
+            catalogId: newCatalogId,
+            // Initialize as empty Set if needed
+            relationships: new Set([newCatalogId])
+          }));
         }
-        return folder.id;
-      }).filter(Boolean);
-  
-      // Add catalog to selected folders
-      if (folderIds.length > 0) {
-        await Promise.all(
-          folderIds.map(folderId =>
-            dispatch(addCatalogToFolder({
-              folderId,
-              catalogId
-            }))
-          )
-        );
       }
+  
+      logger.log('Created catalog with folders:', {
+        catalogId: newCatalogId,
+        name: formState.catalogName,
+        folders: formState.selectedFolders
+      });
   
       showSuccessToast(
         "Success",
-        `Created catalog "${formState.catalogName}" and added to ${folderIds.length} folder(s)`
+        `Created catalog "${formState.catalogName.trim()}" with ${formState.selectedFolders.length} folder(s)`
       );
       
       onClose();
     } catch (error) {
-      logger.error('Error in catalog creation:', error);
-      showErrorToast("Error", "Failed to create catalog");
+      logger.error('Error creating catalog:', error);
+      showErrorToast(
+        "Error",
+        "Failed to create catalog"
+      );
+    } finally {
+      handleFormUpdate({ isSubmitting: false });
     }
   };
 
-  // Render JSX
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
       <ModalOverlay />
@@ -443,6 +450,7 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
                 isClearable
                 menuPortalTarget={document.body}
                 styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+                isDisabled={formState.isSubmitting}
               />
               
               {formState.selectedFolders.length > 0 && (
@@ -459,6 +467,7 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
                           <TagLabel>{folder.name}</TagLabel>
                           <TagCloseButton 
                             onClick={() => handleRemoveFolder(folder.id)}
+                            isDisabled={formState.isSubmitting}
                           />
                         </Tag>
                       </WrapItem>
@@ -498,12 +507,17 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
                     value={formState.searchTerm}
                     onChange={handleSearchTermChange}
                     size="lg"
+                    isDisabled={formState.isSubmitting}
                   />
                 </FormControl>
 
                 {formState.searchTerm && (
                   <Box mt={2}>
-                    <ArtifactSelector {...artifactSelectorProps} />
+                    <ArtifactSelector
+                      selectedArtifacts={formState.artifacts}
+                      onSelectArtifact={handleAddArtifact}
+                      searchTerm={formState.searchTerm}
+                    />
                   </Box>
                 )}
               </>
@@ -512,10 +526,20 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
         </ModalBody>
 
         <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={onClose}>
+          <Button 
+            variant="ghost" 
+            mr={3} 
+            onClick={onClose}
+            isDisabled={formState.isSubmitting}
+          >
             Cancel
           </Button>
-          <Button colorScheme="blue" onClick={handleCreateCatalog}>
+          <Button 
+            colorScheme="blue" 
+            onClick={handleCreateCatalog}
+            isLoading={formState.isSubmitting}
+            loadingText="Creating..."
+          >
             Create Catalog
           </Button>
         </ModalFooter>

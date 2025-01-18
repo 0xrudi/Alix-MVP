@@ -12,12 +12,11 @@ import { useSelector } from 'react-redux';
 import { StyledCard } from '../styles/commonStyles';
 import { cardSizes } from '../constants/sizes';
 import { logger } from '../utils/logger';
-import { selectFolderRelationships } from '../redux/slices/folderSlice';
+import { selectCatalogsInFolder } from '../redux/slices/folderSlice';
 
 const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
+  const catalogCount = useSelector(state => selectCatalogsInFolder(state, folder.id)).length;
   const folderColor = useColorModeValue('blue.400', 'blue.600');
-  const relationships = useSelector(selectFolderRelationships);
-  const catalogCount = relationships[folder.id]?.size || folder.catalogIds?.length || 0;
 
   const handleEdit = (e) => {
     e.stopPropagation();

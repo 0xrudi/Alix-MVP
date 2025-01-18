@@ -21,8 +21,8 @@ const compareNFTIds = (id1, id2) =>
   id1.network === id2.network;
 
 const initialState = {
-  items: {},
-  systemCatalogs: {
+  items: {},           // User-created catalogs
+  systemCatalogs: {    // System catalogs (spam, unorganized)
     spam: {
       id: 'spam',
       name: 'Spam',
@@ -47,8 +47,7 @@ const catalogSlice = createSlice({
   initialState,
   reducers: {
     addCatalog: (state, action) => {
-      const { name, nftIds = [] } = action.payload;
-      const id = `catalog-${Date.now()}`;
+      const { id, name, nftIds = [] } = action.payload;
           
       state.items[id] = {
         id,
@@ -60,7 +59,11 @@ const catalogSlice = createSlice({
         updatedAt: new Date().toISOString()
       };
           
-      logger.log('Created new catalog:', { id, name });
+      logger.log('Created new catalog:', { 
+        id, 
+        name, 
+        nftCount: nftIds.length 
+      });
     },
     
     updateCatalog: (state, action) => {
@@ -102,6 +105,7 @@ const catalogSlice = createSlice({
 export const selectAllCatalogs = createSelector(
   [selectCatalogItems, selectSystemCatalogsBase],
   (items, systemCatalogs) => {
+    console.log('Catalog items:', items); // Debug log
     const itemArray = Object.values(items || {});
     const systemArray = Object.values(systemCatalogs || {});
     return [...itemArray, ...systemArray];
@@ -110,7 +114,10 @@ export const selectAllCatalogs = createSelector(
 
 export const selectUserCatalogs = createSelector(
   [selectCatalogItems],
-  (items) => Object.values(items || {})
+  (items) => {
+    console.log('User catalogs:', items); // Debug log
+    return Object.values(items || {}).filter(cat => !cat.isSystem);
+  }
 );
 
 export const selectSystemCatalogs = createSelector(
@@ -151,7 +158,6 @@ export const selectCatalogNFTs = createSelector(
   }
 );
 
-// Add the missing selectCatalogCount selector
 export const selectCatalogCount = createSelector(
   [(state, catalogId) => selectCatalogById(state, catalogId)],
   (catalog) => {

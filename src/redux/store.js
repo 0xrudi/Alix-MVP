@@ -1,5 +1,3 @@
-// src/redux/store.js
-
 import { configureStore } from '@reduxjs/toolkit';
 import userReducer from './slices/userSlice';
 import walletReducer from './slices/walletSlice';
@@ -15,6 +13,14 @@ const store = configureStore({
     catalogs: catalogReducer,
     folders: folderReducer,
   },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: {
+        // Ignore specific paths where we know we'll have Sets
+        ignoredPaths: ['folders.relationships'],
+        ignoredActions: ['folders/addCatalogToFolder']
+      }
+    })
 });
 
 export default store;
