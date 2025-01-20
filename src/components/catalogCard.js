@@ -32,20 +32,26 @@ const CatalogCard = ({
   const handleEdit = (e) => {
     if (isSystem) return;
     e.stopPropagation();
-    logger.log('Editing catalog:', { catalogId: catalog.id });
-    onEdit();
+    if (onEdit && typeof onEdit === 'function') { // Add function check
+      logger.log('Editing catalog:', { catalogId: catalog.id });
+      onEdit(catalog); // Pass the catalog to the handler
+    }
   };
 
   const handleDelete = (e) => {
     if (isSystem) return;
     e.stopPropagation();
-    logger.log('Deleting catalog:', { catalogId: catalog.id, nftCount });
-    onDelete();
+    if (onDelete && typeof onDelete === 'function') { // Add function check
+      logger.log('Deleting catalog:', { catalogId: catalog.id });
+      onDelete(catalog.id);
+    }
   };
 
   const handleView = () => {
-    logger.log('Viewing catalog:', { catalogId: catalog.id });
-    onView();
+    if (onView && typeof onView === 'function') { // Add function check
+      logger.log('Viewing catalog:', { catalogId: catalog.id });
+      onView(catalog);
+    }
   };
 
   return (

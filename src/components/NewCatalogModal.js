@@ -267,13 +267,15 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
       if (prev.selectedFolders.some(f => f.id === option.value)) {
         return prev;
       }
-
+  
       const newFolder = {
-        id: option.value,
+        id: option.isNew ? `folder-${Date.now()}` : option.value, // Fix for new folder IDs
         name: option.isNew ? option.name : option.label,
         isNew: option.isNew
       };
-
+  
+      logger.log('Selected folder:', newFolder);
+  
       return {
         ...prev,
         selectedFolders: [...prev.selectedFolders, newFolder],
@@ -343,7 +345,6 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
     return existingFolders;
   }, [folders, formState.folderSearchTerm]);
 
-  // Create catalog with proper error handling and state management
   const handleCreateCatalog = async () => {
     if (!formState.catalogName.trim()) {
       handleFormUpdate({ showError: true });
@@ -358,6 +359,12 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
       handleFormUpdate({ isSubmitting: true });
       const newCatalogId = `catalog-${Date.now()}`;
   
+      logger.log('Starting catalog creation process:', {
+        catalogName: formState.catalogName,
+        selectedFolders: formState.selectedFolders,
+        newCatalogId
+      });
+  
       // Create catalog first
       await dispatch(addCatalog({
         id: newCatalogId,
@@ -370,30 +377,49 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
         }))
       }));
   
-      // Handle folder assignments sequentially to avoid race conditions
-      if (formState.selectedFolders.length > 0) {
-        for (const folderInfo of formState.selectedFolders) {
-          if (folderInfo.isNew) {
-            await dispatch(addFolder({ 
-              name: folderInfo.name,
-              // Initialize with empty relationships
-              relationships: new Set()
-            }));
-          }
-          // Add catalog to folder
+      logger.log('Catalog created successfully:', {
+        catalogId: newCatalogId,
+        name: formState.catalogName.trim()
+      });
+  
+      // Handle folder assignments
+      logger.log('Starting folder assignments:', {
+        folderCount: formState.selectedFolders.length,
+        folders: formState.selectedFolders
+      });
+  
+      for (const folderInfo of formState.selectedFolders) {
+        if (folderInfo.isNew) {
+          // First create the folder
+          const newFolderId = `folder-${Date.now()}`;
+          await dispatch(addFolder({
+            id: newFolderId,
+            name: folderInfo.name,
+            description: ''
+          }));
+  
+          // Then create the relationship
+          await dispatch(addCatalogToFolder({
+            folderId: newFolderId,
+            catalogId: newCatalogId
+          }));
+        } else {
+          // Add to existing folder
           await dispatch(addCatalogToFolder({
             folderId: folderInfo.id,
-            catalogId: newCatalogId,
-            // Initialize as empty Set if needed
-            relationships: new Set([newCatalogId])
+            catalogId: newCatalogId
           }));
         }
       }
   
-      logger.log('Created catalog with folders:', {
+      logger.log('Catalog creation completed:', {
         catalogId: newCatalogId,
         name: formState.catalogName,
-        folders: formState.selectedFolders
+        assignedFolders: formState.selectedFolders.map(f => ({
+          id: f.id,
+          name: f.name,
+          isNew: f.isNew
+        }))
       });
   
       showSuccessToast(
@@ -403,7 +429,11 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
       
       onClose();
     } catch (error) {
-      logger.error('Error creating catalog:', error);
+      logger.error('Error in catalog creation:', {
+        error: error.message,
+        catalogName: formState.catalogName,
+        selectedFolders: formState.selectedFolders
+      });
       showErrorToast(
         "Error",
         "Failed to create catalog"

@@ -22,7 +22,7 @@ import {
   FormLabel,
 } from "@chakra-ui/react";
 import { useDispatch, useSelector } from 'react-redux';
-import { addFolder } from '../redux/slices/folderSlice';
+import { addFolder, addCatalogToFolder } from '../redux/slices/folderSlice';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
 import { useCustomToast } from '../utils/toastUtils';
 import { logger } from '../utils/logger';
@@ -65,24 +65,37 @@ const NewFolderModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) {
       setShowError(true);
       return;
     }
 
     try {
-      // Create new folder with catalog assignments
-      dispatch(addFolder({
+      // First create the folder
+      const newFolderId = `folder-${Date.now()}`;
+      await dispatch(addFolder({
+        id: newFolderId,
         name: name.trim(),
-        description: description.trim(),
-        catalogIds: selectedCatalogs.map(cat => cat.value)
+        description: description.trim()
       }));
 
-      logger.log('Created new folder:', {
+      // Then handle catalog assignments
+      if (selectedCatalogs.length > 0) {
+        // Add each selected catalog to the folder
+        for (const catalog of selectedCatalogs) {
+          await dispatch(addCatalogToFolder({
+            folderId: newFolderId,
+            catalogId: catalog.value
+          }));
+        }
+      }
+
+      logger.log('Created folder with catalogs:', {
+        folderId: newFolderId,
         name: name.trim(),
         catalogCount: selectedCatalogs.length,
-        catalogs: selectedCatalogs.map(cat => cat.value)
+        catalogs: selectedCatalogs.map(c => c.value)
       });
 
       showSuccessToast(
@@ -90,7 +103,7 @@ const NewFolderModal = ({ isOpen, onClose }) => {
         `Created folder "${name.trim()}" with ${selectedCatalogs.length} catalogs`
       );
 
-      handleClose();
+      onClose();
     } catch (error) {
       logger.error('Error creating folder:', error);
       showErrorToast(
