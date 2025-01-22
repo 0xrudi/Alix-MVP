@@ -10,7 +10,7 @@ import theme from './styles';
 import ErrorBoundary from './components/ErrorBoundary';
 import AdminPage from './components/AdminPage';
 import './global.css';
-import ArtifactDetailPage from './components/ArtifactDetailPage';
+import ArtifactDetailPage from './components/ArtifactDetailPage/ArtifactDetailPage';
 import { AppProvider } from './context/AppContext';
 import { Provider } from 'react-redux';
 import store from './redux/store';
