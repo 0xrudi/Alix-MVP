@@ -189,27 +189,42 @@ const LibraryPage = () => {
   }, [nfts]);
 
   const getUnorganizedNFTs = useCallback(() => {
-    // Create a Set of all NFTs in catalogs for faster lookup
-    const allCatalogs = [
-      ...Object.values(catalogs.items || {}),
-      ...Object.values(catalogs.systemCatalogs || {})
-    ];
-    
-    const catalogedNFTs = new Set(
-      allCatalogs.flatMap(catalog => 
-        catalog.nftIds?.map(nft => `${nft.tokenId}-${nft.contractAddress}`) || []
-      )
-    );
+    try {
+      // Create a Set of all NFTs in catalogs for faster lookup
+      const allCatalogs = [
+        ...Object.values(catalogs.items || {}),
+        ...Object.values(catalogs.systemCatalogs || {})
+      ];
+      
+      // Create a Set of catalog NFT identifiers
+      const catalogedNFTs = new Set(
+        allCatalogs.flatMap(catalog => 
+          (catalog.nftIds || []).map(nft => `${nft.tokenId}-${nft.contractAddress}`)
+        )
+      );
   
-    return Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
-      Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
-        const allNFTs = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
-        return allNFTs.filter(nft => 
-          !nft.isSpam && 
-          !catalogedNFTs.includes(`${nft.id.tokenId}-${nft.contract.address}`)
-        );
-      })
-    );
+      const unorganizedNFTs = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
+        Object.entries(walletNFTs || {}).flatMap(([network, networkNFTs]) => {
+          if (!networkNFTs) return [];
+          
+          const allNFTs = [
+            ...(networkNFTs.ERC721 || []), 
+            ...(networkNFTs.ERC1155 || [])
+          ];
+          
+          return allNFTs.filter(nft => {
+            if (!nft || !nft.id || !nft.contract) return false;
+            const nftKey = `${nft.id.tokenId}-${nft.contract.address}`;
+            return !nft.isSpam && !catalogedNFTs.has(nftKey);
+          });
+        })
+      );
+  
+      return unorganizedNFTs;
+    } catch (error) {
+      console.error('Error in getUnorganizedNFTs:', error);
+      return [];
+    }
   }, [nfts, catalogs]);
 
   const handleRemoveFromCatalog = (catalogId, nftsToRemove) => {
@@ -668,7 +683,7 @@ return (
                   >
                     {folders.map((folder) => (
                       <FolderCard
-                        key={folder.id}
+                        key={`folder-${folder.id}`} // Add unique key
                         folder={folder}
                         onView={() => setViewingFolder(folder)}
                         onDelete={() => handleDeleteFolder(folder.id)}
@@ -775,7 +790,7 @@ return (
         }).filter(c => !c.isSystem)}
       />
     )}
-  {process.env.NODE_ENV === 'development' && <StateDebugger />}
+  {/* {process.env.NODE_ENV === 'development' && <StateDebugger />} */}
   </StyledContainer>
 );
 };

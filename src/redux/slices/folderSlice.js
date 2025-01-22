@@ -14,27 +14,16 @@ const folderSlice = createSlice({
   initialState,
   reducers: {
     addFolder: (state, action) => {
-      const id = `folder-${Date.now()}`;
-      const folder = {
+      const { id, name, description = '' } = action.payload;
+      state.folders[id] = {
         id,
-        name: action.payload.name,
-        description: action.payload.description || '',
+        name,
+        description,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      
-      state.folders[id] = folder;
-      state.relationships[id] = []; // Initialize as empty array
-      
-      // If catalogs were provided during folder creation, add them
-      if (action.payload.catalogIds && Array.isArray(action.payload.catalogIds)) {
-        state.relationships[id] = action.payload.catalogIds;
-      }
-      
-      logger.log('Added folder:', {
-        folder,
-        catalogIds: action.payload.catalogIds
-      });
+      // Initialize empty relationships array
+      state.relationships[id] = [];
     },
 
     updateFolder: (state, action) => {
@@ -70,15 +59,11 @@ const folderSlice = createSlice({
 
     addCatalogToFolder: (state, action) => {
       const { folderId, catalogId } = action.payload;
-      if (state.folders[folderId]) {
-        if (!state.relationships[folderId]) {
-          state.relationships[folderId] = [];
-        }
-        if (!state.relationships[folderId].includes(catalogId)) {
-          state.relationships[folderId].push(catalogId);
-          state.folders[folderId].updatedAt = new Date().toISOString();
-          logger.log('Added catalog to folder:', { folderId, catalogId });
-        }
+      if (!state.relationships[folderId]) {
+        state.relationships[folderId] = [];
+      }
+      if (!state.relationships[folderId].includes(catalogId)) {
+        state.relationships[folderId].push(catalogId);
       }
     },
 

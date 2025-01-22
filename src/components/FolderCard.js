@@ -20,19 +20,25 @@ const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
 
   const handleEdit = (e) => {
     e.stopPropagation();
-    logger.log('Editing folder:', { folderId: folder.id });
-    onEdit();
+    if (onEdit && typeof onEdit === 'function') { // Add function check
+      logger.log('Editing folder:', { folderId: folder.id });
+      onEdit(folder); // Pass the folder to the handler
+    }
   };
 
   const handleDelete = (e) => {
     e.stopPropagation();
-    logger.log('Deleting folder:', { folderId: folder.id, catalogCount });
-    onDelete();
+    if (onDelete && typeof onDelete === 'function') { // Add function check
+      logger.log('Deleting folder:', { folderId: folder.id });
+      onDelete(folder.id);
+    }
   };
 
   const handleView = () => {
-    logger.log('Viewing folder:', { folderId: folder.id });
-    onView();
+    if (onView && typeof onView === 'function') { // Add function check
+      logger.log('Viewing folder:', { folderId: folder.id });
+      onView(folder);
+    }
   };
 
   return (
