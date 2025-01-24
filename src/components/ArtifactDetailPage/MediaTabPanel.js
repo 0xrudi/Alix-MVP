@@ -18,7 +18,8 @@ import {
   Skeleton,
 } from "@chakra-ui/react";
 import { FaExpand } from 'react-icons/fa';
-import ArticleRenderer from '../ContentRenderers/ArticleRenderer';
+import { ArticleRenderer } from '../ContentRenderers';
+import { AudioRenderer } from '../ContentRenderers'
 
 const MediaTabPanel = ({ 
   nft,
@@ -29,10 +30,10 @@ const MediaTabPanel = ({
   onFullscreenContent,
   borderColor
 }) => {
-  // Log panel state for debugging
   const hasParsedContent = !!parsedMarkdownContent;
   const hasAnimation = !!nft.metadata?.animation_url;
   const hasRawContent = !!nft.metadata?.content;
+  const isAudioNFT = nft.name === "Counting" || nft.name === "Oxygen" || nft.name === "How It Feels";
 
   // Image rendering logic
   const renderImage = () => {
@@ -112,6 +113,7 @@ const MediaTabPanel = ({
       <Tabs size="sm" variant="soft-rounded">
         <TabList>
           <Tab>Cover Image</Tab>
+          {isAudioNFT && <Tab>Audio Player</Tab>}
           {hasAnimation && <Tab>Hosted View</Tab>}
           {hasRawContent && <Tab>Raw Content</Tab>}
           {hasParsedContent && <Tab>Rendered Content</Tab>}
@@ -133,6 +135,16 @@ const MediaTabPanel = ({
               />
             </Box>
           </TabPanel>
+          
+          {/* Audio Player */}
+          {isAudioNFT && (
+            <TabPanel p={0} pt={4}>
+              <AudioRenderer 
+                nft={nft}
+                isLoading={isLoading}
+              />
+            </TabPanel>
+          )}          
   
           {/* Hosted Content Display */}
           {hasAnimation && (
