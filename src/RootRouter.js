@@ -6,7 +6,7 @@ import AppLayout from './app/layouts/AppLayout';
 import LandingPage from './website/pages/LandingPage';
 import PrivacyPage from './website/pages/PrivacyPage';
 import TermsPage from './website/pages/TermsPage';
-// import SignupPage from './website/pages/SignupPage';
+import SignupPage from './website/pages/SignupPage';
 import ContactPage from './website/pages/ContactPage';
 
 // Import existing app components
