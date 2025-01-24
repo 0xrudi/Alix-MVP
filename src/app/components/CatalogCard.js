@@ -1,4 +1,4 @@
-import React, { useMemo, props } from 'react';
+import React, { useMemo } from 'react';
 import {
   VStack,
   Text,
@@ -20,7 +20,7 @@ const CatalogCard = ({
   cardSize = "md",
   isSystem = false 
 }) => {
-  console.log('CatalogCard received:', { catalog, props });
+  console.log('CatalogCard received:', { catalog});
 
   const catalogColor = useColorModeValue('purple.400', 'purple.600');
   
