@@ -11,6 +11,7 @@ module.exports = function override(config, env) {
     os: require.resolve('os-browserify/browser'),
     url: require.resolve('url'),
     process: false,
+    vm: require.resolve('vm-browserify')
   };
 
   config.plugins = (config.plugins || []).concat([
