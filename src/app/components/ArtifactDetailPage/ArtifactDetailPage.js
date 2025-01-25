@@ -63,6 +63,7 @@ const MetadataDisplay = ({ data, level = 0 }) => {
   const bgColor = useColorModeValue('gray.50', 'gray.700');
   const fontSize = useBreakpointValue({ base: "sm", md: "md" });
   const padding = useBreakpointValue({ base: 2, md: 4 });
+  const tableSize = useBreakpointValue({ base: "sm", md: "md" });
 
   const renderValue = (value) => {
     if (value === null || value === undefined) return 'N/A';
@@ -71,7 +72,7 @@ const MetadataDisplay = ({ data, level = 0 }) => {
   };
 
   return (
-    <Table variant="simple" size={useBreakpointValue({ base: "sm", md: "md" })}>
+    <Table variant="simple" size={tableSize}>
       <Tbody>
         {Object.entries(data).map(([key, value]) => (
           <React.Fragment key={key}>
@@ -114,6 +115,7 @@ const ArtifactDetailPage = () => {
   const { catalogs, updateCatalogs } = useAppContext();
   const nft = location.state?.nft;
 
+  // State
   const [isAddToCatalogOpen, setIsAddToCatalogOpen] = useState(false);
   const [selectedCatalog, setSelectedCatalog] = useState('');
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
@@ -121,13 +123,16 @@ const ArtifactDetailPage = () => {
   const [parsedMarkdownContent, setParsedMarkdownContent] = useState(null);
   const [isParsingContent, setIsParsingContent] = useState(false);
 
-  // Responsive styles
+  // All breakpoint values defined before conditional return
   const buttonSize = useBreakpointValue({ base: "sm", md: "md" });
   const spacing = useBreakpointValue({ base: 2, md: 4 });
-  const padding = useBreakpointValue({ base: 4, md: 8 });
+  const padding = useBreakpointValue({ base: 2, md: 4 });
   const headerSize = useBreakpointValue({ base: "lg", md: "xl" });
   const tabSize = useBreakpointValue({ base: "sm", md: "md" });
   const isMobile = useBreakpointValue({ base: true, md: false });
+  const tabPanelPadding = useBreakpointValue({ base: 2, md: 4 });
+  const contentFontSize = useBreakpointValue({ base: "md", md: "lg" });
+  const tableSize = useBreakpointValue({ base: "sm", md: "md" });
 
   // Theme colors
   const bgColor = useColorModeValue('white', 'gray.800');
@@ -296,7 +301,7 @@ const ArtifactDetailPage = () => {
           </TabList>
 
           <TabPanels>
-            <TabPanel p={useBreakpointValue({ base: 2, md: 4 })}>
+            <TabPanel p={tabPanelPadding}>
               <MediaTabPanel
                 nft={nft}
                 imageUrl={imageUrl}
@@ -310,7 +315,7 @@ const ArtifactDetailPage = () => {
             <TabPanel>
               <Box maxWidth="800px" mx="auto">
                 <Text
-                  fontSize={useBreakpointValue({ base: "md", md: "lg" })}
+                  fontSize={contentFontSize}
                   lineHeight="1.8"
                   whiteSpace="pre-wrap"
                 >
@@ -349,7 +354,7 @@ const ArtifactDetailPage = () => {
                         <AccordionIcon />
                       </AccordionButton>
                       <AccordionPanel>
-                        <Table variant="simple" size={useBreakpointValue({ base: "sm", md: "md" })}>
+                        <Table variant="simple" size={tableSize}>
                           <Thead>
                             <Tr>
                               <Th>Trait Type</Th>
