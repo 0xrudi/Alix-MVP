@@ -6,7 +6,7 @@ const WelcomePage = () => {
   const navigate = useNavigate();
 
   const handleBegin = () => {
-    navigate('/home');
+    navigate('/app/home');
   };
 
   return (
