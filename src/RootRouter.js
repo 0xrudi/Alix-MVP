@@ -1,4 +1,3 @@
-// src/RootRouter.js
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import WebsiteLayout from './website/layouts/WebsiteLayout';
@@ -9,7 +8,7 @@ import TermsPage from './website/pages/TermsPage';
 import SignupPage from './website/pages/SignupPage';
 import ContactPage from './website/pages/ContactPage';
 
-// Import existing app components
+{/*Import existing app components*/}
 import WelcomePage from './app/components/WelcomePage';
 import HomePage from './app/components/HomePage';
 import AdminPage from './app/components/AdminPage';

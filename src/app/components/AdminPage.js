@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Heading,
-  Text,
   VStack,
-  HStack,
   Table,
   Thead,
   Tbody,
