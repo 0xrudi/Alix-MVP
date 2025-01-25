@@ -6,7 +6,7 @@ import AppLayout from './app/layouts/AppLayout';
 import LandingPage from './website/pages/LandingPage';
 import PrivacyPage from './website/pages/PrivacyPage';
 import TermsPage from './website/pages/TermsPage';
-import SignupPage from './website/pages/SignUpPage';
+import SignUpPage from './website/pages/SignUpPage';
 import ContactPage from './website/pages/ContactPage';
 import WelcomePage from './app/components/WelcomePage';
 import HomePage from './app/components/HomePage';
@@ -24,7 +24,7 @@ const RootRouter = () => {
         <Route index element={<LandingPage />} />
         <Route path="privacy" element={<PrivacyPage />} />
         <Route path="terms" element={<TermsPage />} />
-        <Route path="signup" element={<SignupPage />} />
+        <Route path="signup" element={<SignUpPage />} />
         <Route path="contact" element={<ContactPage />} />
       </Route>
 
