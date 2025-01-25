@@ -26,5 +26,9 @@
         "src": "/(.*)",
         "dest": "/index.html"
       }
-    ]
+    ],
+    "github": {
+      "enabled": true,
+      "silent": true
+    }
   }
