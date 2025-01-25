@@ -21,9 +21,12 @@ function AppContent() {
 
   return (
     <ChakraProvider theme={theme}>
-      <Box>
+      <ErrorBoundary>
         {showMenu && <MenuModal />}
-        <Box marginLeft={showMenu ? { base: "60px", md: "200px" } : "0"} padding={8}>
+        <Box 
+          marginLeft={{ base: 0, md: showMenu ? "200px" : 0 }}
+          marginBottom={{ base: "60px", md: 0 }}
+        >
           <Routes>
             <Route path="/" element={<WelcomePage />} />
             <Route path="/home" element={<HomePage />} />
@@ -34,7 +37,7 @@ function AppContent() {
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
         </Box>
-      </Box>
+      </ErrorBoundary>
     </ChakraProvider>
   );
 }
