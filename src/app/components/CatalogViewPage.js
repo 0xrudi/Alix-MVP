@@ -228,7 +228,7 @@ const CatalogViewPage = ({ catalog, onBack, onRemoveNFTs, onSpamToggle }) => {
               isSpamFolder={catalog.id === 'spam'}
               catalogType={getCatalogType()}
               cardSize={cardSize}
-              onClick={() => navigate('/artifact', { state: { nft } })}  // Add proper navigation
+              onClick={() => navigate('/app/artifact', { state: { nft } })}  // Add proper navigation
             />
           ))}
         </SimpleGrid>
