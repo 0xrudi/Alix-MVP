@@ -14,20 +14,20 @@ import {
   InputLeftElement,
   FormControl,
   FormLabel,
+  useBreakpointValue,
+  Flex,
 } from "@chakra-ui/react";
-import { FaSave, FaTimes, FaEdit, FaLink, FaUpload, FaPencilAlt } from 'react-icons/fa';
+import { FaSave, FaTimes, FaEdit, FaLink, FaUpload } from 'react-icons/fa';
 import { fetchENSAvatar, getAvailableENS, getImageUrl } from '../utils/web3Utils';
 import { useAppContext } from '../context/AppContext';
 import { useSelector } from 'react-redux';
 import { useCustomToast } from '../utils/toastUtils';
 
 const UserProfile = () => {
-  // Context and State Management
+  // Hooks and state management
   const { userProfile, updateUserProfile } = useAppContext();
   const wallets = useSelector(state => state.wallets.list);
   const { showSuccessToast, showErrorToast } = useCustomToast();
-
-  // Local State
   const [isEditing, setIsEditing] = useState(false);
   const [nickname, setNickname] = useState(userProfile.nickname || '');
   const [avatarUrl, setAvatarUrl] = useState(userProfile.avatarUrl || '');
@@ -36,13 +36,17 @@ const UserProfile = () => {
   const [selectedImageSource, setSelectedImageSource] = useState('url');
   const fileInputRef = React.useRef();
 
-  // Initialize available ENS domains
+  // Responsive styles
+  const inputWidth = useBreakpointValue({ base: "100%", md: "400px" });
+  const buttonSize = useBreakpointValue({ base: "sm", md: "md" });
+  const spacing = useBreakpointValue({ base: 4, md: 6 });
+  const avatarSize = useBreakpointValue({ base: "120px", md: "150px" });
+
   useEffect(() => {
     const ensDomains = getAvailableENS(wallets);
     setAvailableENS(ensDomains);
   }, [wallets]);
 
-  // Handle image URL validation and setting
   const handleImageUrlSubmit = async () => {
     try {
       const mockNft = {
@@ -61,7 +65,6 @@ const UserProfile = () => {
     }
   };
 
-  // Handle file upload
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -73,7 +76,6 @@ const UserProfile = () => {
     }
   };
 
-  // Handle ENS avatar selection
   const handleENSSelect = async (ensName) => {
     try {
       const avatarData = await fetchENSAvatar(ensName);
@@ -88,7 +90,6 @@ const UserProfile = () => {
     }
   };
 
-  // Save profile changes
   const handleSave = () => {
     if (!nickname.trim()) {
       showErrorToast('Error', 'Nickname is required');
@@ -102,22 +103,13 @@ const UserProfile = () => {
     showSuccessToast('Success', 'Profile updated successfully');
   };
 
-  // Cancel editing
-  const handleCancel = () => {
-    setNickname(userProfile.nickname || '');
-    setAvatarUrl(userProfile.avatarUrl || '');
-    setIsEditing(false);
-    setImageUrlInput('');
-  };
-
-  // Render empty profile state
   if (!userProfile.nickname && !isEditing) {
     return (
-      <Center p={8}>
+      <Center p={spacing}>
         <Button
           colorScheme="blue"
-          size="lg"
-          leftIcon={<FaPencilAlt />}
+          size={buttonSize}
+          leftIcon={<FaEdit />}
           onClick={() => setIsEditing(true)}
         >
           Add Profile Details
@@ -126,55 +118,57 @@ const UserProfile = () => {
     );
   }
 
-  // Render edit mode
-  if (isEditing) {
-    return (
-      <VStack spacing={6} align="stretch">
-        <HStack justifyContent="space-between">
-          <Text fontSize="xl" fontWeight="bold">Edit Profile</Text>
-          <HStack>
-            <IconButton
-              icon={<FaSave />}
-              onClick={handleSave}
-              aria-label="Save"
-              colorScheme="green"
-              size="sm"
-            />
-            <IconButton
-              icon={<FaTimes />}
-              onClick={handleCancel}
-              aria-label="Cancel"
-              colorScheme="red"
-              size="sm"
-            />
-          </HStack>
+  const renderEditMode = () => (
+    <VStack spacing={spacing} align="stretch" width="100%">
+      <Flex justify="space-between" align="center">
+        <Text fontSize="xl" fontWeight="bold">Edit Profile</Text>
+        <HStack>
+          <IconButton
+            icon={<FaSave />}
+            onClick={handleSave}
+            aria-label="Save"
+            colorScheme="green"
+            size={buttonSize}
+          />
+          <IconButton
+            icon={<FaTimes />}
+            onClick={() => {
+              setNickname(userProfile.nickname || '');
+              setAvatarUrl(userProfile.avatarUrl || '');
+              setIsEditing(false);
+            }}
+            aria-label="Cancel"
+            colorScheme="red"
+            size={buttonSize}
+          />
         </HStack>
+      </Flex>
 
-        {/* Profile Image Section */}
-        <Box>
+      <Box>
+        <Center mb={4}>
           <Image
             src={avatarUrl || 'https://via.placeholder.com/150'}
             alt="User Avatar"
             borderRadius="full"
-            boxSize="150px"
-            mx="auto"
-            mb={4}
+            boxSize={avatarSize}
+            objectFit="cover"
           />
+        </Center>
 
-          <VStack spacing={4}>
-            {/* Image Source Selection */}
-            <Select
-              value={selectedImageSource}
-              onChange={(e) => setSelectedImageSource(e.target.value)}
-            >
-              <option value="url">Image URL</option>
-              <option value="upload">Upload Image</option>
-              {availableENS.length > 0 && <option value="ens">ENS Avatar</option>}
-            </Select>
+        <VStack spacing={4} width="100%">
+          <Select
+            value={selectedImageSource}
+            onChange={(e) => setSelectedImageSource(e.target.value)}
+            width={inputWidth}
+          >
+            <option value="url">Image URL</option>
+            <option value="upload">Upload Image</option>
+            {availableENS.length > 0 && <option value="ens">ENS Avatar</option>}
+          </Select>
 
-            {/* URL Input */}
-            {selectedImageSource === 'url' && (
-              <InputGroup>
+          {selectedImageSource === 'url' && (
+            <VStack width="100%" spacing={2}>
+              <InputGroup size={buttonSize} width={inputWidth}>
                 <InputLeftElement>
                   <FaLink />
                 </InputLeftElement>
@@ -182,79 +176,92 @@ const UserProfile = () => {
                   value={imageUrlInput}
                   onChange={(e) => setImageUrlInput(e.target.value)}
                   placeholder="Enter image URL"
+                  pr="4.5rem"
                 />
-                <Button onClick={handleImageUrlSubmit} ml={2}>Set Image</Button>
               </InputGroup>
-            )}
-
-            {/* File Upload */}
-            {selectedImageSource === 'upload' && (
               <Button
-                leftIcon={<FaUpload />}
-                onClick={() => fileInputRef.current.click()}
+                onClick={handleImageUrlSubmit}
+                size={buttonSize}
+                width={inputWidth}
+                colorScheme="blue"
               >
-                Upload Image
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                  ref={fileInputRef}
-                />
+                Set Image
               </Button>
-            )}
+            </VStack>
+          )}
 
-            {/* ENS Avatar Selection */}
-            {selectedImageSource === 'ens' && availableENS.length > 0 && (
-              <Select
-                placeholder="Select ENS domain"
-                onChange={(e) => handleENSSelect(e.target.value)}
-              >
-                {availableENS.map(ens => (
-                  <option key={ens} value={ens}>{ens}</option>
-                ))}
-              </Select>
-            )}
-          </VStack>
-        </Box>
+          {selectedImageSource === 'upload' && (
+            <Button
+              leftIcon={<FaUpload />}
+              onClick={() => fileInputRef.current.click()}
+              width={inputWidth}
+              size={buttonSize}
+            >
+              Upload Image
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+                ref={fileInputRef}
+              />
+            </Button>
+          )}
 
-        {/* Nickname Input */}
-        <FormControl>
-          <FormLabel>Nickname</FormLabel>
-          <Input
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            placeholder="Enter nickname"
-          />
-        </FormControl>
-      </VStack>
-    );
-  }
+          {selectedImageSource === 'ens' && availableENS.length > 0 && (
+            <Select
+              placeholder="Select ENS domain"
+              onChange={(e) => handleENSSelect(e.target.value)}
+              width={inputWidth}
+              size={buttonSize}
+            >
+              {availableENS.map(ens => (
+                <option key={ens} value={ens}>{ens}</option>
+              ))}
+            </Select>
+          )}
+        </VStack>
+      </Box>
 
-  // Render view mode
-  return (
-    <VStack spacing={6} align="stretch">
-      <HStack justifyContent="space-between">
+      <FormControl>
+        <FormLabel>Nickname</FormLabel>
+        <Input
+          value={nickname}
+          onChange={(e) => setNickname(e.target.value)}
+          placeholder="Enter nickname"
+          width={inputWidth}
+          size={buttonSize}
+        />
+      </FormControl>
+    </VStack>
+  );
+
+  const renderViewMode = () => (
+    <VStack spacing={spacing} align="stretch">
+      <Flex justify="space-between" align="center">
         <Text fontSize="xl" fontWeight="bold">Profile</Text>
         <IconButton
           icon={<FaEdit />}
           onClick={() => setIsEditing(true)}
           aria-label="Edit Profile"
-          size="sm"
+          size={buttonSize}
         />
-      </HStack>
+      </Flex>
 
       <VStack spacing={4} align="center">
         <Image
           src={avatarUrl || 'https://via.placeholder.com/150'}
           alt="User Avatar"
           borderRadius="full"
-          boxSize="150px"
+          boxSize={avatarSize}
+          objectFit="cover"
         />
         <Text fontSize="lg" fontWeight="bold">{nickname}</Text>
       </VStack>
     </VStack>
   );
+
+  return isEditing ? renderEditMode() : renderViewMode();
 };
 
 export default UserProfile;

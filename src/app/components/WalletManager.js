@@ -15,6 +15,8 @@ import {
   useColorModeValue,
   Tooltip,
   HStack,
+  useBreakpointValue,
+  FormControl
 } from "@chakra-ui/react";
 import { 
   FaChevronRight, 
@@ -28,14 +30,12 @@ import {
   resolveENS, 
   resolveUnstoppableDomain, 
   isValidAddress, 
-  fetchNFTs, 
   networks 
 } from '../utils/web3Utils';
 import { logger } from '../utils/logger';
 import { useCustomToast } from '../utils/toastUtils';
 import { useErrorHandler } from '../utils/errorUtils';
 import { addWallet, removeWallet, updateWallet } from '../redux/slices/walletSlice';
-import { addNFTs } from '../redux/slices/nftSlice';
 import { StyledButton, StyledCard } from '../styles/commonStyles';
 import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
 
@@ -45,11 +45,17 @@ const truncateAddress = (address) => {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 };
 
-// Wallet Card Component
 const WalletCard = ({ wallet, onDelete, onUpdateNickname }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [nickname, setNickname] = useState(wallet.nickname || '');
+  
+  // Responsive styles
+  const buttonSize = useBreakpointValue({ base: "xs", md: "sm" });
+  const tagSize = useBreakpointValue({ base: "sm", md: "md" });
+  const iconSpacing = useBreakpointValue({ base: 1, md: 2 });
+  const contentPadding = useBreakpointValue({ base: 2, md: 4 });
+  
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
   const hoverBg = useColorModeValue('gray.50', 'gray.700');
@@ -71,41 +77,40 @@ const WalletCard = ({ wallet, onDelete, onUpdateNickname }) => {
       borderRadius="lg"
       borderColor={borderColor}
       bg={bgColor}
-      p={4}
+      p={contentPadding}
       mb={2}
       transition="all 0.2s"
       _hover={{ bg: hoverBg }}
       width="100%"
     >
-      {/* Header Section - Always Visible */}
       <Flex align="center" justify="space-between">
-        <Flex align="center" flex={1}>
+        <Flex align="center" flex={1} overflow="hidden">
           <IconButton
             icon={isExpanded ? <FaChevronDown /> : <FaChevronRight />}
             variant="ghost"
-            size="sm"
+            size={buttonSize}
             onClick={() => setIsExpanded(!isExpanded)}
             aria-label={isExpanded ? "Collapse" : "Expand"}
           />
-          <Box ml={2} flex={1}>
+          <Box ml={2} flex={1} overflow="hidden">
             {isEditing ? (
               <Input
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 onBlur={handleNicknameSubmit}
                 onKeyPress={handleKeyPress}
-                size="sm"
-                width="auto"
+                size={buttonSize}
+                width="95%"
                 placeholder="Enter nickname"
                 autoFocus
               />
             ) : (
-              <HStack spacing={2}>
-                <Text fontWeight="medium">
+              <HStack spacing={1} overflow="hidden">
+                <Text fontWeight="medium" isTruncated>
                   {wallet.nickname || truncateAddress(wallet.address)}
                 </Text>
                 {wallet.nickname && (
-                  <Text fontSize="sm" color="gray.500">
+                  <Text fontSize="sm" color="gray.500" isTruncated>
                     ({truncateAddress(wallet.address)})
                   </Text>
                 )}
@@ -114,12 +119,12 @@ const WalletCard = ({ wallet, onDelete, onUpdateNickname }) => {
           </Box>
         </Flex>
         
-        <HStack spacing={2}>
+        <HStack spacing={iconSpacing}>
           <Tooltip label="Edit Nickname">
             <IconButton
               icon={<FaPencilAlt />}
               variant="ghost"
-              size="sm"
+              size={buttonSize}
               onClick={() => setIsEditing(true)}
               aria-label="Edit nickname"
             />
@@ -128,7 +133,7 @@ const WalletCard = ({ wallet, onDelete, onUpdateNickname }) => {
             <IconButton
               icon={<FaTrash />}
               variant="ghost"
-              size="sm"
+              size={buttonSize}
               colorScheme="red"
               onClick={() => onDelete(wallet.id)}
               aria-label="Delete wallet"
@@ -137,11 +142,10 @@ const WalletCard = ({ wallet, onDelete, onUpdateNickname }) => {
         </HStack>
       </Flex>
 
-      {/* Expanded Content */}
       <Collapse in={isExpanded}>
-        <VStack align="stretch" mt={4} pl={10} spacing={3}>
+        <VStack align="stretch" mt={4} pl={contentPadding} spacing={3}>
           <HStack>
-            <Tag size="md" colorScheme={wallet.type === 'evm' ? 'green' : 'purple'}>
+            <Tag size={tagSize} colorScheme={wallet.type === 'evm' ? 'green' : 'purple'}>
               {wallet.type === 'evm' ? <FaEthereum /> : <FaCoins />}
               <Text ml={2}>{wallet.type.toUpperCase()}</Text>
             </Tag>
@@ -149,10 +153,10 @@ const WalletCard = ({ wallet, onDelete, onUpdateNickname }) => {
           
           <Box>
             <Text fontSize="sm" fontWeight="medium" mb={1}>Active Networks:</Text>
-            <Wrap spacing={2}>
+            <Wrap spacing={iconSpacing}>
               {wallet.networks.map((network) => (
                 <WrapItem key={network}>
-                  <Tag size="sm" colorScheme="blue" borderRadius="full">
+                  <Tag size={tagSize} colorScheme="blue" borderRadius="full">
                     {network}
                   </Tag>
                 </WrapItem>
@@ -174,7 +178,11 @@ const WalletManager = () => {
   const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast();
   const { handleError } = useErrorHandler();
 
-  // Keep the existing handleAddWallet implementation
+  // Responsive styles
+  const spacing = useBreakpointValue({ base: 4, md: 6 });
+  const inputSize = useBreakpointValue({ base: "sm", md: "md" });
+  const buttonSize = useBreakpointValue({ base: "sm", md: "md" });
+
   const handleAddWallet = async () => {
     setError('');
     setIsLoading(true);
@@ -183,23 +191,19 @@ const WalletManager = () => {
     let walletNickname = '';
   
     try {
-      // Check if it's a valid address first
       const addressCheck = isValidAddress(input);
       if (addressCheck.isValid) {
         address = input;
         walletType = addressCheck.type;
       } else if (input.toLowerCase().endsWith('.eth') || input.toLowerCase().includes('.')) {
-        // Try ENS resolution - including base domains
         showInfoToast("Resolving Address", "Attempting to resolve ENS name...");
         
-        // First try direct ENS resolution
         const ensResult = await resolveENS(input);
         if (ensResult.success) {
           address = ensResult.address;
           walletType = ensResult.type;
           walletNickname = input;
         } else {
-          // If direct resolution fails, try with .eth suffix if not present
           if (!input.toLowerCase().endsWith('.eth')) {
             const ensWithEth = await resolveENS(`${input}.eth`);
             if (ensWithEth.success) {
@@ -214,7 +218,6 @@ const WalletManager = () => {
           }
         }
       } else {
-        // Try Unstoppable Domain resolution
         showInfoToast("Resolving Address", "Attempting to resolve Unstoppable Domain...");
         const udResult = await resolveUnstoppableDomain(input);
         if (udResult.success) {
@@ -234,10 +237,8 @@ const WalletManager = () => {
         networks: [],
       };
   
-      // Add the wallet first
       dispatch(addWallet(newWallet));
   
-      // Determine relevant networks
       const relevantNetworks = walletType === 'evm' 
         ? networks.filter(n => n.type === 'evm').map(n => n.value)
         : ['solana'];
@@ -247,7 +248,6 @@ const WalletManager = () => {
         `Checking ${relevantNetworks.length} networks for NFTs...`
       );
   
-      // Fetch NFTs and update networks
       const activeNetworks = await dispatch(fetchWalletNFTs({ 
         walletId: newWallet.id, 
         address: newWallet.address, 
@@ -277,29 +277,31 @@ const WalletManager = () => {
   };
 
   return (
-    <VStack spacing={6} align="stretch" maxW="600px">
-      {/* Keep existing Add New Wallet section */}
+    <VStack spacing={spacing} align="stretch" maxW="600px">
       <StyledCard>
         <Text fontSize="lg" fontWeight="bold" mb={4}>Add New Wallet</Text>
         <VStack spacing={4}>
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Enter wallet address, ENS, or Unstoppable Domain"
-          />
+          <FormControl isInvalid={!!error}>
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Enter wallet address, ENS, or Unstoppable Domain"
+              size={inputSize}
+            />
+            {error && <Text color="red.500" fontSize="sm" mt={1}>{error}</Text>}
+          </FormControl>
           <StyledButton 
             onClick={handleAddWallet} 
             isLoading={isLoading} 
             loadingText="Adding wallet..."
             width="full"
+            size={buttonSize}
           >
             Add Wallet
           </StyledButton>
-          {error && <Text color="red.500">{error}</Text>}
         </VStack>
       </StyledCard>
       
-      {/* Updated Your Wallets section with new card design */}
       {wallets.length > 0 ? (
         <StyledCard>
           <Text fontSize="lg" fontWeight="bold" mb={4}>Your Wallets</Text>
