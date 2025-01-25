@@ -7,8 +7,16 @@ import Resolution from '@unstoppabledomains/resolution';
 import { logger } from '../utils/logger';
 
 const MORALIS_API_KEY = process.env.REACT_APP_MORALIS_API_KEY;
-const MAINNET_RPC_URL = 'https://ethereum.publicnode.com';
-const BASE_RPC_URL = 'https://mainnet.base.org'
+const MAINNET_RPC_URL = process.env.REACT_APP_ETHEREUM_RPC_URL;
+const BASE_RPC_URL = process.env.REACT_APP_BASE_RPC_URL;
+
+const OPTIMISM_RPC_URL = process.env.REACT_APP_OPTIMISM_RPC_URL;
+const ARBITRUM_RPC_URL = process.env.REACT_APP_ARBITRUM_RPC_URL;
+const POLYGON_RPC_URL = process.env.REACT_APP_POLYGON_RPC_URL;
+const AVALANCHE_RPC_URL = process.env.REACT_APP_AVALANCHE_RPC_URL;
+const BSC_RPC_URL = process.env.REACT_APP_BSC_RPC_URL;
+const FANTOM_RPC_URL = process.env.REACT_APP_FANTOM_RPC_URL;
+
 const resolution = new Resolution();
 
 let moralisStartPromise = null;
