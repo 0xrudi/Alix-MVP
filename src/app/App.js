@@ -14,6 +14,7 @@ import ArtifactDetailPage from './components/ArtifactDetailPage';
 import { AppProvider } from './context/AppContext';
 import { Provider } from 'react-redux';
 import store from './redux/store';
+import { Analytics } from "@vercel/analytics/react"
 
 function AppContent() {
   const location = useLocation();
