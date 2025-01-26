@@ -111,9 +111,9 @@ const LibraryControls = ({
       <HStack 
         spacing={2} 
         wrap="wrap" 
-        align="center"
+        align="left"
         width="100%"
-        justify="center"
+        justify="left"
       >
         {/* Multi-Select Button */}
         <Button

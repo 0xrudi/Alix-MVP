@@ -12,21 +12,22 @@ const AppLayout = () => {
   return (
     <ChakraProvider theme={theme}>
       <AppProvider>
-        <Box>
+        <Box display="flex" minHeight="100vh">
+          {/* Menu Components */}
           {showMenu && <MenuModal />}
-          <Box 
-            marginLeft={{ base: 0, md: showMenu ? "200px" : "0" }}
+          
+          {/* Main Content */}
+          <Box
+            flex={1}
+            marginLeft={{ base: 0, md: showMenu ? "200px" : 0 }}
             marginBottom={{ base: "60px", md: 0 }}
-            // Remove unnecessary padding
-            p={{ base: 0, md: 8 }}
-            width="100%"
-            maxWidth="100%"
-            overflowX="hidden"
+            width={{ base: "100%", md: `calc(100% - ${showMenu ? "200px" : "0px"})` }}
           >
             <Box 
-              maxWidth={{ base: "100%", md: "1200px" }}
+              maxWidth="1200px"
               mx="auto"
-              px={{ base: 4, md: 6 }}
+              p={{ base: 3, md: 6 }}
+              width="100%"
             >
               <Outlet />
             </Box>

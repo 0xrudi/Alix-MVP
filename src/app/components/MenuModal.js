@@ -9,10 +9,8 @@ import {
   IconButton,
   Tooltip,
   useBreakpointValue,
-  Flex,
-  Divider
 } from "@chakra-ui/react";
-import { FaHome, FaBookOpen, FaUser, FaCog } from 'react-icons/fa';
+import { FaBookOpen, FaUser } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const MenuModal = () => {
@@ -20,8 +18,6 @@ const MenuModal = () => {
   const location = useLocation();
   
   // Responsive styles
-  const display = useBreakpointValue({ base: "block", md: "none" });
-  const desktopDisplay = useBreakpointValue({ base: "none", md: "block" });
   const buttonSize = useBreakpointValue({ base: "sm", md: "md" });
   const iconSpacing = useBreakpointValue({ base: 1, md: 2 });
   const contentPadding = useBreakpointValue({ base: 2, md: 4 });
@@ -35,10 +31,8 @@ const MenuModal = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
   const menuItems = [
-    // { name: 'Home', icon: FaHome, path: '/app/home' },
     { name: 'Library', icon: FaBookOpen, path: '/app/library' },
     { name: 'Profile', icon: FaUser, path: '/app/profile' },
-    // { name: 'Admin', icon: FaCog, path: '/app/admin' },
   ];
 
   const handleNavigate = (path) => {
@@ -57,10 +51,12 @@ const MenuModal = () => {
       p={contentPadding}
       zIndex={1000}
       color={textColor}
-      display={desktopDisplay}
+      display={{ base: "none", md: "block" }}
       borderRight="1px solid"
       borderColor={borderColor}
       transition="all 0.2s"
+      height="100vh"
+      overflowY="auto"
     >
       <Text 
         fontSize="2xl" 
@@ -113,7 +109,7 @@ const MenuModal = () => {
       bottom={0}
       height="60px"
       bg={bgColor}
-      display={display}
+      display={{ base: "block", md: "none" }}
       zIndex={1000}
       borderTop="1px solid"
       borderColor={borderColor}
@@ -172,14 +168,6 @@ const MenuModal = () => {
     <>
       <DesktopMenu />
       <MobileMenu />
-      {/* Adjust main content spacing */}
-      <Box
-        marginLeft={{ base: 0, md: "200px" }}
-        marginBottom={{ base: "60px", md: 0 }}
-        padding={{ base: 2, md: contentPadding }}
-        transition="all 0.2s"
-      >
-      </Box>
     </>
   );
 };
