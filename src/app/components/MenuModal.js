@@ -35,10 +35,10 @@ const MenuModal = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
   const menuItems = [
-    { name: 'Home', icon: FaHome, path: '/app/home' },
+    // { name: 'Home', icon: FaHome, path: '/app/home' },
     { name: 'Library', icon: FaBookOpen, path: '/app/library' },
     { name: 'Profile', icon: FaUser, path: '/app/profile' },
-    { name: 'Admin', icon: FaCog, path: '/app/admin' },
+    // { name: 'Admin', icon: FaCog, path: '/app/admin' },
   ];
 
   const handleNavigate = (path) => {

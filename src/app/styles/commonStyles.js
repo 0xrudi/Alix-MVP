@@ -23,7 +23,15 @@ export const StyledButton = ({ children, ...props }) => {
 export const StyledContainer = ({ children, ...props }) => {
   const { bgColor } = useCustomColorMode();
   return (
-    <Box bg={bgColor} p={4} borderRadius="md" {...props}>
+    <Box 
+      bg={bgColor}
+      width="100%"
+      maxWidth="100%"
+      mx="auto"
+      px={{ base: 3, md: 4 }}
+      py={{ base: 3, md: 4 }}
+      {...props}
+    >
       {children}
     </Box>
   );

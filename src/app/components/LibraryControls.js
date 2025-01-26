@@ -107,8 +107,14 @@ const LibraryControls = ({
   };
 
   return (
-    <VStack spacing={2} align="stretch" width="100%">
-      <HStack spacing={2} wrap="wrap" align="center">
+    <VStack spacing={2} align="stretch" width="100%" px={{ base: 2, md: 4 }}>
+      <HStack 
+        spacing={2} 
+        wrap="wrap" 
+        align="center"
+        width="100%"
+        justify="center"
+      >
         {/* Multi-Select Button */}
         <Button
           onClick={handleSelectModeToggle}

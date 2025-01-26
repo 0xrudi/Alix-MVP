@@ -14,8 +14,22 @@ const AppLayout = () => {
       <AppProvider>
         <Box>
           {showMenu && <MenuModal />}
-          <Box marginLeft={showMenu ? { base: "60px", md: "200px" } : "0"} padding={8}>
-            <Outlet />
+          <Box 
+            marginLeft={{ base: 0, md: showMenu ? "200px" : "0" }}
+            marginBottom={{ base: "60px", md: 0 }}
+            // Remove unnecessary padding
+            p={{ base: 0, md: 8 }}
+            width="100%"
+            maxWidth="100%"
+            overflowX="hidden"
+          >
+            <Box 
+              maxWidth={{ base: "100%", md: "1200px" }}
+              mx="auto"
+              px={{ base: 4, md: 6 }}
+            >
+              <Outlet />
+            </Box>
           </Box>
         </Box>
       </AppProvider>

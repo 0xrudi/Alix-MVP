@@ -63,61 +63,55 @@ const HomePage = () => {
   };
 
   return (
-    <Box bg={bgColor} minHeight="100vh" py={{ base: 4, md: 8 }}>
-      <VStack spacing={{ base: 4, md: 8 }} align="stretch" maxWidth="container.xl" margin="auto">
-        <Heading as="h1" size={{ base: "xl", md: "2xl" }} mb={{ base: 2, md: 6 }}>Welcome to Alix</Heading>
-        <Text fontSize={{ base: "md", md: "xl" }}>
+    <Box width="100%" maxWidth="100%" mx="auto">
+      <VStack 
+        spacing={{ base: 4, md: 8 }} 
+        align="stretch" 
+        width="100%"
+        px={{ base: 4, md: 6 }}
+        py={{ base: 4, md: 8 }}
+      >
+        <Heading as="h1" size={{ base: "xl", md: "2xl" }} textAlign="center">
+          Welcome to Alix
+        </Heading>
+        
+        <Text fontSize={{ base: "md", md: "xl" }} textAlign="center">
           Your personal Web3 organizing application for managing NFTs and digital assets.
         </Text>
         
-        <InputGroup size="lg">
+        <InputGroup size="lg" maxWidth="600px" mx="auto" width="100%">
           <Input
             pr="4.5rem"
             type="text"
             placeholder="Search for NFTs or collections"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
           />
           <InputRightElement width="4.5rem">
-            <Button h="1.75rem" size="sm" onClick={handleSearch} isLoading={isSearching}>
+            <Button h="1.75rem" size="sm" onClick={handleSearch}>
               <FaSearch />
             </Button>
           </InputRightElement>
         </InputGroup>
 
-        {searchError && (
-          <Alert status="error">
-            <AlertIcon />
-            <AlertTitle mr={2}>Search Error</AlertTitle>
-            <AlertDescription>{searchError}</AlertDescription>
-          </Alert>
-        )}
-
-        {searchResults.length > 0 && (
-          <Box>
-            <Heading as="h2" size="lg" mb={4}>Search Results</Heading>
-            <SimpleGrid columns={{ base: 1, md: 3, lg: 4 }} spacing={6}>
-              {searchResults.map((nft) => (
-                <NFTCard
-                  key={`${nft.contract?.address}-${nft.id?.tokenId}`}
-                  nft={nft}
-                  onClick={() => handleNFTClick(nft)}
-                  isSearchResult={true}
-                  onAddToCatalog={() => handleAddToCatalog(nft)}
-                />
-              ))}
-            </SimpleGrid>
-          </Box>
-        )}
-
-        <Box bg={cardBg} p={{ base: 4, md: 6 }} borderRadius="md" boxShadow="md">
-          <Heading as="h2" size={{ base: "md", md: "lg" }} mb={{ base: 2, md: 4 }}>Quick Actions</Heading>
+        <Box 
+          bg={cardBg} 
+          p={{ base: 4, md: 6 }} 
+          borderRadius="md" 
+          boxShadow="md"
+          width="100%"
+          maxWidth="600px"
+          mx="auto"
+        >
+          <Heading as="h2" size={{ base: "md", md: "lg" }} mb={{ base: 2, md: 4 }} textAlign="center">
+            Quick Actions
+          </Heading>
           <VStack spacing={{ base: 2, md: 4 }} align="stretch">
             <Button 
               colorScheme="blue" 
               size={{ base: "md", md: "lg" }}
               onClick={() => navigate('/library?tab=nfts')}
+              width="100%"
             >
               View My Artifacts
             </Button>
@@ -125,6 +119,7 @@ const HomePage = () => {
               colorScheme="green" 
               size={{ base: "md", md: "lg" }}
               onClick={() => navigate('/library?tab=catalogs')}
+              width="100%"
             >
               Create a New Catalog
             </Button>
@@ -132,6 +127,7 @@ const HomePage = () => {
               colorScheme="purple" 
               size={{ base: "md", md: "lg" }}
               onClick={() => navigate('/profile?tab=wallets')}
+              width="100%"
             >
               Manage Wallets
             </Button>

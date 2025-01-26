@@ -27,26 +27,28 @@ const ProfileStats = () => {
   const totalArtifacts = useSelector(selectTotalNFTs);
   const spamArtifacts = useSelector(selectTotalSpamNFTs);
   const catalogs = useSelector(state => state.catalogs.items);
-
-  // Calculate total user catalogs (excluding system catalogs)
   const catalogCount = Object.keys(catalogs || {}).length;
 
   return (
-    <VStack spacing={6} align="stretch">
-      <StatGroup>
+    <VStack spacing={4} align="stretch" width="100%">
+      <StatGroup 
+        display="grid" 
+        gridTemplateColumns={{ base: "1fr", sm: "repeat(3, 1fr)" }}
+        gap={4}
+      >
         <Stat>
           <StatLabel fontSize="1rem">Total Artifacts</StatLabel>
-          <StatNumber fontSize="2xl">{totalArtifacts || 0}</StatNumber>
+          <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{totalArtifacts || 0}</StatNumber>
         </Stat>
 
         <Stat>
           <StatLabel fontSize="1rem">Catalogs</StatLabel>
-          <StatNumber fontSize="2xl">{catalogCount || 0}</StatNumber>
+          <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{catalogCount || 0}</StatNumber>
         </Stat>
 
         <Stat>
           <StatLabel fontSize="1rem">Spam Artifacts</StatLabel>
-          <StatNumber fontSize="2xl">{spamArtifacts || 0}</StatNumber>
+          <StatNumber fontSize={{ base: "xl", md: "2xl" }}>{spamArtifacts || 0}</StatNumber>
         </Stat>
       </StatGroup>
     </VStack>
@@ -64,40 +66,54 @@ const ProfilePage = () => {
 
   return (
     <StyledContainer>
-      <Flex justify="space-between" align="center" mb={6}>
-        <Heading as="h1" size={headingSize}>Your Profile</Heading>
-        {userProfile.nickname && (
-          <StyledButton 
-            onClick={handleSaveProfile} 
-            size={buttonSize}
-          >
-            Save Profile
-          </StyledButton>
-        )}
-      </Flex>
+      <VStack spacing={4} align="stretch" width="100%">
+        <Flex 
+          justify="space-between" 
+          align="center" 
+          direction={{ base: "column", sm: "row" }}
+          gap={2}
+          width="100%"
+        >
+          <Heading as="h1" size={headingSize}>Your Profile</Heading>
+          {userProfile.nickname && (
+            <StyledButton 
+              onClick={handleSaveProfile} 
+              size={buttonSize}
+              width={{ base: "100%", sm: "auto" }}
+            >
+              Save Profile
+            </StyledButton>
+          )}
+        </Flex>
         
-      <Box maxW="600px">
-        <StyledCard>
-          <Tabs variant="enclosed" size={buttonSize}>
-            <TabList>
-              <Tab>User Profile</Tab>
-              <Tab>Manage Wallets</Tab>
-              <Tab>Profile Stats</Tab>
-            </TabList>
-            <TabPanels>
-              <TabPanel>
-                <UserProfile />
-              </TabPanel>
-              <TabPanel>
-                <WalletManager />
-              </TabPanel>
-              <TabPanel>
-                <ProfileStats />
-              </TabPanel>
-            </TabPanels>
-          </Tabs>
-        </StyledCard>
-      </Box>
+        <Box width="100%">
+          <StyledCard>
+            <Tabs 
+              variant="enclosed" 
+              size={buttonSize}
+              width="100%"
+              isFitted
+            >
+              <TabList>
+                <Tab>User Profile</Tab>
+                <Tab>Manage Wallets</Tab>
+                <Tab>Profile Stats</Tab>
+              </TabList>
+              <TabPanels>
+                <TabPanel px={{ base: 2, md: 4 }} py={4}>
+                  <UserProfile />
+                </TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={4}>
+                  <WalletManager />
+                </TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={4}>
+                  <ProfileStats />
+                </TabPanel>
+              </TabPanels>
+            </Tabs>
+          </StyledCard>
+        </Box>
+      </VStack>
     </StyledContainer>
   );
 };
