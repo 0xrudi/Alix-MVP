@@ -54,7 +54,7 @@ import {
 } from "@chakra-ui/react";
 
 import { getImageUrl } from '../../utils/web3Utils.js';
-import { useAppContext } from '../../context/AppContext.js';
+import { useAppContext } from '../../../context/app/AppContext.js';
 import { updateNFT } from '../../redux/slices/nftSlice.js';
 import MediaTabPanel from './MediaTabPanel.js';
 import { parseContent } from '../../utils/contentUtils.js';

@@ -17,7 +17,7 @@ import {
 import { FaExclamationTriangle, FaPlus, FaInfoCircle, FaCheck } from 'react-icons/fa';
 import { getImageUrl } from '../utils/web3Utils';
 import { isERC1155 } from '../utils/nftUtils';
-import { useAppContext } from '../context/AppContext';
+import { useAppContext } from '../../context/app/AppContext';
 import { useDispatch } from 'react-redux';
 import { updateNFT } from '../redux/slices/nftSlice';
 

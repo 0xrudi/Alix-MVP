@@ -19,7 +19,7 @@ import {
 } from "@chakra-ui/react";
 import { FaSave, FaTimes, FaEdit, FaLink, FaUpload } from 'react-icons/fa';
 import { fetchENSAvatar, getAvailableENS, getImageUrl } from '../utils/web3Utils';
-import { useAppContext } from '../context/AppContext';
+import { useAppContext } from '../../context/app/AppContext';
 import { useSelector } from 'react-redux';
 import { useCustomToast } from '../utils/toastUtils';
 

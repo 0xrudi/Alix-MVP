@@ -17,7 +17,7 @@ import {
 } from "@chakra-ui/react";
 import UserProfile from './UserProfile';
 import WalletManager from './WalletManager';
-import { useAppContext } from '../context/AppContext';
+import { useAppContext } from '../../context/app/AppContext';
 import { useCustomToast } from '../utils/toastUtils';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 import { useResponsive } from '../hooks/useResponsive';
