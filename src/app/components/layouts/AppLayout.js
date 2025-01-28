@@ -1,9 +1,9 @@
 import React from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { ChakraProvider, Box } from "@chakra-ui/react";
-import MenuModal from '../components/MenuModal';
-import { AppProvider } from '../../context/app/AppContext';
-import theme from '../styles';
+import MenuModal from '../MenuModal';
+import { AppProvider } from '../../../context/app/AppContext';
+import theme from '../../styles';
 
 const AppLayout = () => {
   const location = useLocation();

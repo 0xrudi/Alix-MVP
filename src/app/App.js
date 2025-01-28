@@ -41,6 +41,15 @@ const PrivateRoute = ({ children }) => {
 function AppContent() {
   const location = useLocation();
   const showMenu = location.pathname !== '/' && location.pathname !== '/login';
+  const { user } = useAuth();
+  const dispatch = useDispatch();
+
+  // Load wallets when user logs in
+  useEffect(() => {
+    if (user) {
+      dispatch(loadWallets());
+    }
+  }, [user, dispatch]);
 
   return (
     <ChakraProvider theme={theme}>

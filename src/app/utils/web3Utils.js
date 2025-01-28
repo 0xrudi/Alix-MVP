@@ -28,15 +28,18 @@ const startMoralis = async () => {
         throw new Error('Moralis API Key is not set');
       }
       try {
+        console.log('Starting Moralis with API key:', MORALIS_API_KEY.substring(0, 10) + '...');
         await Moralis.start({
           apiKey: MORALIS_API_KEY,
         });
+        console.log('Moralis started successfully');
         return true;
       } catch (error) {
+        console.error('Error starting Moralis:', error);
         if (error.message.includes('Modules are started already')) {
-          return true; // Already started is fine
+          return true;
         }
-        throw error; // Re-throw other errors
+        throw error;
       }
     })();
   }

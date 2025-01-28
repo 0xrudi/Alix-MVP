@@ -9,7 +9,7 @@ import {
 } from "@chakra-ui/react";
 import { FaBook, FaEdit, FaTrash } from 'react-icons/fa';
 import { StyledCard } from '../styles/commonStyles';
-import { cardSizes } from '../constants/sizes';
+import { cardSizes } from './constants/sizes';
 import { logger } from '../utils/logger';
 
 const CatalogCard = ({ 

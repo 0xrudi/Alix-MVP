@@ -1,11 +1,38 @@
-// src/redux/thunks/walletThunks.js
+// src/app/redux/thunks/walletThunks.js
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import { fetchNFTs } from '../../utils/web3Utils';
 import { fetchNFTsStart, fetchNFTsSuccess, fetchNFTsFailure } from '../slices/nftSlice';
-import { updateWallet } from '../slices/walletSlice';
+import { setWallets, updateWallet } from '../slices/walletSlice';
 import { logger } from '../../utils/logger';
 import { serializeAddress, serializeNFT } from '../../utils/serializationUtils';
+import { supabase } from '../../utils/supabase';
 
+// Load wallets from Supabase
+export const loadWallets = createAsyncThunk(
+  'wallets/loadWallets',
+  async (_, { dispatch }) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+
+      const { data: wallets, error } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      dispatch(setWallets(wallets));
+      return wallets;
+    } catch (error) {
+      logger.error('Error loading wallets:', error);
+      throw error;
+    }
+  }
+);
+
+// Your existing NFT processing functions
 const sanitizeNFT = (nft) => {
   try {
     return {
@@ -25,36 +52,7 @@ const sanitizeNFT = (nft) => {
   }
 };
 
-const processNFTBatch = (nfts, network, walletId) => {
-  const processed = {
-    ERC721: [],
-    ERC1155: []
-  };
-
-  nfts.forEach(nft => {
-    try {
-      const sanitizedNFT = sanitizeNFT(nft);
-      if (!sanitizedNFT) return;
-
-      const enrichedNFT = {
-        ...sanitizedNFT,
-        network,
-        walletId
-      };
-
-      if (enrichedNFT.contract?.type === 'ERC1155') {
-        processed.ERC1155.push(enrichedNFT);
-      } else {
-        processed.ERC721.push(enrichedNFT);
-      }
-    } catch (error) {
-      logger.error('Error processing NFT:', error, nft);
-    }
-  });
-
-  return processed;
-};
-
+// Fetch NFTs and update both Redux and Supabase
 export const fetchWalletNFTs = createAsyncThunk(
   'wallets/fetchWalletNFTs',
   async ({ walletId, address, networks }, { dispatch }) => {
@@ -74,7 +72,6 @@ export const fetchWalletNFTs = createAsyncThunk(
             ERC1155: []
           };
 
-          // Pre-process and validate NFTs
           nfts.forEach(nft => {
             try {
               const processedNFT = serializeNFT({
@@ -118,12 +115,27 @@ export const fetchWalletNFTs = createAsyncThunk(
       }
     }
 
-    // Update wallet with active networks
+    // Update wallet with active networks in both Redux and Supabase
     if (activeNetworks.size > 0) {
+      const networks = Array.from(activeNetworks);
+      
+      // Update Redux
       dispatch(updateWallet({ 
         id: walletId, 
-        networks: Array.from(activeNetworks)
+        networks
       }));
+
+      // Update Supabase
+      try {
+        const { error } = await supabase
+          .from('wallets')
+          .update({ networks })
+          .eq('id', walletId);
+
+        if (error) throw error;
+      } catch (error) {
+        logger.error('Error updating wallet networks in Supabase:', error);
+      }
     }
 
     return {

@@ -2,7 +2,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import WebsiteLayout from './website/layouts/WebsiteLayout';
-import AppLayout from './app/layouts/AppLayout';
+import AppLayout from './app/components/layouts/AppLayout';
 import { useAuth } from './context/auth/AuthContext';
 import { Box, Spinner } from '@chakra-ui/react';
 

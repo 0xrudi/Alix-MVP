@@ -41,7 +41,7 @@ import {
 import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
 import { networks } from '../utils/web3Utils';
 import { logger } from '../utils/logger';
-import { cardSizes } from '../constants/sizes';
+import { cardSizes } from './constants/sizes';
 
 // Components
 import NFTCard from './NFTCard';

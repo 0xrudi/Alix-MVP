@@ -10,7 +10,7 @@ import {
 import { FaFolder, FaEdit, FaTrash } from 'react-icons/fa';
 import { useSelector } from 'react-redux';
 import { StyledCard } from '../styles/commonStyles';
-import { cardSizes } from '../constants/sizes';
+import { cardSizes } from './constants/sizes';
 import { logger } from '../utils/logger';
 import { selectCatalogsInFolder } from '../redux/slices/folderSlice';
 

@@ -1,4 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit';
+import { createSupabaseMiddleware } from './middleware/supabaseMiddleware';
 import userReducer from './slices/userSlice';
 import walletReducer from './slices/walletSlice';
 import nftReducer from './slices/nftSlice';
@@ -14,13 +15,7 @@ const store = configureStore({
     folders: folderReducer,
   },
   middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({
-      serializableCheck: {
-        // Ignore specific paths where we know we'll have Sets
-        ignoredPaths: ['folders.relationships'],
-        ignoredActions: ['folders/addCatalogToFolder']
-      }
-    })
+    getDefaultMiddleware().concat(createSupabaseMiddleware())
 });
 
 export default store;
