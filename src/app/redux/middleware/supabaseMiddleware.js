@@ -1,4 +1,4 @@
-import { userService, walletService, catalogService, folderService, artifactService } from '../../services/supabase';
+import { userService, walletService, catalogService, folderService, artifactService } from '../../../services/supabase';
 import { logger } from '../../utils/logger';
 
 export const createSupabaseMiddleware = () => (store) => (next) => async (action) => {
