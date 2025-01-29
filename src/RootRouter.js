@@ -12,6 +12,8 @@ import PrivacyPage from './website/pages/PrivacyPage';
 import TermsPage from './website/pages/TermsPage';
 import SignUpPage from './website/pages/SignUpPage';
 import ContactPage from './website/pages/ContactPage';
+import FeaturesPage from './website/pages/FeaturesPage';
+import AboutPage from './website/pages/AboutPage';
 import LoginPage from './website/pages/auth/LoginPage';
 
 // App pages
@@ -50,6 +52,8 @@ const RootRouter = () => {
         <Route path="terms" element={<TermsPage />} />
         <Route path="signup" element={<SignUpPage />} />
         <Route path="contact" element={<ContactPage />} />
+        <Route path="features" element={<FeaturesPage />} />
+        <Route path="about" element={<AboutPage />} />
       </Route>
 
       {/* App Routes */}
