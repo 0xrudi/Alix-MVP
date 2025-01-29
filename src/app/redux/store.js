@@ -15,7 +15,13 @@ const store = configureStore({
     folders: folderReducer,
   },
   middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware().concat(createSupabaseMiddleware())
+    getDefaultMiddleware({
+      serializableCheck: {
+        // Ignore specific paths where we know we'll have Sets
+        ignoredPaths: ['folders.relationships'],
+        ignoredActions: ['folders/addCatalogToFolder']
+      }
+    })
 });
 
 export default store;

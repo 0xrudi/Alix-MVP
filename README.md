@@ -42,48 +42,7 @@ Alix is a comprehensive Web3 artifact management system designed to help users o
 * Automatic spam synchronization across views
 * Customizable list and grid views for spam management
 
-### 5. Catalog System
-* Create and manage custom NFT collections with improved organization
-* Enhanced cross-network artifact support
-* Catalog statistics and overview with real-time updates
-* Efficient bulk operations for catalog management
-* Improved artifact selection and management interface
-* Better catalog state persistence
-* Multiple view modes (list, small cards, medium cards, large cards)
-* Advanced display settings with customizable layouts
-
-### 6. Artifact Detail View
-* Comprehensive metadata display
-* Interactive media viewer
-* Technical information panel
-* Trait and attribute display
-* Enhanced media source information
-* Loading states for better UX
-* Error handling and fallbacks
-* Cross-catalog integration
-
-### 7. Redux State Management
-* Centralized state management with Redux Toolkit
-* Optimized data access with memoized selectors
-* Enhanced async operations handling with Redux Thunk
-* Robust serialization of blockchain data
-* Network-specific state organization
-* Support for complex data structures
-* Improved error handling and state recovery
-* Enhanced performance through proper state normalization
-
-### 8. User Interface
-* Responsive design for all devices
-* Dark/Light mode support
-* Intuitive navigation system
-* Real-time loading indicators
-* Enhanced error handling and user feedback
-* Persistent selection overlay
-* Improved grid/list view options
-* Customizable display settings
-
 ### 5. Enhanced Organization System
-
 #### Folder Management
 * Create and manage folders to organize catalogs
 * Dynamic folder structure with intuitive navigation
@@ -95,8 +54,14 @@ Alix is a comprehensive Web3 artifact management system designed to help users o
 * Dynamic card sizing with slider control
 
 #### Catalog System
-[Previous catalog system content remains]
-Additional features:
+* Create and manage custom NFT collections with improved organization
+* Enhanced cross-network artifact support
+* Catalog statistics and overview with real-time updates
+* Efficient bulk operations for catalog management
+* Improved artifact selection and management interface
+* Better catalog state persistence
+* Multiple view modes (list, small cards, medium cards, large cards)
+* Advanced display settings with customizable layouts
 * Integration with folder system
 * Enhanced visual representation
 * Improved catalog navigation through folders
@@ -106,8 +71,14 @@ Additional features:
 * Unified card sizing system across folders and catalogs
 
 ### 6. Enhanced UI/UX Features
-[Previous UI section content remains]
-Additional features:
+* Responsive design for all devices
+* Dark/Light mode support
+* Intuitive navigation system
+* Real-time loading indicators
+* Enhanced error handling and user feedback
+* Persistent selection overlay
+* Improved grid/list view options
+* Customizable display settings
 * Dynamic card sizing system with slider control
 * Responsive grid layouts that adapt to card size
 * Consistent spacing and alignment across components
@@ -119,6 +90,25 @@ Additional features:
 * Smart action button reveal on hover
 * Responsive grid system for all screen sizes
 
+### 7. Redux State Management
+* Centralized state management with Redux Toolkit
+* Optimized data access with memoized selectors
+* Enhanced async operations handling with Redux Thunk
+* Robust serialization of blockchain data
+* Network-specific state organization
+* Support for complex data structures
+* Improved error handling and state recovery
+* Enhanced performance through proper state normalization
+
+### 8. Artifact Detail View
+* Comprehensive metadata display
+* Interactive media viewer
+* Technical information panel
+* Trait and attribute display
+* Enhanced media source information
+* Loading states for better UX
+* Error handling and fallbacks
+* Cross-catalog integration
 
 ## Recent Improvements
 
