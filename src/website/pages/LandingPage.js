@@ -112,10 +112,10 @@ const LandingPage = () => {
           >
             <img src={logoImage} alt="Alix Logo" className="w-20 h-20 mx-auto mb-8" />
             <h1 className="text-6xl font-light mb-6 text-[#2F2F2F]">
-              Welcome Home to<br />Your Onchain Library
+              Welcome to Your<br />Onchain Library
             </h1>
             <p className="text-xl text-[#575757] mb-8">
-              A cozy corner for your digital artifacts, thoughtfully organized.
+              A corner for your digital artifacts, thoughtfully organized.
             </p>
             <Link
               to="/login"
