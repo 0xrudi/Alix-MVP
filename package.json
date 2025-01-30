@@ -29,6 +29,7 @@
     "lucide-react": "^0.474.0",
     "moralis": "^2.27.2",
     "os-browserify": "^0.3.0",
+    "path-browserify": "^1.0.1",
     "process": "^0.11.10",
     "react": "^18.2.0",
     "react-dom": "^18.3.1",
@@ -45,11 +46,11 @@
     "stream-http": "^3.2.0",
     "typescript": "~4.9.5",
     "url": "^0.11.0",
-    "uuid": "^11.0.5",
+    "uuid": "^7.0.3",
     "vercel": "^39.3.0",
     "vm-browserify": "^1.1.2",
     "web-vitals": "^2.1.4",
-    "workbox-google-analytics": "^7.3.0"
+    "webpack": "^5.90.1"
   },
   "scripts": {
     "start": "react-app-rewired start",
