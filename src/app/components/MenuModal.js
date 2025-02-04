@@ -10,6 +10,7 @@ import {
   Tooltip,
   useBreakpointValue,
 } from "@chakra-ui/react";
+import { useCustomColorMode } from '../hooks/useColorMode';
 import { FaBookOpen, FaUser } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -23,12 +24,12 @@ const MenuModal = () => {
   const contentPadding = useBreakpointValue({ base: 2, md: 4 });
   const isMobile = useBreakpointValue({ base: true, md: false });
   
-  // Theme colors
-  const bgColor = useColorModeValue('gray.100', 'gray.800');
-  const textColor = useColorModeValue('gray.800', 'gray.100');
-  const hoverColor = useColorModeValue('gray.200', 'gray.700');
-  const activeColor = useColorModeValue('blue.500', 'blue.300');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
+  // Theme colors - using our light theme palette
+  const bgColor = useColorModeValue('var(--paper-white)', 'var(--paper-white)');
+  const textColor = useColorModeValue('var(--rich-black)', 'var(--rich-black)');
+  const hoverColor = useColorModeValue('var(--highlight)', 'var(--highlight)');
+  const activeColor = useColorModeValue('var(--warm-brown)', 'var(--warm-brown)');
+  const borderColor = useColorModeValue('var(--shadow)', 'var(--shadow)');
 
   const menuItems = [
     { name: 'Library', icon: FaBookOpen, path: '/app/library' },
@@ -60,11 +61,13 @@ const MenuModal = () => {
     >
       <Text 
         fontSize="2xl" 
-        fontWeight="bold" 
+        fontFamily="Space Grotesk"
+        fontWeight="bold"
         mb={8}
         cursor="pointer"
         onClick={() => navigate('/')}
         transition="color 0.2s"
+        color={textColor}
         _hover={{ color: activeColor }}
       >
         Alix
@@ -83,8 +86,10 @@ const MenuModal = () => {
               variant="ghost"
               justifyContent="flex-start"
               leftIcon={<item.icon />}
-              color={location.pathname === item.path ? activeColor : textColor}
+              color={location.pathname === item.path ? activeColor : 'var(--ink-grey)'}
               bg={location.pathname === item.path ? hoverColor : 'transparent'}
+              fontFamily="Inter"
+              fontSize="14px"
               _hover={{ bg: hoverColor }}
               _active={{ bg: hoverColor, color: activeColor }}
               w="100%"
@@ -133,7 +138,7 @@ const MenuModal = () => {
               spacing={0.5}
               cursor="pointer"
               onClick={() => handleNavigate(item.path)}
-              color={location.pathname === item.path ? activeColor : textColor}
+              color={location.pathname === item.path ? activeColor : 'var(--ink-grey)'}
               flex={1}
               role="button"
               aria-label={`Navigate to ${item.name}`}
@@ -152,6 +157,7 @@ const MenuModal = () => {
               />
               <Text 
                 fontSize="xs" 
+                fontFamily="Inter"
                 fontWeight={location.pathname === item.path ? "bold" : "normal"}
                 display={isMobile ? "block" : "none"}
               >

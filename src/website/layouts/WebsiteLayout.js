@@ -1,17 +1,19 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
+import { ChakraProvider } from "@chakra-ui/react";
+import theme from '../../app/styles';
 import WebsiteNavigation from '../components/WebsiteNavigation';
-import WebsiteFooter from '../components/WebsiteFooter';
 
 const WebsiteLayout = () => {
   return (
-    <div className="min-h-screen flex flex-col bg-[#F8F7F4]">
-      <WebsiteNavigation />
-      <main className="flex-grow">
-        <Outlet />
-      </main>
-      <WebsiteFooter />
-    </div>
+    <ChakraProvider theme={theme}>
+      <div className="min-h-screen flex flex-col">
+        <WebsiteNavigation />
+        <main className="flex-1">
+          <Outlet />
+        </main>
+      </div>
+    </ChakraProvider>
   );
 };
 

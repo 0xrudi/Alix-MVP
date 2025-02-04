@@ -1,0 +1,23 @@
+/* Space Grotesk */
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('./Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf') format('truetype');
+  font-weight: 500;
+  font-display: swap;
+}
+
+/* Fraunces */
+@font-face {
+  font-family: 'Fraunces';
+  src: url('./Fraunces,Inter/Fraunces/Fraunces-VariableFont_SOFT,WONK,opsz,wght.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* Inter */
+@font-face {
+  font-family: 'Inter';
+  src: url('./Fraunces,Inter/Inter/Inter-VariableFont_opsz,wght.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}

@@ -6,6 +6,7 @@ import { AuthProvider } from './context/auth/AuthContext';
 import store from './app/redux/store';
 import RootRouter from './RootRouter';
 import './index.css';
+import './assets/fonts/fonts.css';
 
 const root = createRoot(document.getElementById('root'));
 

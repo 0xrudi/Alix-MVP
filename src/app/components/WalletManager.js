@@ -1,5 +1,5 @@
-// src/components/WalletManager.js
 import React, { useState } from 'react';
+import { useCustomColorMode } from '../hooks/useColorMode';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   VStack,
@@ -25,6 +25,7 @@ import {
   FaTrash, 
   FaEthereum,
   FaCoins,
+  FaEdit
 } from 'react-icons/fa';
 import { 
   resolveENS, 
@@ -36,7 +37,11 @@ import { logger } from '../utils/logger';
 import { useCustomToast } from '../utils/toastUtils';
 import { useErrorHandler } from '../utils/errorUtils';
 import { addWallet, removeWallet, updateWallet } from '../redux/slices/walletSlice';
-import { StyledButton, StyledCard } from '../styles/commonStyles';
+import { 
+  StyledCard, 
+  StyledButton, 
+  StyledInput 
+} from '../styles/commonStyles';
 import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
 
 // Helper function to truncate addresses
@@ -50,15 +55,9 @@ const WalletCard = ({ wallet, onDelete, onUpdateNickname }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [nickname, setNickname] = useState(wallet.nickname || '');
   
-  // Responsive styles
   const buttonSize = useBreakpointValue({ base: "xs", md: "sm" });
   const tagSize = useBreakpointValue({ base: "sm", md: "md" });
-  const iconSpacing = useBreakpointValue({ base: 1, md: 2 });
-  const contentPadding = useBreakpointValue({ base: 2, md: 4 });
-  
-  const bgColor = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
-  const hoverBg = useColorModeValue('gray.50', 'gray.700');
+  const { cardBg, borderColor, textColor } = useCustomColorMode();
 
   const handleNicknameSubmit = () => {
     onUpdateNickname(wallet.id, nickname);
@@ -72,100 +71,120 @@ const WalletCard = ({ wallet, onDelete, onUpdateNickname }) => {
   };
 
   return (
-    <Box
-      borderWidth="1px"
-      borderRadius="lg"
-      borderColor={borderColor}
-      bg={bgColor}
-      p={contentPadding}
-      mb={2}
-      transition="all 0.2s"
-      _hover={{ bg: hoverBg }}
-      width="100%"
-    >
+    <StyledCard interactive p={4} mb={3}>
       <Flex align="center" justify="space-between">
-        <Flex align="center" flex={1} overflow="hidden">
+        <HStack spacing={4} flex={1}>
           <IconButton
             icon={isExpanded ? <FaChevronDown /> : <FaChevronRight />}
             variant="ghost"
             size={buttonSize}
             onClick={() => setIsExpanded(!isExpanded)}
-            aria-label={isExpanded ? "Collapse" : "Expand"}
+            color={textColor}
+            _hover={{ color: "var(--warm-brown)" }}
           />
-          <Box ml={2} flex={1} overflow="hidden">
+          <Box flex={1}>
             {isEditing ? (
-              <Input
+              <StyledInput
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 onBlur={handleNicknameSubmit}
                 onKeyPress={handleKeyPress}
                 size={buttonSize}
-                width="95%"
                 placeholder="Enter nickname"
                 autoFocus
               />
             ) : (
-              <HStack spacing={1} overflow="hidden">
-                <Text fontWeight="medium" isTruncated>
-                  {wallet.nickname || truncateAddress(wallet.address)}
-                </Text>
+              <Text
+                fontFamily="Fraunces"
+                fontSize="16px"
+                color={textColor}
+              >
+                {wallet.nickname || truncateAddress(wallet.address)}
                 {wallet.nickname && (
-                  <Text fontSize="sm" color="gray.500" isTruncated>
+                  <Text
+                    as="span"
+                    fontFamily="Inter"
+                    fontSize="14px"
+                    color="gray.500"
+                    ml={2}
+                  >
                     ({truncateAddress(wallet.address)})
                   </Text>
                 )}
-              </HStack>
+              </Text>
             )}
           </Box>
-        </Flex>
+        </HStack>
         
-        <HStack spacing={iconSpacing}>
-          <Tooltip label="Edit Nickname">
-            <IconButton
-              icon={<FaPencilAlt />}
-              variant="ghost"
-              size={buttonSize}
-              onClick={() => setIsEditing(true)}
-              aria-label="Edit nickname"
-            />
-          </Tooltip>
-          <Tooltip label="Delete Wallet">
-            <IconButton
-              icon={<FaTrash />}
-              variant="ghost"
-              size={buttonSize}
-              colorScheme="red"
-              onClick={() => onDelete(wallet.id)}
-              aria-label="Delete wallet"
-            />
-          </Tooltip>
+        <HStack spacing={2}>
+          <IconButton
+            icon={<FaEdit />}
+            variant="ghost"
+            size={buttonSize}
+            onClick={() => setIsEditing(true)}
+            color={textColor}
+            _hover={{ color: "var(--warm-brown)" }}
+          />
+          <IconButton
+            icon={<FaTrash />}
+            variant="ghost"
+            size={buttonSize}
+            onClick={() => onDelete(wallet.id)}
+            color={textColor}
+            _hover={{ color: "red.500" }}
+          />
         </HStack>
       </Flex>
 
       <Collapse in={isExpanded}>
-        <VStack align="stretch" mt={4} pl={contentPadding} spacing={3}>
-          <HStack>
-            <Tag size={tagSize} colorScheme={wallet.type === 'evm' ? 'green' : 'purple'}>
-              {wallet.type === 'evm' ? <FaEthereum /> : <FaCoins />}
-              <Text ml={2}>{wallet.type.toUpperCase()}</Text>
-            </Tag>
-          </HStack>
-          
-          <Box>
-            <Text fontSize="sm" fontWeight="medium" mb={1}>Active Networks:</Text>
-            <Wrap spacing={iconSpacing}>
-              {wallet.networks.map((network) => (
-                <WrapItem key={network}>
-                  <Tag size={tagSize} colorScheme="blue" borderRadius="full">
+        <Box
+          mt={4}
+          pt={4}
+          borderTop="1px solid"
+          borderColor={borderColor}
+        >
+          <VStack align="stretch" spacing={3}>
+            <HStack>
+              <Tag
+                size={tagSize}
+                bg={wallet.type === 'evm' ? 'var(--warm-brown)' : 'var(--deep-brown)'}
+                color="white"
+                fontFamily="Inter"
+              >
+                {wallet.type === 'evm' ? <FaEthereum /> : <FaCoins />}
+                <Text ml={2}>{wallet.type.toUpperCase()}</Text>
+              </Tag>
+            </HStack>
+            
+            <Box>
+              <Text
+                fontSize="14px"
+                fontFamily="Inter"
+                color="gray.500"
+                mb={2}
+              >
+                Active Networks:
+              </Text>
+              <Wrap spacing={2}>
+                {wallet.networks.map((network) => (
+                  <Tag
+                    key={network}
+                    size={tagSize}
+                    bg={cardBg}
+                    color={textColor}
+                    fontFamily="Inter"
+                    border="1px solid"
+                    borderColor={borderColor}
+                  >
                     {network}
                   </Tag>
-                </WrapItem>
-              ))}
-            </Wrap>
-          </Box>
-        </VStack>
+                ))}
+              </Wrap>
+            </Box>
+          </VStack>
+        </Box>
       </Collapse>
-    </Box>
+    </StyledCard>
   );
 };
 
@@ -278,17 +297,41 @@ const WalletManager = () => {
 
   return (
     <VStack spacing={spacing} align="stretch" maxW="600px">
-      <StyledCard>
-        <Text fontSize="lg" fontWeight="bold" mb={4}>Add New Wallet</Text>
+      <Box
+        bg="white"
+        borderWidth="1px"
+        borderColor="var(--shadow)"
+        borderRadius="12px"
+        p={6}
+      >
+        <Text
+          fontSize="18px"
+          fontFamily="Space Grotesk"
+          color="var(--rich-black)"
+          mb={4}
+        >
+          Add New Wallet
+        </Text>
         <VStack spacing={4}>
           <FormControl isInvalid={!!error}>
-            <Input
+            <StyledInput
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Enter wallet address, ENS, or Unstoppable Domain"
               size={inputSize}
+              color="var(--rich-black)"
+              _placeholder={{ color: 'var(--ink-grey)' }}
             />
-            {error && <Text color="red.500" fontSize="sm" mt={1}>{error}</Text>}
+            {error && (
+              <Text 
+                color="red.500" 
+                fontSize="sm" 
+                fontFamily="Inter"
+                mt={1}
+              >
+                {error}
+              </Text>
+            )}
           </FormControl>
           <StyledButton 
             onClick={handleAddWallet} 
@@ -296,16 +339,34 @@ const WalletManager = () => {
             loadingText="Adding wallet..."
             width="full"
             size={buttonSize}
+            bg="var(--warm-brown)"
+            color="white"
+            _hover={{
+              bg: "var(--deep-brown)"
+            }}
           >
             Add Wallet
           </StyledButton>
         </VStack>
-      </StyledCard>
+      </Box>
       
       {wallets.length > 0 ? (
-        <StyledCard>
-          <Text fontSize="lg" fontWeight="bold" mb={4}>Your Wallets</Text>
-          <VStack spacing={2} align="stretch">
+        <Box
+          bg="white"
+          borderWidth="1px"
+          borderColor="var(--shadow)"
+          borderRadius="12px"
+          p={6}
+        >
+          <Text
+            fontSize="18px"
+            fontFamily="Space Grotesk"
+            color="var(--rich-black)"
+            mb={4}
+          >
+            Your Wallets
+          </Text>
+          <VStack spacing={3} align="stretch">
             {wallets.map((wallet) => (
               <WalletCard
                 key={wallet.id}
@@ -315,11 +376,16 @@ const WalletManager = () => {
               />
             ))}
           </VStack>
-        </StyledCard>
-      ) : (
-        <Box>
-          <Text>No wallets added yet. Add a wallet to get started.</Text>
         </Box>
+      ) : (
+        <Text
+          fontFamily="Fraunces"
+          color="var(--ink-grey)"
+          textAlign="center"
+          py={8}
+        >
+          No wallets added yet. Add a wallet to get started.
+        </Text>
       )}
     </VStack>
   );
