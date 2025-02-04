@@ -10,7 +10,7 @@ import {
   Tooltip,
   useBreakpointValue,
 } from "@chakra-ui/react";
-import { useCustomColorMode } from '../hooks/useColorMode';
+import { useCustomColorMode } from '../../app/hooks/useColorMode';
 import { FaBookOpen, FaUser } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -25,11 +25,11 @@ const MenuModal = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
   
   // Theme colors - using our light theme palette
-  const bgColor = useColorModeValue('var(--paper-white)', 'var(--paper-white)');
-  const textColor = useColorModeValue('var(--rich-black)', 'var(--rich-black)');
-  const hoverColor = useColorModeValue('var(--highlight)', 'var(--highlight)');
-  const activeColor = useColorModeValue('var(--warm-brown)', 'var(--warm-brown)');
-  const borderColor = useColorModeValue('var(--shadow)', 'var(--shadow)');
+  const bgColor = useCustomColorMode('var(--paper-white)', 'var(--paper-white)');
+  const textColor = useCustomColorMode('var(--rich-black)', 'var(--rich-black)');
+  const hoverColor = useCustomColorMode('var(--highlight)', 'var(--highlight)');
+  const activeColor = useCustomColorMode('var(--warm-brown)', 'var(--warm-brown)');
+  const borderColor = useCustomColorMode('var(--shadow)', 'var(--shadow)');
 
   const menuItems = [
     { name: 'Library', icon: FaBookOpen, path: '/app/library' },

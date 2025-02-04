@@ -31,7 +31,7 @@ code {
 }
 
 /* Dark mode overrides */
-@media (prefers-color-scheme: dark) {
+/* @media (prefers-color-scheme: dark) {
   :root {
     --cream-white: #1A1A1A;
     --rich-black: #F8F7F4;
@@ -40,4 +40,4 @@ code {
     --shadow: #3D3D3D;
     --highlight: #3D3D3D;
   }
-}
+} */
