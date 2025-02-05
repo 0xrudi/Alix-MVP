@@ -20,14 +20,16 @@ import { useDispatch, useSelector } from 'react-redux';
 import { updateFolder } from '../redux/slices/folderSlice';
 import { selectAllCatalogs } from '../redux/slices/catalogSlice';
 import { useCustomToast } from '../utils/toastUtils';
+import { logger } from '../utils/logger';
 
 const EditFolderModal = ({ isOpen, onClose, folder }) => {
   const dispatch = useDispatch();
-  const allCatalogs = useSelector(selectAllCatalogs);
+  const catalogs = useSelector(selectAllCatalogs);
   const { showSuccessToast, showErrorToast } = useCustomToast();
-  const [name, setName] = useState(folder?.name || '');
-  const [description, setDescription] = useState(folder?.description || '');
-  const [selectedCatalogs, setSelectedCatalogs] = useState(folder?.catalogIds || []);
+
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedCatalogs, setSelectedCatalogs] = useState([]);
 
   useEffect(() => {
     if (folder) {
@@ -43,19 +45,49 @@ const EditFolderModal = ({ isOpen, onClose, folder }) => {
       return;
     }
 
-    dispatch(updateFolder({
-      id: folder.id,
-      name: name.trim(),
-      description: description.trim(),
-      catalogIds: selectedCatalogs
-    }));
+    try {
+      dispatch(updateFolder({
+        id: folder.id,
+        name: name.trim(),
+        description: description.trim(),
+        catalogIds: selectedCatalogs
+      }));
 
-    showSuccessToast("Folder Updated", "The folder has been updated successfully.");
+      logger.log('Folder updated:', {
+        folderId: folder.id,
+        name: name.trim(),
+        catalogCount: selectedCatalogs.length
+      });
+
+      showSuccessToast(
+        "Folder Updated",
+        "The folder has been updated successfully."
+      );
+      onClose();
+    } catch (error) {
+      logger.error('Error updating folder:', error);
+      showErrorToast(
+        "Update Failed",
+        "Failed to update the folder. Please try again."
+      );
+    }
+  };
+
+  const handleClose = () => {
+    if (folder) {
+      setName(folder.name);
+      setDescription(folder.description || '');
+      setSelectedCatalogs(folder.catalogIds || []);
+    }
     onClose();
   };
 
+  if (!folder) return null;
+
+  const userCatalogs = catalogs.filter(catalog => !catalog.isSystem);
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} size="lg">
       <ModalOverlay />
       <ModalContent>
         <ModalHeader>Edit Folder</ModalHeader>
@@ -83,7 +115,7 @@ const EditFolderModal = ({ isOpen, onClose, folder }) => {
             <FormControl>
               <FormLabel>Catalogs in Folder</FormLabel>
               <Box maxH="200px" overflowY="auto">
-                {allCatalogs.map(catalog => (
+                {userCatalogs.map(catalog => (
                   <Checkbox
                     key={catalog.id}
                     isChecked={selectedCatalogs.includes(catalog.id)}
@@ -105,7 +137,7 @@ const EditFolderModal = ({ isOpen, onClose, folder }) => {
         </ModalBody>
 
         <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={onClose}>
+          <Button variant="ghost" mr={3} onClick={handleClose}>
             Cancel
           </Button>
           <Button colorScheme="blue" onClick={handleSave}>

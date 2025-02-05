@@ -32,10 +32,10 @@ const EditCatalogModal = ({ isOpen, onClose, catalog }) => {
   useEffect(() => {
     if (catalog) {
       setCatalogName(catalog.name);
-      // Find folder containing this catalog using relationships
-      const containingFolder = Object.entries(folderRelationships)
-        .find(([_, catalogs]) => catalogs.has(catalog.id))?.[0];
-      setSelectedFolder(containingFolder || '');
+      // Find folder containing this catalog
+      const containingFolderId = Object.entries(folderRelationships)
+        .find(([_, catalogs]) => Array.isArray(catalogs) && catalogs.includes(catalog.id))?.[0];
+      setSelectedFolder(containingFolderId || '');
     }
   }, [catalog, folderRelationships]);
 
@@ -54,7 +54,7 @@ const EditCatalogModal = ({ isOpen, onClose, catalog }) => {
 
       // Handle folder relationship changes
       const currentFolderId = Object.entries(folderRelationships)
-        .find(([_, catalogs]) => catalogs.has(catalog.id))?.[0];
+        .find(([_, catalogs]) => Array.isArray(catalogs) && catalogs.includes(catalog.id))?.[0];
 
       if (currentFolderId !== selectedFolder) {
         // Remove from current folder if exists
