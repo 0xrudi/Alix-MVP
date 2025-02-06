@@ -88,7 +88,7 @@ const LandingPage = () => {
               A corner for your digital artifacts, thoughtfully organized.
             </p>
             <Link
-              to="/login"
+              to="https://alixlibraries.typeform.com/signup"
               className="inline-block bg-[#8C7355] text-white px-6 md:px-8 py-3 md:py-4 rounded-lg 
                          hover:bg-[#755E45] transition-colors duration-300"
             >
