@@ -52,6 +52,8 @@ const RootRouter = () => {
         <Route path="terms" element={<TermsPage />} />
         <Route path="signup" element={<SignUpPage />} />
         <Route path="contact" element={<ContactPage />} />
+        <Route path="features" element={<FeaturesPage />} />
+        <Route path="about" element={<AboutPage />} />
       </Route>
 
       {/* App Routes - No longer protected */}
