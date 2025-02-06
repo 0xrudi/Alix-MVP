@@ -13,8 +13,29 @@ import {
   Wrap,
   WrapItem,
   Box,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  ButtonGroup,
+  Icon,
 } from "@chakra-ui/react";
-import { FaFilter, FaSort, FaTimes, FaChevronDown } from 'react-icons/fa';
+import { 
+  FaFilter, 
+  FaSort, 
+  FaTimes, 
+  FaChevronDown, 
+  FaSearch,
+  FaList,
+  FaThLarge,
+  FaCheckSquare
+} from 'react-icons/fa';
+
+const VIEW_MODES = {
+  LIST: 'list',
+  SMALL: 'small',
+  MEDIUM: 'medium',
+  LARGE: 'large'
+};
 
 const FILTER_CATEGORIES = {
   wallet: 'Wallet',
@@ -39,22 +60,16 @@ const LibraryControls = ({
   onSortChange,
   isSelectMode,
   onSelectModeChange,
-  onClearSelections, // New prop for clearing selections
+  onClearSelections,
+  viewMode,
+  onViewModeChange,
+  searchTerm,
+  onSearchChange,
+  showViewModes = true, // Optional prop to show/hide view mode controls
+  containerStyle = {}, // Allow custom styling of container
 }) => {
-  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
-  const [isSortExpanded, setIsSortExpanded] = useState(false);
   const [activeFilters, setActiveFilters] = useState({});
   const [activeSort, setActiveSort] = useState({ field: 'name', ascending: true });
-  const [selectedFilter, setSelectedFilter] = useState(null);
-
-  // Toggle select mode
-  const handleSelectModeToggle = () => {
-    if (isSelectMode) {
-      // If we're turning off select mode, clear selections
-      onClearSelections();
-    }
-    onSelectModeChange(!isSelectMode);
-  };
 
   // Handle filter changes
   const handleFilterAdd = (category, value) => {
@@ -95,176 +110,243 @@ const LibraryControls = ({
     onSortChange(newSort);
   };
 
-  // Handle expansion toggles
-  const handleFilterClick = () => {
-    setIsFilterExpanded(!isFilterExpanded);
-    setIsSortExpanded(false);
-  };
-
-  const handleSortClick = () => {
-    setIsSortExpanded(!isSortExpanded);
-    setIsFilterExpanded(false);
+  // Handle select mode toggle
+  const handleSelectModeToggle = () => {
+    if (isSelectMode) {
+      onClearSelections?.();
+    }
+    onSelectModeChange(!isSelectMode);
   };
 
   return (
-    <VStack spacing={2} align="stretch" width="100%" px={{ base: 2, md: 4 }}>
-      <HStack 
-        spacing={2} 
-        wrap="wrap" 
-        align="left"
-        width="100%"
-        justify="left"
-      >
-        {/* Multi-Select Button */}
-        <Button
-          onClick={handleSelectModeToggle}
-          colorScheme={isSelectMode ? "red" : "gray"}
-          size="sm"
-          borderRadius="full"
-          leftIcon={isSelectMode ? <FaTimes /> : null}
-        >
-          {isSelectMode ? "Cancel" : "Multi-Select"}
-        </Button>
-  
-        {/* Filter Button */}
-        <Button
-          onClick={handleFilterClick}
-          variant={isFilterExpanded ? "solid" : "outline"}
-          colorScheme="blue"
-          size="sm"
-          leftIcon={<FaFilter />}
-          rightIcon={<FaChevronDown />}
-        >
-          Filter
-        </Button>
-  
-        {/* Filter Dropdowns - Now inline */}
-        {isFilterExpanded && (
-          <>
-            <Menu>
-              <MenuButton as={Button} size="sm" rightIcon={<FaChevronDown />}>
-                Wallet
-              </MenuButton>
-              <MenuList>
-                {wallets.map(wallet => (
-                  <MenuItem
-                    key={wallet.id}
-                    onClick={() => handleFilterAdd('wallet', wallet.nickname || wallet.address)}
-                  >
-                    {wallet.nickname || wallet.address}
-                  </MenuItem>
-                ))}
-              </MenuList>
-            </Menu>
-  
-            <Menu>
-              <MenuButton as={Button} size="sm" rightIcon={<FaChevronDown />}>
-                Contract
-              </MenuButton>
-              <MenuList>
-                {contracts.map(contract => (
-                  <MenuItem
-                    key={contract}
-                    onClick={() => handleFilterAdd('contract', contract)}
-                  >
-                    {contract}
-                  </MenuItem>
-                ))}
-              </MenuList>
-            </Menu>
-  
-            <Menu>
-              <MenuButton as={Button} size="sm" rightIcon={<FaChevronDown />}>
-                Network
-              </MenuButton>
-              <MenuList>
-                {networks.map(network => (
-                  <MenuItem
-                    key={network}
-                    onClick={() => handleFilterAdd('network', network)}
-                  >
-                    {network}
-                  </MenuItem>
-                ))}
-              </MenuList>
-            </Menu>
-  
-            <Menu>
-              <MenuButton as={Button} size="sm" rightIcon={<FaChevronDown />}>
-                Media Type
-              </MenuButton>
-              <MenuList>
-                {mediaTypes.map(type => (
-                  <MenuItem
-                    key={type}
-                    onClick={() => handleFilterAdd('mediaType', type)}
-                  >
-                    {type}
-                  </MenuItem>
-                ))}
-              </MenuList>
-            </Menu>
-          </>
-        )}
-  
-        {/* Sort Button */}
-        <Button
-          onClick={handleSortClick}
-          variant={isSortExpanded ? "solid" : "outline"}
-          colorScheme="blue"
-          size="sm"
-          leftIcon={<FaSort />}
-          rightIcon={<FaChevronDown />}
-        >
-          Sort
-        </Button>
-  
-        {/* Sort Options - Now inline */}
-        {isSortExpanded && (
-          Object.entries(SORT_OPTIONS).map(([key, label]) => (
-            <Button
-              key={key}
-              size="sm"
-              variant={activeSort.field === key ? "solid" : "outline"}
-              onClick={() => handleSortChange(key)}
-              rightIcon={activeSort.field === key ? (
-                activeSort.ascending ? <FaSort /> : <FaSort style={{ transform: 'rotate(180deg)' }} />
-              ) : null}
-            >
-              {label}
-            </Button>
-          ))
-        )}
-  
-        {/* Clear Filters Button */}
-        {Object.keys(activeFilters).length > 0 && (
+    <Box 
+      bg="var(--paper-white)"
+      border="1px solid"
+      borderColor="var(--shadow)"
+      borderRadius="md"
+      p={4}
+      {...containerStyle}
+    >
+      <VStack spacing={4}>
+        <HStack spacing={4} width="100%" wrap="wrap">
+          {/* Multi-Select Toggle */}
           <Button
-            onClick={handleClearFilters}
+            leftIcon={<FaCheckSquare />}
+            variant={isSelectMode ? "solid" : "outline"}
+            colorScheme="blue"
+            onClick={handleSelectModeToggle}
+            fontFamily="Inter"
             size="sm"
-            variant="ghost"
-            colorScheme="red"
           >
-            Clear Filters
+            {isSelectMode ? "Cancel Selection" : "Multi-Select"}
           </Button>
-        )}
-      </HStack>
-  
-      {/* Active Filters Display */}
-      {Object.keys(activeFilters).length > 0 && (
-        <Wrap spacing={2}>
-          {Object.entries(activeFilters).map(([category, values]) => 
-            values.map(value => (
-              <WrapItem key={`${category}-${value}`}>
-                <Tag size="md" borderRadius="full" variant="subtle" colorScheme="blue">
-                  <TagLabel>{`${FILTER_CATEGORIES[category]}: ${value}`}</TagLabel>
-                  <TagCloseButton onClick={() => handleFilterRemove(category, value)} />
-                </Tag>
-              </WrapItem>
-            ))
+          
+          {/* Filter Menu */}
+          <Menu>
+            <MenuButton 
+              as={Button} 
+              leftIcon={<FaFilter />}
+              rightIcon={<FaChevronDown />}
+              variant="outline"
+              fontFamily="Inter"
+              size="sm"
+            >
+              Filter
+            </MenuButton>
+            <MenuList>
+              {wallets?.length > 0 && (
+                <Menu placement="right-start">
+                  <MenuButton as={MenuItem}>Wallet</MenuButton>
+                  <MenuList>
+                    {wallets.map(wallet => (
+                      <MenuItem
+                        key={wallet.id}
+                        onClick={() => handleFilterAdd('wallet', wallet.nickname || wallet.address)}
+                      >
+                        {wallet.nickname || wallet.address}
+                      </MenuItem>
+                    ))}
+                  </MenuList>
+                </Menu>
+              )}
+              
+              {contracts?.length > 0 && (
+                <Menu placement="right-start">
+                  <MenuButton as={MenuItem}>Contract</MenuButton>
+                  <MenuList>
+                    {contracts.map(contract => (
+                      <MenuItem
+                        key={contract}
+                        onClick={() => handleFilterAdd('contract', contract)}
+                      >
+                        {contract}
+                      </MenuItem>
+                    ))}
+                  </MenuList>
+                </Menu>
+              )}
+
+              {networks?.length > 0 && (
+                <Menu placement="right-start">
+                  <MenuButton as={MenuItem}>Network</MenuButton>
+                  <MenuList>
+                    {networks.map(network => (
+                      <MenuItem
+                        key={network}
+                        onClick={() => handleFilterAdd('network', network)}
+                      >
+                        {network}
+                      </MenuItem>
+                    ))}
+                  </MenuList>
+                </Menu>
+              )}
+
+              {mediaTypes?.length > 0 && (
+                <Menu placement="right-start">
+                  <MenuButton as={MenuItem}>Media Type</MenuButton>
+                  <MenuList>
+                    {mediaTypes.map(type => (
+                      <MenuItem
+                        key={type}
+                        onClick={() => handleFilterAdd('mediaType', type)}
+                      >
+                        {type}
+                      </MenuItem>
+                    ))}
+                  </MenuList>
+                </Menu>
+              )}
+            </MenuList>
+          </Menu>
+
+          {/* Sort Menu */}
+          <Menu>
+            <MenuButton 
+              as={Button} 
+              leftIcon={<FaSort />}
+              rightIcon={<FaChevronDown />}
+              variant="outline"
+              fontFamily="Inter"
+              size="sm"
+            >
+              Sort
+            </MenuButton>
+            <MenuList>
+              {Object.entries(SORT_OPTIONS).map(([key, label]) => (
+                <MenuItem 
+                  key={key}
+                  onClick={() => handleSortChange(key)}
+                  icon={activeSort.field === key ? (
+                    activeSort.ascending ? <FaSort /> : <FaSort style={{ transform: 'rotate(180deg)' }} />
+                  ) : undefined}
+                >
+                  {label}
+                </MenuItem>
+              ))}
+            </MenuList>
+          </Menu>
+
+          {/* View Mode Toggle */}
+          {showViewModes && (
+            <ButtonGroup isAttached variant="outline">
+              <Button
+                leftIcon={<FaList />}
+                onClick={() => typeof onViewModeChange === 'function' && onViewModeChange(VIEW_MODES.LIST)}
+                isActive={viewMode === VIEW_MODES.LIST}
+                bg={viewMode === VIEW_MODES.LIST ? 'var(--highlight)' : 'white'}
+                color="var(--ink-grey)"
+                fontFamily="Inter"
+                size="sm"
+              >
+                List
+              </Button>
+              <Button
+                leftIcon={<FaThLarge />}
+                onClick={() => typeof onViewModeChange === 'function' && onViewModeChange(VIEW_MODES.SMALL)}
+                isActive={viewMode === VIEW_MODES.SMALL}
+                bg={viewMode === VIEW_MODES.SMALL ? 'var(--highlight)' : 'white'}
+                color="var(--ink-grey)"
+                fontFamily="Inter"
+                size="sm"
+              >
+                Small
+              </Button>
+              <Button
+                leftIcon={<FaThLarge />}
+                onClick={() => typeof onViewModeChange === 'function' && onViewModeChange(VIEW_MODES.MEDIUM)}
+                isActive={viewMode === VIEW_MODES.MEDIUM}
+                bg={viewMode === VIEW_MODES.MEDIUM ? 'var(--highlight)' : 'white'}
+                color="var(--ink-grey)"
+                fontFamily="Inter"
+                size="sm"
+              >
+                Medium
+              </Button>
+              <Button
+                leftIcon={<FaThLarge />}
+                onClick={() => typeof onViewModeChange === 'function' && onViewModeChange(VIEW_MODES.LARGE)}
+                isActive={viewMode === VIEW_MODES.LARGE}
+                bg={viewMode === VIEW_MODES.LARGE ? 'var(--highlight)' : 'white'}
+                color="var(--ink-grey)"
+                fontFamily="Inter"
+                size="sm"
+              >
+                Large
+              </Button>
+            </ButtonGroup>
           )}
-        </Wrap>
-      )}
-    </VStack>
+        </HStack>
+
+        {/* Search Input */}
+        <InputGroup>
+          <InputLeftElement pointerEvents="none">
+            <Icon as={FaSearch} color="var(--ink-grey)" />
+          </InputLeftElement>
+          <Input
+            placeholder="Search items..."
+            value={searchTerm}
+            onChange={(e) => onSearchChange(e.target.value)}
+            bg="white"
+            borderColor="var(--shadow)"
+            fontFamily="Inter"
+            _placeholder={{ color: 'var(--ink-grey)' }}
+          />
+        </InputGroup>
+
+        {/* Active Filters */}
+        {Object.keys(activeFilters).length > 0 && (
+          <Wrap spacing={2}>
+            {Object.entries(activeFilters).map(([category, values]) => 
+              values.map(value => (
+                <WrapItem key={`${category}-${value}`}>
+                  <Tag 
+                    size="md" 
+                    borderRadius="full" 
+                    variant="subtle" 
+                    bg="var(--highlight)"
+                    color="var(--ink-grey)"
+                  >
+                    <TagLabel>{`${FILTER_CATEGORIES[category]}: ${value}`}</TagLabel>
+                    <TagCloseButton onClick={() => handleFilterRemove(category, value)} />
+                  </Tag>
+                </WrapItem>
+              ))
+            )}
+            <WrapItem>
+              <Button
+                size="sm"
+                variant="ghost"
+                colorScheme="red"
+                onClick={handleClearFilters}
+              >
+                Clear All
+              </Button>
+            </WrapItem>
+          </Wrap>
+        )}
+      </VStack>
+    </Box>
   );
 };
 

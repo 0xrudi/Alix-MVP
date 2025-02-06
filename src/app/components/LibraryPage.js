@@ -52,6 +52,7 @@ import NewFolderModal from './NewFolderModal';
 import NewCatalogModal from './NewCatalogModal';
 import FolderCard from './FolderCard';
 import EditCatalogModal from './EditCatalogModal';
+import EditFolderModal from './EditFolderModal';
 import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
 import StateDebugger from './StateDebugger';
 
@@ -153,6 +154,9 @@ const LibraryPage = () => {
   const [editingCatalog, setEditingCatalog] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredNFTs, setFilteredNFTs] = useState([]);
+  const [isEditCatalogModalOpen, setIsEditCatalogModalOpen] = useState(false);
+  const [isEditFolderModalOpen, setIsEditFolderModalOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState(null);
 
   // Initialize tab from URL if present
   useEffect(() => {
@@ -290,7 +294,15 @@ const LibraryPage = () => {
   }, [catalogs, selectedNFTs, dispatch, showSuccessToast, showInfoToast]);
 
   const handleEditCatalog = useCallback((catalog) => {
+    logger.log('Editing catalog:', catalog);
     setEditingCatalog(catalog);
+    setIsEditCatalogModalOpen(true);
+  }, []);
+  
+  const handleEditFolder = useCallback((folder) => {
+    logger.log('Editing folder:', folder);
+    setEditingFolder(folder);
+    setIsEditFolderModalOpen(true);
   }, []);
   
   const handleOpenCatalog = useCallback((catalog) => {
@@ -683,9 +695,10 @@ return (
                   >
                     {folders.map((folder) => (
                       <FolderCard
-                        key={`folder-${folder.id}`} // Add unique key
+                        key={`folder-${folder.id}`}
                         folder={folder}
                         onView={() => setViewingFolder(folder)}
+                        onEdit={() => handleEditFolder(folder)}
                         onDelete={() => handleDeleteFolder(folder.id)}
                         cardSize={cardSize}
                       />
@@ -771,9 +784,21 @@ return (
     />
 
     <EditCatalogModal 
-      isOpen={editingCatalog !== null}
-      onClose={() => setEditingCatalog(null)}
+      isOpen={isEditCatalogModalOpen}
+      onClose={() => {
+        setIsEditCatalogModalOpen(false);
+        setEditingCatalog(null);
+      }}
       catalog={editingCatalog}
+    />
+
+    <EditFolderModal
+      isOpen={isEditFolderModalOpen}
+      onClose={() => {
+        setIsEditFolderModalOpen(false);
+        setEditingFolder(null);
+      }}
+      folder={editingFolder}
     />
 
     {/* Selected Artifacts Overlay */}

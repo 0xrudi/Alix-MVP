@@ -52,12 +52,10 @@ const RootRouter = () => {
         <Route path="terms" element={<TermsPage />} />
         <Route path="signup" element={<SignUpPage />} />
         <Route path="contact" element={<ContactPage />} />
-        <Route path="features" element={<FeaturesPage />} />
-        <Route path="about" element={<AboutPage />} />
       </Route>
 
-      {/* App Routes */}
-      <Route path="app" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
+      {/* App Routes - No longer protected */}
+      <Route path="app" element={<AppLayout />}>
         <Route index element={<HomePage />} />
         <Route path="admin" element={<AdminPage />} />
         <Route path="library" element={<LibraryPage />} />

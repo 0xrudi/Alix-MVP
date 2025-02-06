@@ -17,6 +17,7 @@ import store from './redux/store';
 import { Analytics } from "@vercel/analytics/react";
 import { AuthProvider, useAuth } from '../context/auth/AuthContext';
 import LoginPage from './website/pages/auth/LoginPage';
+import '../assets/fonts.css';
 
 // Create a PrivateRoute component
 const PrivateRoute = ({ children }) => {
@@ -39,17 +40,7 @@ const PrivateRoute = ({ children }) => {
 
 // Update AppContent to include protected routes
 function AppContent() {
-  const location = useLocation();
-  const showMenu = location.pathname !== '/' && location.pathname !== '/login';
-  const { user } = useAuth();
-  const dispatch = useDispatch();
-
-  // Load wallets when user logs in
-  useEffect(() => {
-    if (user) {
-      dispatch(loadWallets());
-    }
-  }, [user, dispatch]);
+  const showMenu = true; // Always show menu in dev
 
   return (
     <ChakraProvider theme={theme}>
@@ -60,16 +51,13 @@ function AppContent() {
           marginBottom={{ base: "60px", md: 0 }}
         >
           <Routes>
-            {/* Public routes */}
+            {/* All routes now public */}
             <Route path="/" element={<WelcomePage />} />
-            <Route path="/login" element={<LoginPage />} />
-
-            {/* Protected routes */}
-            <Route path="/home" element={<PrivateRoute><HomePage /></PrivateRoute>} />
-            <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
-            <Route path="/library" element={<PrivateRoute><LibraryPage /></PrivateRoute>} />
-            <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-            <Route path="/artifact" element={<PrivateRoute><ArtifactDetailPage /></PrivateRoute>} />
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/admin" element={<AdminPage />} />
+            <Route path="/library" element={<LibraryPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/artifact" element={<ArtifactDetailPage />} />
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
         </Box>
@@ -77,6 +65,7 @@ function AppContent() {
     </ChakraProvider>
   );
 }
+
 
 function App() {
   return (
