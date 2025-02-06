@@ -6,14 +6,24 @@ import {
   IconButton, 
   Image, 
   Box, 
-  Badge, 
+  HStack,
   Tooltip,
-  Skeleton
+  Skeleton,
 } from "@chakra-ui/react";
-import { FaTrash, FaExclamationTriangle } from 'react-icons/fa';
-import { getImageUrl } from '../utils/web3Utils';
+import { FaTrash, FaExclamationTriangle, FaExternalLinkAlt } from 'react-icons/fa';
+import { getImageUrl } from './../utils/web3Utils';
+import { motion } from 'framer-motion';
 
-const ListViewItem = ({ nft, isSelected, onSelect, onRemove, isSpamFolder }) => {
+const MotionFlex = motion(Flex);
+
+const ListViewItem = ({ 
+  nft, 
+  isSelected, 
+  onSelect, 
+  onRemove, 
+  isSpamFolder,
+  onClick 
+}) => {
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -40,66 +50,139 @@ const ListViewItem = ({ nft, isSelected, onSelect, onRemove, isSpamFolder }) => 
     };
 
     loadImage();
-
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [nft]);
 
   return (
-    <Flex
+    <MotionFlex
       align="center"
-      justify="space-between"
-      borderWidth={1}
+      borderWidth="1px"
+      borderColor="var(--shadow)"
       borderRadius="md"
-      p={3}
+      bg="var(--paper-white)"
+      p={4}
       mb={2}
       transition="all 0.2s"
-      _hover={{ bg: "gray.50" }}
+      whileHover={{ 
+        y: -2,
+        transition: { duration: 0.2 }
+      }}
+      _hover={{ 
+        borderColor: "var(--warm-brown)",
+        bg: "white",
+        "& .action-buttons": { opacity: 1 }
+      }}
+      role="listitem"
     >
       <Checkbox 
         isChecked={isSelected} 
         onChange={onSelect}
         mr={4}
+        borderColor="var(--shadow)"
+        colorScheme="brown"
       />
-      <Skeleton isLoaded={!isLoading} borderRadius="md">
+
+      <Skeleton 
+        isLoaded={!isLoading} 
+        borderRadius="md"
+      >
         <Image 
           src={imageUrl}
           alt={nft.title || 'NFT'} 
-          boxSize="50px"
+          boxSize="60px"
           objectFit="cover"
           borderRadius="md"
           mr={4}
           fallbackSrc="https://via.placeholder.com/400?text=Error+Loading+Image"
+          border="1px solid"
+          borderColor="var(--shadow)"
         />
       </Skeleton>
-      <Flex flex={1} direction="column">
-        <Text fontWeight="bold" fontSize="md">
+
+      <Flex 
+        flex={1} 
+        direction="column" 
+        mr={4}
+      >
+        <Text 
+          fontFamily="Space Grotesk"
+          fontSize="lg"
+          color="var(--rich-black)"
+          mb={1}
+          cursor="pointer"
+          onClick={onClick}
+          _hover={{ color: "var(--warm-brown)" }}
+        >
           {nft.title || `Token ID: ${nft.id?.tokenId || 'Unknown'}`}
         </Text>
-        <Flex align="center" mt={1}>
-          <Badge colorScheme="purple" mr={2}>
+
+        <HStack spacing={3}>
+          <Text
+            fontSize="sm"
+            fontFamily="Inter"
+            color="var(--ink-grey)"
+          >
             {nft.network || 'Unknown Network'}
-          </Badge>
-          <Text fontSize="sm" color="gray.500">
+          </Text>
+          <Text
+            fontSize="sm"
+            fontFamily="Fraunces"
+            color="var(--ink-grey)"
+          >
             ID: {nft.id?.tokenId || 'Unknown'}
           </Text>
-        </Flex>
+          {nft.contract?.name && (
+            <Text
+              fontSize="sm"
+              fontFamily="Fraunces"
+              color="var(--ink-grey)"
+            >
+              {nft.contract.name}
+            </Text>
+          )}
+        </HStack>
       </Flex>
-      <Flex align="center">
-        <Tooltip label={isSpamFolder ? "Remove from Spam" : "Mark as Spam"}>
+
+      <HStack 
+        spacing={2} 
+        className="action-buttons"
+        opacity={0}
+        transition="opacity 0.2s"
+      >
+        <Tooltip 
+          label={isSpamFolder ? "Remove from Spam" : "Mark as Spam"}
+          placement="top"
+        >
           <IconButton
             icon={isSpamFolder ? <FaExclamationTriangle /> : <FaTrash />}
             onClick={onRemove}
             aria-label={isSpamFolder ? "Remove from Spam" : "Mark as Spam"}
             size="sm"
-            colorScheme={isSpamFolder ? "green" : "red"}
             variant="ghost"
-            mr={2}
+            color="var(--ink-grey)"
+            _hover={{
+              color: isSpamFolder ? "green.500" : "red.500",
+              bg: isSpamFolder ? "green.50" : "red.50"
+            }}
           />
         </Tooltip>
-      </Flex>
-    </Flex>
+
+        <Tooltip label="View Details" placement="top">
+          <IconButton
+            icon={<FaExternalLinkAlt />}
+            onClick={onClick}
+            aria-label="View Details"
+            size="sm"
+            variant="ghost"
+            color="var(--ink-grey)"
+            _hover={{
+              color: "var(--warm-brown)",
+              bg: "var(--highlight)"
+            }}
+          />
+        </Tooltip>
+      </HStack>
+    </MotionFlex>
   );
 };
 

@@ -1,4 +1,4 @@
-// src/components/NFTCard.js
+// src/components/NFTCard/NFTCard.jsx
 import React, { useState, useEffect } from 'react';
 import { 
   Box, 
@@ -8,20 +8,25 @@ import {
   VStack, 
   HStack, 
   Badge, 
-  useColorModeValue, 
   AspectRatio, 
   Checkbox, 
   Tooltip,
-  Skeleton
+  Skeleton,
+  Icon,
 } from "@chakra-ui/react";
-import { FaExclamationTriangle, FaPlus, FaInfoCircle, FaCheck } from 'react-icons/fa';
-import { getImageUrl } from '../utils/web3Utils';
-import { isERC1155 } from '../utils/nftUtils';
-import { useAppContext } from '../../context/app/AppContext';
-import { useDispatch } from 'react-redux';
-import { updateNFT } from '../redux/slices/nftSlice';
+import { 
+  FaExclamationTriangle, 
+  FaPlus, 
+  FaInfoCircle, 
+  FaCheck,
+  FaExternalLinkAlt 
+} from 'react-icons/fa';
+import { motion } from 'framer-motion';
+import { getImageUrl } from './../utils/web3Utils';
+import { isERC1155 } from './../utils/nftUtils';
 
-// Helper function to determine media type
+const MotionBox = motion(Box);
+
 const getMediaType = (nft) => {
   if (nft.metadata?.mimeType?.startsWith('video/')) return 'video';
   if (nft.metadata?.mimeType?.startsWith('audio/')) return 'audio';
@@ -29,37 +34,70 @@ const getMediaType = (nft) => {
   return 'image';
 };
 
-// Media type colors for the border
-const MEDIA_TYPE_COLORS = {
-  image: 'blue.200',
-  video: 'green.200',
-  audio: 'purple.200',
-  '3d': 'orange.200'
-};
-
 const NFTCard = ({ 
   nft, 
-  isSelected, 
-  onSelect, 
-  onMarkAsSpam,  // Renamed to be more generic
-  isSpamFolder,
-  isSelectMode,
+  isSelected = false, 
+  onSelect,
+  onMarkAsSpam,
+  isSpamFolder = false,
+  isSelectMode = false,
   onClick,
-  isSearchResult,
+  isSearchResult = false,
   onAddToCatalog,
   walletNickname,
-  catalogType = 'default' // New prop to determine card context
+  size = "medium",
+  catalogType = 'default'
 }) => {
-  const dispatch = useDispatch();
-  const { catalogs } = useAppContext();
-  const cardBg = useColorModeValue('white', 'gray.800');
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
   const [isLoading, setIsLoading] = useState(true);
   const mediaType = getMediaType(nft);
 
+  const shouldShowSpamButton = () => {
+    switch (catalogType) {
+      case 'spam':
+        return true;
+      case 'user':
+        return false;
+      case 'unorganized':
+      case 'default':
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  const handleCardClick = (e) => {
+    e.stopPropagation();
+    if (isSelectMode && typeof onSelect === 'function') {
+      onSelect(nft);
+    } else if (!isSelectMode && typeof onClick === 'function') {
+      onClick(nft);
+    }
+  };
+
+  const handleSelectChange = (e) => {
+    e.stopPropagation();
+    if (typeof onSelect === 'function') {
+      onSelect(nft);
+    }
+  };
+
+  const handleSpamClick = (e) => {
+    e.stopPropagation();
+    if (typeof onMarkAsSpam === 'function') {
+      onMarkAsSpam(nft);
+    }
+  };
+
+  const handleAddToCatalog = (e) => {
+    e.stopPropagation();
+    if (typeof onAddToCatalog === 'function') {
+      onAddToCatalog(nft);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
-
     const loadImage = async () => {
       try {
         setIsLoading(true);
@@ -80,178 +118,197 @@ const NFTCard = ({
     };
 
     loadImage();
-
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [nft]);
 
   const quantity = isERC1155(nft) ? parseInt(nft.balance) || 1 : 1;
-
-  const handleCardClick = () => {
-    if (isSelectMode) {
-      onSelect(nft);
-    } else {
-      onClick(nft);
-    }
-  };
-
-  const handleSpamAction = (e) => {
-    e.stopPropagation();
-    if (!nft.walletId) {
-      console.error('NFT missing walletId:', nft);
-      return;
-    }
-  
-    const updatedNFT = {
-      ...nft,
-      isSpam: !nft.isSpam
-    };
-  
-    // First dispatch the NFT update
-    dispatch(updateNFT({
-      walletId: nft.walletId,
-      nft: updatedNFT
-    }));
-  
-    // Then call the passed handler if it exists
-    if (onMarkAsSpam) {
-      onMarkAsSpam(updatedNFT);
-    }
-  };
-  
-
-  const handleAddToCatalog = (e) => {
-    e.stopPropagation();
-    onAddToCatalog(nft);
-  };
-
   const displayName = nft.title || `Token ID: ${nft.id?.tokenId}`;
-  const truncatedName = displayName.length > 30 ? `${displayName.slice(0, 27)}...` : displayName;
 
-  // Determine if spam button should be shown
-  const shouldShowSpamButton = () => {
-    switch (catalogType) {
-      case 'spam':
-        return true; // Show unmark button in spam catalog
-      case 'user':
-        return false; // Don't show in user-created catalogs
-      case 'unorganized':
-      case 'default':
-        return true; // Show in main library and unorganized catalog
-      default:
-        return false;
+  const sizes = {
+    small: {
+      cardPadding: 2,
+      imagePadding: 2,
+      titleSize: "sm",
+      detailsSize: "xs",
+      buttonSize: "xs",
+      spacing: 1
+    },
+    medium: {
+      cardPadding: 3,
+      imagePadding: 3,
+      titleSize: "md",
+      detailsSize: "sm",
+      buttonSize: "sm",
+      spacing: 2
+    },
+    large: {
+      cardPadding: 4,
+      imagePadding: 4,
+      titleSize: "lg",
+      detailsSize: "md",
+      buttonSize: "md",
+      spacing: 3
     }
   };
+
+  const currentSize = sizes[size] || sizes.medium;
 
   return (
-    <Box
-      borderWidth="2px"
-      borderRadius="lg"
-      overflow="hidden"
-      bg={cardBg}
-      borderColor={isSelected ? "blue.500" : MEDIA_TYPE_COLORS[mediaType]}
-      boxShadow={isSelected ? "0 0 0 2px #3182CE" : "md"}
-      transition="all 0.2s"
-      _hover={{ transform: 'translateY(-4px)', boxShadow: 'lg' }}
-      width="100%"
-      height="100%"
+    <MotionBox
+      as="article"
       position="relative"
+      whileHover={{ 
+        y: -4,
+        transition: { duration: 0.2 }
+      }}
       onClick={handleCardClick}
-      cursor={isSelectMode ? "pointer" : "default"}
+      cursor="pointer"
+      role="button"
+      aria-label={`View ${displayName}`}
     >
-      {isSelectMode && !isSearchResult && (
-        <Checkbox
-          position="absolute"
-          top={2}
-          left={2}
-          isChecked={isSelected}
-          onChange={() => onSelect(nft)}
-          zIndex={1}
-        />
-      )}
-      
-      <AspectRatio ratio={1}>
-        <Skeleton isLoaded={!isLoading}>
-          <Image
-            src={imageUrl}
-            alt={nft.title || 'NFT'}
-            objectFit="cover"
-            width="100%"
-            height="100%"
-            fallbackSrc="https://via.placeholder.com/400?text=Error+Loading+Image"
-          />
-        </Skeleton>
-      </AspectRatio>
-
-      <VStack p={3} spacing={1} align="stretch">
-        <Tooltip label={displayName}>
-          <Text fontWeight="bold" fontSize="sm" noOfLines={1}>
-            {truncatedName}
-          </Text>
-        </Tooltip>
-
-        <HStack justify="space-between" fontSize="xs">
-          <Text color="gray.500" noOfLines={1}>
-            {walletNickname || "Unknown Wallet"}
-          </Text>
-          {isERC1155(nft) && (
-            <Badge colorScheme="green" variant="subtle">
-              x{quantity}
-            </Badge>
-          )}
-        </HStack>
-
-        {!isSelectMode && shouldShowSpamButton() && (
-          <Button
-            size="xs"
-            colorScheme={isSpamFolder ? "green" : "red"}
-            variant="ghost"
-            onClick={handleSpamAction}
-            leftIcon={isSpamFolder ? <FaCheck /> : <FaExclamationTriangle />}
+      <Box
+        bg="var(--paper-white)"
+        borderWidth="1px"
+        borderColor={isSelected ? "var(--warm-brown)" : "var(--shadow)"}
+        borderRadius="md"
+        overflow="hidden"
+        transition="all 0.2s"
+        _hover={{
+          borderColor: "var(--warm-brown)",
+          boxShadow: "lg",
+          "& .action-buttons": { opacity: 1 }
+        }}
+      >
+        {/* Selection Checkbox */}
+        {isSelectMode && !isSearchResult && (
+          <Box 
+            position="absolute"
+            top={2}
+            left={2}
+            zIndex={2}
+            onClick={e => e.stopPropagation()}
           >
-            {isSpamFolder ? "Unmark" : "Spam"}
-          </Button>
-        )}
-
-        {isSearchResult && (
-          <Tooltip label="Add to Catalog">
-            <Button
-              size="xs"
-              colorScheme="green"
-              variant="ghost"
-              onClick={handleAddToCatalog}
-              leftIcon={<FaPlus />}
-            >
-              Add
-            </Button>
-          </Tooltip>
-        )}
-      </VStack>
-
-      {nft.isSpam && !isSpamFolder && (
-        <Badge
-          position="absolute"
-          top={2}
-          right={2}
-          colorScheme="red"
-          variant="solid"
-        >
-          Spam
-        </Badge>
-      )}
-
-      {catalogs.some(catalog => catalog.nfts?.some(catalogNft => 
-        catalogNft.id?.tokenId === nft.id?.tokenId && 
-        catalogNft.contract?.address === nft.contract?.address
-      )) && (
-        <Tooltip label="In Catalog">
-          <Box position="absolute" top={2} right={2}>
-            <FaInfoCircle color="green" />
+            <Checkbox
+              isChecked={isSelected}
+              onChange={handleSelectChange}
+              colorScheme="brown"
+            />
           </Box>
-        </Tooltip>
-      )}
-    </Box>
+        )}
+
+        {/* Image */}
+        <AspectRatio ratio={1}>
+          <Skeleton isLoaded={!isLoading}>
+            <Image
+              src={imageUrl}
+              alt={displayName}
+              objectFit="cover"
+              width="100%"
+              height="100%"
+              fallbackSrc="https://via.placeholder.com/400?text=Error+Loading+Image"
+            />
+          </Skeleton>
+        </AspectRatio>
+
+        {/* Content */}
+        <VStack 
+          p={currentSize.cardPadding} 
+          spacing={currentSize.spacing} 
+          align="stretch"
+        >
+          <Text
+            fontSize={currentSize.titleSize}
+            fontFamily="Space Grotesk"
+            color="var(--rich-black)"
+            noOfLines={1}
+          >
+            {displayName}
+          </Text>
+
+          <HStack justify="space-between" fontSize={currentSize.detailsSize}>
+            <Text 
+              fontFamily="Fraunces"
+              color="var(--ink-grey)"
+              noOfLines={1}
+            >
+              {walletNickname || "Unknown Wallet"}
+            </Text>
+            {isERC1155(nft) && (
+              <Badge 
+                bg="var(--warm-brown)" 
+                color="white"
+                fontSize="xs"
+                px={2}
+                py={0.5}
+                borderRadius="full"
+              >
+                x{quantity}
+              </Badge>
+            )}
+          </HStack>
+
+          {/* Action Buttons */}
+          <HStack 
+            spacing={1} 
+            className="action-buttons"
+            opacity={0}
+            transition="opacity 0.2s"
+            onClick={e => e.stopPropagation()}
+          >
+            {!isSelectMode && (
+              <>
+                {shouldShowSpamButton() && (
+                  <Button
+                    size={currentSize.buttonSize}
+                    variant="ghost"
+                    onClick={handleSpamClick}
+                    leftIcon={isSpamFolder ? <FaCheck /> : <FaExclamationTriangle />}
+                    w="full"
+                    fontFamily="Inter"
+                    color={isSpamFolder ? "green.500" : "red.500"}
+                    _hover={{
+                      bg: isSpamFolder ? "green.50" : "red.50"
+                    }}
+                  >
+                    {isSpamFolder ? "Unmark" : "Spam"}
+                  </Button>
+                )}
+
+                {isSearchResult && (
+                  <Button
+                    size={currentSize.buttonSize}
+                    variant="ghost"
+                    onClick={handleAddToCatalog}
+                    leftIcon={<FaPlus />}
+                    w="full"
+                    fontFamily="Inter"
+                    color="var(--warm-brown)"
+                    _hover={{
+                      bg: "var(--highlight)"
+                    }}
+                  >
+                    Add
+                  </Button>
+                )}
+              </>
+            )}
+          </HStack>
+        </VStack>
+
+        {/* Status Badges */}
+        {nft.isSpam && !isSpamFolder && (
+          <Badge
+            position="absolute"
+            top={2}
+            right={2}
+            bg="red.500"
+            color="white"
+          >
+            Spam
+          </Badge>
+        )}
+      </Box>
+    </MotionBox>
   );
 };
 
