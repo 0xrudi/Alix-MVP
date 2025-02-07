@@ -107,7 +107,18 @@ const MetadataDisplay = ({ data, level = 0 }) => {
   );
 };
 
+// Design system colors
+const designTokens = {
+  warmWhite: "#F8F7F4",
+  softCharcoal: "#2F2F2F",
+  libraryBrown: "#8C7355",
+  paperWhite: "#EFEDE8",
+  inkGrey: "#575757",
+  shadow: "#D8D3CC"
+};
+
 const ArtifactDetailPage = () => {
+  // Existing hooks and state remain the same
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
@@ -115,7 +126,7 @@ const ArtifactDetailPage = () => {
   const { catalogs, updateCatalogs } = useAppContext();
   const nft = location.state?.nft;
 
-  // State
+  // Existing state declarations remain the same
   const [isAddToCatalogOpen, setIsAddToCatalogOpen] = useState(false);
   const [selectedCatalog, setSelectedCatalog] = useState('');
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
@@ -134,10 +145,7 @@ const ArtifactDetailPage = () => {
   const contentFontSize = useBreakpointValue({ base: "md", md: "lg" });
   const tableSize = useBreakpointValue({ base: "sm", md: "md" });
 
-  // Theme colors
-  const bgColor = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
-
+  // All existing useEffects remain the same
   useEffect(() => {
     if (nft?.metadata?.content) {
       setIsParsingContent(true);
@@ -174,10 +182,7 @@ const ArtifactDetailPage = () => {
     return () => { mounted = false; };
   }, [nft]);
 
-  if (!nft) {
-    return <Box p={padding}><Text>No NFT data available</Text></Box>;
-  }
-
+  // All existing handlers remain the same
   const handleAddToCatalog = () => setIsAddToCatalogOpen(true);
 
   const handleConfirmAddToCatalog = () => {
@@ -216,8 +221,12 @@ const ArtifactDetailPage = () => {
     navigate(-1);
   };
 
+  if (!nft) {
+    return <Box p={padding}><Text>No NFT data available</Text></Box>;
+  }
+
   return (
-    <Box maxW="container.xl" mx="auto" p={padding}>
+    <Box maxW="container.xl" mx="auto" p={padding} bg={designTokens.warmWhite}>
       <Flex 
         direction={{ base: "column", md: "row" }} 
         gap={spacing} 
@@ -229,6 +238,9 @@ const ArtifactDetailPage = () => {
           onClick={() => navigate(-1)}
           size={buttonSize}
           width={{ base: "full", md: "auto" }}
+          variant="ghost"
+          color={designTokens.softCharcoal}
+          _hover={{ color: designTokens.libraryBrown }}
         >
           Back
         </Button>
@@ -241,7 +253,8 @@ const ArtifactDetailPage = () => {
               icon={<FaTrash />}
               aria-label="Mark as spam"
               variant="ghost"
-              colorScheme="red"
+              color={designTokens.softCharcoal}
+              _hover={{ color: designTokens.libraryBrown }}
               onClick={handleMarkAsSpam}
               size={buttonSize}
               flex={{ base: 1, md: "auto" }}
@@ -253,7 +266,8 @@ const ArtifactDetailPage = () => {
               icon={<FaBook />}
               aria-label="Add to catalog"
               variant="ghost"
-              colorScheme="blue"
+              color={designTokens.softCharcoal}
+              _hover={{ color: designTokens.libraryBrown }}
               onClick={handleAddToCatalog}
               size={buttonSize}
               flex={{ base: 1, md: "auto" }}
@@ -263,41 +277,65 @@ const ArtifactDetailPage = () => {
       </Flex>
 
       <Box 
-        bg={bgColor} 
+        bg={designTokens.paperWhite} 
         p={padding} 
         borderRadius="lg" 
         boxShadow="md" 
-        borderColor={borderColor} 
+        borderColor={designTokens.shadow} 
         borderWidth={1}
       >
         <Box mb={6}>
-          <Heading as="h2" size={headerSize} mb={2}>
+          <Heading 
+            as="h2" 
+            size={headerSize} 
+            mb={2}
+            color={designTokens.softCharcoal}
+            fontWeight="light"
+            fontFamily="Studio Feixen Sans"
+          >
             {nft.title || `Token ID: ${nft.id?.tokenId}`}
           </Heading>
-          <Wrap spacing={2}>
-            <Badge colorScheme="purple">{nft.network || 'Unknown Network'}</Badge>
-            {nft.isSpam && <Badge colorScheme="red">Spam</Badge>}
-          </Wrap>
+          <HStack spacing={2}>
+            <Badge bg={designTokens.libraryBrown} color={designTokens.warmWhite}>
+              {nft.network || 'Unknown Network'}
+            </Badge>
+            {nft.isSpam && (
+              <Badge colorScheme="red">Spam</Badge>
+            )}
+          </HStack>
         </Box>
 
         <Tabs 
           variant="enclosed" 
-          colorScheme="blue"
+          colorScheme="gray"
           size={tabSize}
           isFitted={isMobile}
         >
-          <TabList 
-            overflowX="auto" 
-            overflowY="hidden" 
-            sx={{
-              scrollbarWidth: 'none',
-              '::-webkit-scrollbar': { display: 'none' },
-              '-webkit-overflow-scrolling': 'touch'
-            }}
-          >
-            <Tab whiteSpace="nowrap">Media</Tab>
-            <Tab whiteSpace="nowrap">Description</Tab>
-            <Tab whiteSpace="nowrap">Information</Tab>
+          <TabList borderBottomColor={designTokens.shadow}>
+            <Tab 
+              _selected={{ 
+                color: designTokens.libraryBrown,
+                borderBottomColor: designTokens.libraryBrown 
+              }}
+            >
+              Media
+            </Tab>
+            <Tab 
+              _selected={{ 
+                color: designTokens.libraryBrown,
+                borderBottomColor: designTokens.libraryBrown 
+              }}
+            >
+              Description
+            </Tab>
+            <Tab 
+              _selected={{ 
+                color: designTokens.libraryBrown,
+                borderBottomColor: designTokens.libraryBrown 
+              }}
+            >
+              Information
+            </Tab>
           </TabList>
 
           <TabPanels>
@@ -308,7 +346,7 @@ const ArtifactDetailPage = () => {
                 isLoading={isLoading}
                 parsedMarkdownContent={parsedMarkdownContent}
                 isParsingContent={isParsingContent}
-                borderColor={borderColor}
+                borderColor={designTokens.shadow}
               />
             </TabPanel>
 
@@ -318,6 +356,8 @@ const ArtifactDetailPage = () => {
                   fontSize={contentFontSize}
                   lineHeight="1.8"
                   whiteSpace="pre-wrap"
+                  fontFamily="Fraunces"
+                  color={designTokens.softCharcoal}
                 >
                   {(nft.description || 'No description available.')
                     .replace(/&nbsp;/g, ' ')
@@ -331,25 +371,49 @@ const ArtifactDetailPage = () => {
 
             <TabPanel>
               <VStack align="stretch" spacing={4}>
-                <Accordion allowMultiple width="100%">
+                <Accordion allowMultiple>
                   <AccordionItem>
-                    <AccordionButton>
+                    <AccordionButton 
+                      _expanded={{ 
+                        color: designTokens.libraryBrown,
+                        bg: designTokens.warmWhite 
+                      }}
+                    >
                       <Box flex="1" textAlign="left">Details</Box>
                       <AccordionIcon />
                     </AccordionButton>
                     <AccordionPanel>
-                      <MetadataDisplay data={{
-                        'Contract Name': nft.contract?.name || 'N/A',
-                        'Contract Address': nft.contract?.address || 'N/A',
-                        'Token ID': nft.id?.tokenId || 'N/A',
-                        'Creator/Artist': nft.creator || nft.artist || 'N/A'
-                      }} />
+                      <Table variant="simple" size={tableSize}>
+                        <Tbody>
+                          <Tr>
+                            <Th color={designTokens.softCharcoal}>Contract Name</Th>
+                            <Td>{nft.contract?.name || 'N/A'}</Td>
+                          </Tr>
+                          <Tr>
+                            <Th color={designTokens.softCharcoal}>Contract Address</Th>
+                            <Td>{nft.contract?.address || 'N/A'}</Td>
+                          </Tr>
+                          <Tr>
+                            <Th color={designTokens.softCharcoal}>Token ID</Th>
+                            <Td>{nft.id?.tokenId || 'N/A'}</Td>
+                          </Tr>
+                          <Tr>
+                            <Th color={designTokens.softCharcoal}>Creator/Artist</Th>
+                            <Td>{nft.creator || nft.artist || 'N/A'}</Td>
+                          </Tr>
+                        </Tbody>
+                      </Table>
                     </AccordionPanel>
                   </AccordionItem>
 
                   {nft.attributes && (
                     <AccordionItem>
-                      <AccordionButton>
+                      <AccordionButton
+                        _expanded={{ 
+                          color: designTokens.libraryBrown,
+                          bg: designTokens.warmWhite 
+                        }}
+                      >
                         <Box flex="1" textAlign="left">Traits</Box>
                         <AccordionIcon />
                       </AccordionButton>
@@ -357,8 +421,8 @@ const ArtifactDetailPage = () => {
                         <Table variant="simple" size={tableSize}>
                           <Thead>
                             <Tr>
-                              <Th>Trait Type</Th>
-                              <Th>Value</Th>
+                              <Th color={designTokens.softCharcoal}>Trait Type</Th>
+                              <Th color={designTokens.softCharcoal}>Value</Th>
                             </Tr>
                           </Thead>
                           <Tbody>
@@ -373,23 +437,16 @@ const ArtifactDetailPage = () => {
                       </AccordionPanel>
                     </AccordionItem>
                   )}
-
-                  <AccordionItem>
-                    <AccordionButton>
-                      <Box flex="1" textAlign="left">
-                        Technical Information (Metadata)
-                      </Box>
-                      <AccordionIcon />
-                    </AccordionButton>
-                    <AccordionPanel>
-                      <MetadataDisplay data={nft.metadata || {}} />
-                    </AccordionPanel>
-                  </AccordionItem>
                 </Accordion>
 
                 {nft.externalUrl && (
-                  <Link href={nft.externalUrl} isExternal color="blue.500">
-                    View on External Site <FaExternalLinkAlt />
+                  <Link 
+                    href={nft.externalUrl} 
+                    isExternal 
+                    color={designTokens.libraryBrown}
+                    _hover={{ color: designTokens.softCharcoal }}
+                  >
+                    View on External Site <FaExternalLinkAlt style={{ display: 'inline', marginLeft: '0.5rem' }} />
                   </Link>
                 )}
               </VStack>
@@ -400,14 +457,16 @@ const ArtifactDetailPage = () => {
 
       <Modal isOpen={isAddToCatalogOpen} onClose={() => setIsAddToCatalogOpen(false)}>
         <ModalOverlay />
-        <ModalContent margin={4}>
-          <ModalHeader>Add to Catalog</ModalHeader>
+        <ModalContent margin={4} bg={designTokens.warmWhite}>
+          <ModalHeader color={designTokens.softCharcoal}>Add to Catalog</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <Select
               placeholder="Select catalog"
               value={selectedCatalog}
               onChange={(e) => setSelectedCatalog(e.target.value)}
+              bg={designTokens.paperWhite}
+              _hover={{ borderColor: designTokens.libraryBrown }}
             >
               {catalogs.map((catalog) => (
                 <option key={catalog.id} value={catalog.id}>
@@ -417,10 +476,22 @@ const ArtifactDetailPage = () => {
             </Select>
           </ModalBody>
           <ModalFooter>
-            <Button colorScheme="blue" mr={3} onClick={handleConfirmAddToCatalog}>
+            <Button 
+              colorScheme="gray" 
+              mr={3} 
+              onClick={handleConfirmAddToCatalog}
+              bg={designTokens.libraryBrown}
+              color={designTokens.warmWhite}
+              _hover={{ bg: designTokens.softCharcoal }}
+            >
               Add
             </Button>
-            <Button variant="ghost" onClick={() => setIsAddToCatalogOpen(false)}>
+            <Button 
+              variant="ghost" 
+              onClick={() => setIsAddToCatalogOpen(false)}
+              color={designTokens.softCharcoal}
+              _hover={{ color: designTokens.libraryBrown }}
+            >
               Cancel
             </Button>
           </ModalFooter>

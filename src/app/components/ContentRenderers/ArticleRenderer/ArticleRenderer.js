@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Text,
   IconButton,
   VStack,
-  useColorModeValue,
-  Skeleton,
   Image,
   Heading,
   Link,
@@ -13,63 +11,130 @@ import {
   UnorderedList,
   OrderedList,
   Code,
+  Skeleton,
+  HStack,
+  Switch,
+  FormControl,
+  FormLabel,
+  Button,
+  useBreakpointValue,
 } from "@chakra-ui/react";
-import { FaExpand } from 'react-icons/fa';
+import { FaExpand, FaChevronLeft, FaChevronRight, FaBook, FaScroll } from 'react-icons/fa';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkImages from 'remark-images';
 import { logger } from '../../../utils/logger';
 
+// Design system colors
+const designTokens = {
+  warmWhite: "#F8F7F4",
+  softCharcoal: "#2F2F2F",
+  libraryBrown: "#8C7355",
+  paperWhite: "#EFEDE8",
+  inkGrey: "#575757",
+  shadow: "#D8D3CC"
+};
+
+// Markdown components with updated styling
 const MarkdownComponents = {
   // Headers
   h1: ({ children }) => (
-    <Heading as="h1" size="2xl" mt={8} mb={4}>
+    <Heading 
+      as="h1" 
+      size="2xl" 
+      mt={8} 
+      mb={4}
+      color={designTokens.softCharcoal}
+      fontWeight="light"
+      fontFamily="Studio Feixen Sans"
+    >
       {children}
     </Heading>
   ),
   h2: ({ children }) => (
-    <Heading as="h2" size="xl" mt={6} mb={3}>
+    <Heading 
+      as="h2" 
+      size="xl" 
+      mt={6} 
+      mb={3}
+      color={designTokens.softCharcoal}
+      fontWeight="light"
+      fontFamily="Studio Feixen Sans"
+    >
       {children}
     </Heading>
   ),
   h3: ({ children }) => (
-    <Heading as="h3" size="lg" mt={5} mb={2}>
+    <Heading 
+      as="h3" 
+      size="lg" 
+      mt={5} 
+      mb={2}
+      color={designTokens.softCharcoal}
+      fontWeight="light"
+      fontFamily="Studio Feixen Sans"
+    >
       {children}
     </Heading>
   ),
   
   // Paragraphs and text
   p: ({ children }) => (
-    <Text mb={4} lineHeight="tall">
+    <Text 
+      mb={4} 
+      lineHeight="tall"
+      color={designTokens.softCharcoal}
+      fontFamily="Fraunces"
+    >
       {children}
     </Text>
   ),
   
   // Bold and emphasis
   strong: ({ children }) => (
-    <Text as="strong" fontWeight="bold">
+    <Text 
+      as="strong" 
+      fontWeight="medium"
+      color={designTokens.softCharcoal}
+    >
       {children}
     </Text>
   ),
   em: ({ children }) => (
-    <Text as="em" fontStyle="italic">
+    <Text 
+      as="em" 
+      fontStyle="italic"
+      color={designTokens.softCharcoal}
+    >
       {children}
     </Text>
   ),
   
   // Lists
   ul: ({ children }) => (
-    <UnorderedList mb={4} pl={4} spacing={2}>
+    <UnorderedList 
+      mb={4} 
+      pl={4} 
+      spacing={2}
+      color={designTokens.softCharcoal}
+      fontFamily="Fraunces"
+    >
       {children}
     </UnorderedList>
   ),
   ol: ({ children }) => (
-    <OrderedList mb={4} pl={4} spacing={2}>
+    <OrderedList 
+      mb={4} 
+      pl={4} 
+      spacing={2}
+      color={designTokens.softCharcoal}
+      fontFamily="Fraunces"
+    >
       {children}
     </OrderedList>
   ),
   li: ({ children }) => (
-    <ListItem>
+    <ListItem lineHeight="tall">
       {children}
     </ListItem>
   ),
@@ -78,9 +143,12 @@ const MarkdownComponents = {
   a: ({ href, children }) => (
     <Link 
       href={href} 
-      color="blue.500" 
-      isExternal 
-      _hover={{ textDecoration: 'underline' }}
+      color={designTokens.libraryBrown}
+      _hover={{ 
+        color: designTokens.softCharcoal,
+        textDecoration: 'none'
+      }}
+      isExternal
     >
       {children}
     </Link>
@@ -100,9 +168,11 @@ const MarkdownComponents = {
       {alt && (
         <Text 
           fontSize="sm" 
-          color="gray.600" 
+          color={designTokens.inkGrey}
           textAlign="center" 
           mt={2}
+          fontFamily="Fraunces"
+          fontStyle="italic"
         >
           {alt}
         </Text>
@@ -113,21 +183,36 @@ const MarkdownComponents = {
   // Code blocks
   code: ({ inline, children }) => (
     inline ? (
-      <Code px={1} py={0.5} borderRadius="sm">
+      <Code 
+        px={1} 
+        py={0.5} 
+        borderRadius="sm"
+        bg={designTokens.paperWhite}
+        color={designTokens.softCharcoal}
+      >
         {children}
       </Code>
     ) : (
       <Box
         as="pre"
-        bg="gray.50"
+        bg={designTokens.paperWhite}
         p={4}
         borderRadius="md"
         overflow="auto"
         fontSize="sm"
         my={4}
         whiteSpace="pre-wrap"
+        borderColor={designTokens.shadow}
+        borderWidth="1px"
       >
-        <Code>{children}</Code>
+        <Code 
+          display="block" 
+          whiteSpace="pre" 
+          bg="transparent"
+          color={designTokens.softCharcoal}
+        >
+          {children}
+        </Code>
       </Box>
     )
   ),
@@ -136,12 +221,15 @@ const MarkdownComponents = {
   blockquote: ({ children }) => (
     <Box
       borderLeftWidth="4px"
-      borderLeftColor="gray.200"
+      borderLeftColor={designTokens.libraryBrown}
       pl={4}
       py={2}
       my={4}
-      color="gray.700"
+      color={designTokens.inkGrey}
       fontStyle="italic"
+      fontFamily="Fraunces"
+      bg={designTokens.paperWhite}
+      borderRadius="sm"
     >
       {children}
     </Box>
@@ -158,8 +246,54 @@ const ArticleRenderer = ({
 }) => {
   const [parsedContent, setParsedContent] = useState(null);
   const [parseError, setParseError] = useState(null);
-  const bgColor = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
+  const [isPaginated, setIsPaginated] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pages, setPages] = useState([]);
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
+  const contentRef = useRef(null);
+  
+  const isMobile = useBreakpointValue({ base: true, md: false });
+  const pageHeight = useBreakpointValue({ base: 500, md: 600 });
+  const wordsPerPage = useBreakpointValue({ base: 250, md: 350 });
+
+  // Minimum swipe distance (in px)
+  const minSwipeDistance = 50;
+
+  const splitContentIntoPages = (markdown) => {
+    // Split content by headers first
+    const sections = markdown.split(/(?=^#{1,6}\s)/m);
+    const pages = [];
+    let currentPage = '';
+    let currentWordCount = 0;
+  
+    sections.forEach((section) => {
+      // Split section into paragraphs
+      const paragraphs = section.split(/\n\n+/);
+      
+      paragraphs.forEach((paragraph) => {
+        const paragraphWords = paragraph.trim().split(/\s+/).length;
+        
+        // If adding this paragraph would exceed word limit, start new page
+        if (currentWordCount + paragraphWords > wordsPerPage && currentPage !== '') {
+          pages.push(currentPage.trim());
+          currentPage = '';
+          currentWordCount = 0;
+        }
+        
+        // Add paragraph to current page
+        currentPage += (currentPage ? '\n\n' : '') + paragraph.trim();
+        currentWordCount += paragraphWords;
+      });
+    });
+  
+    // Add the last page if it has content
+    if (currentPage) {
+      pages.push(currentPage.trim());
+    }
+  
+    return pages;
+  };
 
   useEffect(() => {
     const parseContent = async () => {
@@ -169,33 +303,33 @@ const ArticleRenderer = ({
           return;
         }
 
-        // If it's raw content, use pre-formatted display
+        let processedContent;
         if (isRawContent) {
-          if (typeof content === 'object') {
-            setParsedContent(JSON.stringify(content, null, 2));
-          } else {
-            setParsedContent(String(content));
+          processedContent = typeof content === 'object' ? 
+            JSON.stringify(content, null, 2) : String(content);
+        } else {
+          processedContent = typeof content === 'string' ? content :
+            content.body || content.content?.body || 
+            content.text || JSON.stringify(content, null, 2);
+        }
+
+        setParsedContent(processedContent);
+        
+        // Split content into pages if paginated
+        if (isPaginated) {
+          const words = processedContent.split(/\s+/);
+          const pageCount = Math.ceil(words.length / wordsPerPage);
+          const newPages = splitContentIntoPages(processedContent);
+          
+          for (let i = 0; i < pageCount; i++) {
+            const startIndex = i * wordsPerPage;
+            const pageWords = words.slice(startIndex, startIndex + wordsPerPage);
+            newPages.push(pageWords.join(' '));
           }
-          return;
+          
+          setPages(newPages);
+          setCurrentPage(0);
         }
-
-        // Handle string content
-        if (typeof content === 'string') {
-          setParsedContent(content);
-          return;
-        }
-
-        // Handle object content
-        if (typeof content === 'object') {
-          const textContent = content.body || 
-                            content.content?.body || 
-                            content.text || 
-                            JSON.stringify(content, null, 2);
-          setParsedContent(textContent);
-          return;
-        }
-
-        setParsedContent(String(content));
       } catch (error) {
         logger.error('Error parsing content:', error);
         setParseError(error.message);
@@ -204,89 +338,182 @@ const ArticleRenderer = ({
     };
 
     parseContent();
-  }, [content, isRawContent]);
+  }, [content, isRawContent, isPaginated, wordsPerPage]);
 
+  const handleTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    
+    if (isLeftSwipe && currentPage < pages.length - 1) {
+      setCurrentPage(prev => prev + 1);
+    }
+    if (isRightSwipe && currentPage > 0) {
+      setCurrentPage(prev => prev - 1);
+    }
+  };
+
+  const handlePageChange = (direction) => {
+    if (direction === 'next' && currentPage < pages.length - 1) {
+      setCurrentPage(prev => prev + 1);
+    } else if (direction === 'prev' && currentPage > 0) {
+      setCurrentPage(prev => prev - 1);
+    }
+  };
+
+  // Early return conditions remain the same...
   if (isLoading) {
-    return <Skeleton height="200px" />;
-  }
-
-  if (parseError) {
     return (
-      <Box 
-        p={4} 
-        bg="red.50" 
-        color="red.600" 
-        borderRadius="md"
-        borderWidth={1}
-        borderColor="red.200"
-      >
-        <Text>Error rendering content: {parseError}</Text>
-      </Box>
+      <Skeleton 
+        height="200px"
+        startColor={designTokens.paperWhite}
+        endColor={designTokens.shadow}
+      />
     );
   }
 
-  if (!parsedContent) {
+  if (parseError || !parsedContent) {
     return (
       <Box 
         p={4} 
-        bg="gray.50" 
-        color="gray.600" 
+        bg={designTokens.paperWhite}
+        color={designTokens.softCharcoal}
         borderRadius="md"
         borderWidth={1}
-        borderColor="gray.200"
+        borderColor={designTokens.shadow}
       >
-        <Text>No content available</Text>
+        <Text fontFamily="Fraunces">
+          {parseError ? `Error rendering content: ${parseError}` : 'No content available'}
+        </Text>
       </Box>
     );
   }
 
   return (
-    <Box 
-      position="relative"
-      bg={bgColor}
-      borderWidth={1}
-      borderColor={borderColor}
-      borderRadius="lg"
-      overflow="hidden"
-    >
-      <IconButton
-        icon={<FaExpand />}
-        position="absolute"
-        top={2}
-        right={2}
-        onClick={() => onFullscreen(parsedContent, !isRawContent)}
-        aria-label="View fullscreen"
-        colorScheme="blackAlpha"
-        zIndex={1}
-      />
-      
-      <VStack spacing={4} align="stretch">
-        <Box 
-          maxH={removeHeightLimit ? 'none' : maxContentHeight} 
-          overflow="auto"
-          px={6}
-          py={4}
-          className="article-content"
+    <Box position="relative">
+      <HStack spacing={4} mb={4} justify="space-between">
+        <FormControl display="flex" alignItems="center">
+          <FormLabel htmlFor="view-mode" mb="0" color={designTokens.softCharcoal}>
+            <HStack spacing={2}>
+              <FaScroll />
+              <Text>Scroll</Text>
+            </HStack>
+          </FormLabel>
+          <Switch
+            id="view-mode"
+            isChecked={isPaginated}
+            onChange={() => setIsPaginated(!isPaginated)}
+            colorScheme="brown"
+          />
+          <FormLabel htmlFor="view-mode" mb="0" ml={2} color={designTokens.softCharcoal}>
+            <HStack spacing={2}>
+              <FaBook />
+              <Text>Pages</Text>
+            </HStack>
+          </FormLabel>
+        </FormControl>
+      </HStack>
+
+      <Box 
+        position="relative"
+        bg={designTokens.warmWhite}
+        borderWidth={1}
+        borderColor={designTokens.shadow}
+        borderRadius="lg"
+        overflow="hidden"
+        ref={contentRef}
+      >
+        <IconButton
+          icon={<FaExpand />}
+          position="absolute"
+          top={2}
+          right={2}
+          onClick={() => onFullscreen(parsedContent, !isRawContent)}
+          aria-label="View fullscreen"
+          size="sm"
+          variant="ghost"
+          color={designTokens.softCharcoal}
+          _hover={{ color: designTokens.libraryBrown }}
+          zIndex={1}
+        />
+        
+        <Box
+          onTouchStart={isPaginated ? handleTouchStart : undefined}
+          onTouchMove={isPaginated ? handleTouchMove : undefined}
+          onTouchEnd={isPaginated ? handleTouchEnd : undefined}
+          height={isPaginated ? `${pageHeight}px` : 'auto'}
+          transition="all 0.3s ease"
         >
-          {isRawContent ? (
-            <Text 
-              as="pre" 
-              whiteSpace="pre-wrap" 
-              fontFamily="monospace"
-              fontSize="sm"
-            >
-              {parsedContent}
-            </Text>
-          ) : (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkImages]}
-              components={MarkdownComponents}
-            >
-              {parsedContent}
-            </ReactMarkdown>
-          )}
+          <Box 
+            maxH={isPaginated ? `${pageHeight}px` : (removeHeightLimit ? 'none' : maxContentHeight)}
+            overflow={isPaginated ? 'hidden' : 'auto'}
+            px={6}
+            py={4}
+            className="article-content"
+          >
+            {isPaginated ? (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkImages]}
+                components={MarkdownComponents}
+              >
+                {pages[currentPage]}
+              </ReactMarkdown>
+            ) : (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkImages]}
+                components={MarkdownComponents}
+              >
+                {parsedContent}
+              </ReactMarkdown>
+            )}
+          </Box>
         </Box>
-      </VStack>
+
+        {isPaginated && (
+          <HStack 
+            spacing={4} 
+            justify="center" 
+            p={4} 
+            borderTop="1px" 
+            borderColor={designTokens.shadow}
+          >
+            <Button
+              leftIcon={<FaChevronLeft />}
+              onClick={() => handlePageChange('prev')}
+              isDisabled={currentPage === 0}
+              variant="ghost"
+              color={designTokens.softCharcoal}
+              _hover={{ color: designTokens.libraryBrown }}
+            >
+              Previous
+            </Button>
+            <Text color={designTokens.inkGrey} fontFamily="Fraunces">
+              Page {currentPage + 1} of {pages.length}
+            </Text>
+            <Button
+              rightIcon={<FaChevronRight />}
+              onClick={() => handlePageChange('next')}
+              isDisabled={currentPage === pages.length - 1}
+              variant="ghost"
+              color={designTokens.softCharcoal}
+              _hover={{ color: designTokens.libraryBrown }}
+            >
+              Next
+            </Button>
+          </HStack>
+        )}
+      </Box>
     </Box>
   );
 };
