@@ -28,7 +28,6 @@ const WebsiteNavigation = () => {
   const navItems = [
     { name: 'About', path: '/about' },
     { name: 'Features', path: '/features' },
-    { name: 'Community', path: '/community' },
   ];
 
   return (
