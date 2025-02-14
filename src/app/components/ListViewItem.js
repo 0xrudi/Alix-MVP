@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSelector } from 'react-redux';
 import { 
   Flex, 
   Text, 
@@ -11,21 +12,35 @@ import {
   Skeleton,
 } from "@chakra-ui/react";
 import { FaTrash, FaExclamationTriangle, FaExternalLinkAlt } from 'react-icons/fa';
-import { getImageUrl } from './../utils/web3Utils';
 import { motion } from 'framer-motion';
+import { getImageUrl } from '../utils/web3Utils';
 
 const MotionFlex = motion(Flex);
+
+// Helper function to truncate addresses
+const truncateAddress = (address) => {
+  if (!address) return '';
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+};
 
 const ListViewItem = ({ 
   nft, 
   isSelected, 
   onSelect, 
-  onRemove, 
+  onMarkAsSpam, 
   isSpamFolder,
-  onClick 
+  onClick,
+  isSelectMode = false 
 }) => {
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
   const [isLoading, setIsLoading] = useState(true);
+  const wallets = useSelector(state => state.wallets.list);
+
+  // Get wallet nickname or truncated address
+  const getWalletDisplay = useCallback(() => {
+    const wallet = wallets.find(w => w.id === nft.walletId);
+    return wallet ? (wallet.nickname || truncateAddress(wallet.address)) : 'Unknown Wallet';
+  }, [wallets, nft.walletId]);
 
   useEffect(() => {
     let mounted = true;
@@ -74,13 +89,15 @@ const ListViewItem = ({
       }}
       role="listitem"
     >
-      <Checkbox 
-        isChecked={isSelected} 
-        onChange={onSelect}
-        mr={4}
-        borderColor="var(--shadow)"
-        colorScheme="brown"
-      />
+      {isSelectMode && (
+        <Checkbox 
+          isChecked={isSelected} 
+          onChange={onSelect}
+          mr={4}
+          borderColor="var(--shadow)"
+          colorScheme="brown"
+        />
+      )}
 
       <Skeleton 
         isLoaded={!isLoading} 
@@ -122,8 +139,17 @@ const ListViewItem = ({
             fontFamily="Inter"
             color="var(--ink-grey)"
           >
-            {nft.network || 'Unknown Network'}
+            {getWalletDisplay()}
           </Text>
+          {nft.network && (
+            <Text
+              fontSize="sm"
+              fontFamily="Inter"
+              color="var(--ink-grey)"
+            >
+              {nft.network}
+            </Text>
+          )}
           <Text
             fontSize="sm"
             fontFamily="Fraunces"
@@ -155,7 +181,7 @@ const ListViewItem = ({
         >
           <IconButton
             icon={isSpamFolder ? <FaExclamationTriangle /> : <FaTrash />}
-            onClick={onRemove}
+            onClick={onMarkAsSpam}
             aria-label={isSpamFolder ? "Remove from Spam" : "Mark as Spam"}
             size="sm"
             variant="ghost"

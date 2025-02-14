@@ -1,5 +1,6 @@
 // src/components/CatalogView/CatalogViewPage.jsx
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   VStack,
   Box,
@@ -38,6 +39,7 @@ const CatalogViewPage = ({
   onRemoveNFTs, 
   onSpamToggle 
 }) => {
+  const navigate = useNavigate();
   const nfts = useSelector(state => state.nfts.byWallet);
   const [viewMode, setViewMode] = useState(VIEW_MODES.MEDIUM);
   const [searchTerm, setSearchTerm] = useState('');
@@ -131,6 +133,10 @@ const CatalogViewPage = ({
 
     return matchedNFTs;
   }, [catalog?.nftIds, nfts, searchTerm, activeFilters, activeSort]);
+
+  const handleNFTClick = (nft) => {
+    navigate('/app/artifact', { state: { nft } });
+  };
 
   const handleNFTSelect = (nft) => {
     setSelectedNFTs(prev => {
@@ -301,51 +307,53 @@ const CatalogViewPage = ({
 
       {/* Content Section */}
       <Box>
-        {viewMode === VIEW_MODES.LIST ? (
-          <VStack spacing={2} align="stretch">
-            {filteredNFTs.map((nft) => (
-              <ListViewItem
-                key={`${nft.contract?.address}-${nft.id?.tokenId}`}
-                nft={nft}
-                isSelected={selectedNFTs.some(selected => 
-                  selected.id?.tokenId === nft.id?.tokenId &&
-                  selected.contract?.address === nft.contract?.address
-                )}
-                onSelect={() => handleNFTSelect(nft)}
-                onMarkAsSpam={() => onSpamToggle(nft)}
-                isSpamFolder={catalog.id === 'spam'}
-              />
-            ))}
-          </VStack>
-        ) : (
-          <SimpleGrid 
-            columns={{ 
-              base: viewMode === VIEW_MODES.LARGE ? 1 : 2,
-              sm: viewMode === VIEW_MODES.LARGE ? 2 : 3,
-              md: viewMode === VIEW_MODES.LARGE ? 3 : 4,
-              lg: viewMode === VIEW_MODES.LARGE ? 4 : 5
-            }}
-            spacing={4}
-          >
-            {filteredNFTs.map((nft) => (
-              <NFTCard
-                key={`${nft.contract?.address}-${nft.id?.tokenId}`}
-                nft={nft}
-                isSelected={selectedNFTs.some(selected => 
-                  selected.id?.tokenId === nft.id?.tokenId &&
-                  selected.contract?.address === nft.contract?.address
-                )}
-                onSelect={() => handleNFTSelect(nft)}
-                onMarkAsSpam={() => onSpamToggle(nft)}
-                isSpamFolder={catalog.id === 'spam'}
-                isSelectMode={isSelectMode}
-                onClick={isSelectMode ? () => handleNFTSelect(nft) : null}
-                size={viewMode}
-                catalogType={catalog.type}
-              />
-            ))}
-          </SimpleGrid>
-        )}
+      {viewMode === VIEW_MODES.LIST ? (
+        <VStack spacing={2} align="stretch">
+          {filteredNFTs.map((nft) => (
+            <ListViewItem
+              key={`${nft.contract?.address}-${nft.id?.tokenId}`}
+              nft={nft}
+              isSelected={selectedNFTs.some(selected => 
+                selected.id?.tokenId === nft.id?.tokenId &&
+                selected.contract?.address === nft.contract?.address
+              )}
+              onSelect={() => handleNFTSelect(nft)}
+              onMarkAsSpam={() => onSpamToggle(nft)}
+              isSpamFolder={catalog.id === 'spam'}
+              onClick={() => handleNFTClick(nft)}
+              isSelectMode={isSelectMode}
+            />
+          ))}
+        </VStack>
+      ) : (
+        <SimpleGrid 
+          columns={{ 
+            base: viewMode === VIEW_MODES.LARGE ? 1 : 2,
+            sm: viewMode === VIEW_MODES.LARGE ? 2 : 3,
+            md: viewMode === VIEW_MODES.LARGE ? 3 : 4,
+            lg: viewMode === VIEW_MODES.LARGE ? 4 : 5
+          }}
+          spacing={4}
+        >
+          {filteredNFTs.map((nft) => (
+            <NFTCard
+              key={`${nft.contract?.address}-${nft.id?.tokenId}`}
+              nft={nft}
+              isSelected={selectedNFTs.some(selected => 
+                selected.id?.tokenId === nft.id?.tokenId &&
+                selected.contract?.address === nft.contract?.address
+              )}
+              onSelect={() => handleNFTSelect(nft)}
+              onMarkAsSpam={() => onSpamToggle(nft)}
+              isSpamFolder={catalog.id === 'spam'}
+              isSelectMode={isSelectMode}
+              onClick={isSelectMode ? () => handleNFTSelect(nft) : () => handleNFTClick(nft)}
+              size={viewMode}
+              catalogType={catalog.type}
+            />
+          ))}
+        </SimpleGrid>
+      )}
 
         {filteredNFTs.length === 0 && (
           <Box 
