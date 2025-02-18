@@ -45,6 +45,7 @@ import { cardSizes } from './constants/sizes';
 
 // Components
 import NFTCard from './NFTCard';
+import NFTGrid from './NFTGrid';
 import LibraryControls from './LibraryControls';
 import CatalogViewPage from './CatalogViewPage';
 import CatalogCard from './CatalogCard';
@@ -157,6 +158,8 @@ const LibraryPage = () => {
   const [isEditCatalogModalOpen, setIsEditCatalogModalOpen] = useState(false);
   const [isEditFolderModalOpen, setIsEditFolderModalOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState(null);
+  const [viewMode, setViewMode] = useState('medium');
+
 
   // Initialize tab from URL if present
   useEffect(() => {
@@ -250,6 +253,45 @@ const LibraryPage = () => {
       "NFTs Removed",
       `${nftsToRemove.length} NFT(s) removed from ${catalog.name}`
     );
+  };
+
+  const handleSearch = (value) => {
+    setSearchTerm(value);
+    // Convert nested nfts object structure into flat array before filtering
+    if (!value.trim()) {
+      const allNFTs = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
+        Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
+          const combined = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
+          return combined.map(nft => ({
+            ...nft,
+            walletId,
+            network
+          }));
+        })
+      );
+      setFilteredNFTs(allNFTs);
+    } else {
+      const filtered = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
+        Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
+          const combined = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
+          return combined
+            .filter(nft => 
+              nft.title?.toLowerCase().includes(value.toLowerCase()) ||
+              nft.contract?.name?.toLowerCase().includes(value.toLowerCase())
+            )
+            .map(nft => ({
+              ...nft,
+              walletId,
+              network
+            }));
+        })
+      );
+      setFilteredNFTs(filtered);
+    }
+  };
+  
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode);
   };
 
   const handleClearSelections = useCallback(() => {
@@ -608,40 +650,27 @@ return (
                 isSelectMode={isSelectMode}
                 onSelectModeChange={setIsSelectMode}
                 onClearSelections={handleClearSelections}
-              />
-
-              <Input
-                placeholder="Search NFTs..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                searchTerm={searchTerm}
+                onSearchChange={handleSearch}
+                viewMode={viewMode}
+                onViewModeChange={handleViewModeChange}
               />
 
               <Text fontSize="sm" color="gray.500">
                 Showing {filteredAndSortedNFTs.length} of {totalNFTs} NFTs
               </Text>
 
-              <SimpleGrid 
-                columns={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }}
-                spacing={4}
-                w="100%"
-              >
-                {filteredAndSortedNFTs.map((nft) => (
-                  <NFTCard
-                    key={`${nft.contract?.address}-${nft.id?.tokenId}-${nft.network}`}
-                    nft={nft}
-                    isSelected={selectedNFTs.some(selected => 
-                      selected.id?.tokenId === nft.id?.tokenId && 
-                      selected.contract?.address === nft.contract?.address
-                    )}
-                    onSelect={handleNFTSelect}
-                    onMarkAsSpam={handleSpamToggle}
-                    isSpamFolder={false}
-                    isSelectMode={isSelectMode}
-                    onClick={handleNFTClick}
-                    walletNickname={getWalletNickname(nft.walletId)}
-                  />
-                ))}
-              </SimpleGrid>
+              <NFTGrid
+                nfts={filteredAndSortedNFTs}
+                selectedNFTs={selectedNFTs}
+                onNFTSelect={handleNFTSelect}
+                onMarkAsSpam={handleSpamToggle}
+                isSpamFolder={false}
+                isSelectMode={isSelectMode}
+                onNFTClick={handleNFTClick}
+                viewMode={viewMode}
+                showControls={false} // Since we're using LibraryControls separately
+              />
             </VStack>
           </TabPanel>
           

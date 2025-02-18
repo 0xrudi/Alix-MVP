@@ -1,20 +1,40 @@
 import React, { useState } from 'react';
 import { Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../../../context/auth/AuthContext';
+import { supabase } from '../../../app/utils/supabase';
+import { logger } from '../../../app/utils/logger';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
+    setSuccess(false);
     
-    // Simulating API call - replace with actual auth logic
-    setTimeout(() => {
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/app/profile`
+        }
+      });
+
+      if (error) throw error;
+
+      setSuccess(true);
+      logger.log('Magic link sent successfully to:', email);
+    } catch (err) {
+      logger.error('Error sending magic link:', err);
+      setError(err.message);
+    } finally {
       setIsLoading(false);
-      // Add your authentication logic here
-    }, 1500);
+    }
   };
 
   return (
@@ -78,19 +98,33 @@ const LoginPage = () => {
                            rounded-lg bg-white text-[#2F2F2F] placeholder-[#575757]
                            focus:outline-none focus:ring-2 focus:ring-[#8C7355] focus:border-transparent"
                   placeholder="Enter your email"
+                  disabled={isLoading || success}
                 />
               </div>
             </div>
 
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
+                Magic link sent! Check your email to sign in.
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || success || !email}
               className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg
                          text-white bg-[#8C7355] hover:bg-[#755E45] focus:outline-none focus:ring-2 
                          focus:ring-offset-2 focus:ring-[#8C7355] transition-colors duration-200
-                         ${isLoading ? 'opacity-75 cursor-not-allowed' : ''}`}
+                         ${(isLoading || success) ? 'opacity-75 cursor-not-allowed' : ''}`}
             >
-              {isLoading ? 'Sending magic link...' : 'Sign In'}
+              {isLoading ? 'Sending magic link...' : 
+               success ? 'Magic Link Sent' : 'Sign In'}
             </button>
           </form>
 

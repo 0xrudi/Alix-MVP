@@ -75,7 +75,7 @@ const AboutPage = () => {
           <div className="max-w-3xl mx-auto text-center space-y-8">
             <h2 className="text-3xl font-bold text-[#2F2F2F]">Our Mission</h2>
             <p className="text-lg text-[#575757] leading-relaxed">
-              We're on a mission to create the most thoughtful and peaceful way to
+              We're on a mission to create a thoughtful and useful way to
               organize your digital artifacts. In a world of endless social feeds
               and noisy platforms, we're building a quiet space for personal
               curation and meaningful engagement with your digital collection.

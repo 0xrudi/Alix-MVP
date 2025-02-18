@@ -13,8 +13,16 @@ import {
   Box,
 } from "@chakra-ui/react";
 import { FaSearch } from 'react-icons/fa';
-import NFTCard from '../NFTCard';
-import { filterAndSortNFTs } from '../../utils/nftUtils';
+import NFTCard from './NFTCard';
+import ListViewItem from './ListViewItem';
+import { filterAndSortNFTs } from '../utils/nftUtils';
+
+const VIEW_MODES = {
+  LIST: 'list',
+  SMALL: 'small',
+  MEDIUM: 'medium',
+  LARGE: 'large'
+};
 
 const NFTGrid = ({ 
   nfts = [], 
@@ -24,6 +32,7 @@ const NFTGrid = ({
   isSpamFolder = false,
   isSelectMode = false,
   onNFTClick,
+  viewMode = VIEW_MODES.MEDIUM,
   size = "medium",
   showControls = true
 }) => {
@@ -58,95 +67,117 @@ const NFTGrid = ({
 
   const currentColumns = gridColumns[size] || gridColumns.medium;
 
+  // No items found state
+  if (!filteredAndSortedNFTs.length) {
+    return (
+      <Box 
+        textAlign="center" 
+        py={12}
+        color="var(--ink-grey)"
+      >
+        <Text 
+          fontFamily="Fraunces" 
+          fontSize="lg"
+        >
+          No items found
+        </Text>
+      </Box>
+    );
+  }
+
   return (
     <VStack spacing={6} align="stretch" w="100%">
       {showControls && (
-        <>
-          <Box
-            bg="var(--paper-white)"
-            borderWidth="1px"
-            borderColor="var(--shadow)"
-            borderRadius="md"
-            p={4}
-          >
-            <VStack spacing={4}>
-              <HStack spacing={4} width="100%">
-                <InputGroup flex={1}>
-                  <InputLeftElement pointerEvents="none">
-                    <Icon as={FaSearch} color="var(--ink-grey)" />
-                  </InputLeftElement>
-                  <Input
-                    placeholder="Search items..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    bg="white"
-                    borderColor="var(--shadow)"
-                    _placeholder={{ color: "var(--ink-grey)" }}
-                    fontFamily="Inter"
-                  />
-                </InputGroup>
-                <Select 
-                  value={sortOption} 
-                  onChange={(e) => setSortOption(e.target.value)}
-                  maxW="200px"
+        <Box
+          bg="var(--paper-white)"
+          borderWidth="1px"
+          borderColor="var(--shadow)"
+          borderRadius="md"
+          p={4}
+        >
+          <VStack spacing={4}>
+            <HStack spacing={4} width="100%">
+              <InputGroup flex={1}>
+                <InputLeftElement pointerEvents="none">
+                  <Icon as={FaSearch} color="var(--ink-grey)" />
+                </InputLeftElement>
+                <Input
+                  placeholder="Search items..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                   bg="white"
                   borderColor="var(--shadow)"
+                  _placeholder={{ color: "var(--ink-grey)" }}
                   fontFamily="Inter"
-                >
-                  <option value="title">Sort by Title</option>
-                  <option value="contractName">Sort by Contract</option>
-                  <option value="network">Sort by Network</option>
-                </Select>
-              </HStack>
-
-              <Text 
-                fontSize="sm" 
-                color="var(--ink-grey)"
-                fontFamily="Fraunces"
+                />
+              </InputGroup>
+              <Select 
+                value={sortOption} 
+                onChange={(e) => setSortOption(e.target.value)}
+                maxW="200px"
+                bg="white"
+                borderColor="var(--shadow)"
+                fontFamily="Inter"
               >
-                Showing {filteredAndSortedNFTs.length} of {nfts.length} items
-              </Text>
-            </VStack>
-          </Box>
-        </>
+                <option value="title">Sort by Title</option>
+                <option value="contractName">Sort by Contract</option>
+                <option value="network">Sort by Network</option>
+              </Select>
+            </HStack>
+
+            <Text 
+              fontSize="sm" 
+              color="var(--ink-grey)"
+              fontFamily="Fraunces"
+            >
+              Showing {filteredAndSortedNFTs.length} of {nfts.length} items
+            </Text>
+          </VStack>
+        </Box>
       )}
       
-      <SimpleGrid 
-        columns={currentColumns}
-        spacing={4}
-        width="100%"
-      >
-        {filteredAndSortedNFTs.map((nft) => (
-          <NFTCard
-            key={`${nft.contract?.address}-${nft.id?.tokenId}-${nft.network}`}
-            nft={nft}
-            isSelected={selectedNFTs.some(selected => 
-              selected.id?.tokenId === nft.id?.tokenId && 
-              selected.contract?.address === nft.contract?.address
-            )}
-            onSelect={() => onNFTSelect(nft)}
-            onMarkAsSpam={() => onMarkAsSpam(nft)}
-            isSpamFolder={isSpamFolder}
-            isSelectMode={isSelectMode}
-            onClick={() => onNFTClick(nft)}
-            size={size}
-          />
-        ))}
-      </SimpleGrid>
-
-      {filteredAndSortedNFTs.length === 0 && (
-        <Box 
-          textAlign="center" 
-          py={12}
-          color="var(--ink-grey)"
+      {viewMode === VIEW_MODES.LIST ? (
+        <VStack spacing={2} align="stretch">
+          {filteredAndSortedNFTs.map((nft) => (
+            <ListViewItem
+              key={`${nft.contract?.address}-${nft.id?.tokenId}`}
+              nft={nft}
+              isSelected={selectedNFTs.some(selected => 
+                selected.id?.tokenId === nft.id?.tokenId &&
+                selected.contract?.address === nft.contract?.address
+              )}
+              onSelect={() => onNFTSelect(nft)}
+              onMarkAsSpam={() => onMarkAsSpam(nft)}
+              isSpamFolder={isSpamFolder}
+              onClick={() => onNFTClick(nft)}
+              isSelectMode={isSelectMode}  // Ensure this prop is passed through
+            />
+          ))}
+        </VStack>
+      ) : (
+        // Grid View
+        <SimpleGrid 
+          columns={currentColumns}
+          spacing={4}
+          width="100%"
         >
-          <Text 
-            fontFamily="Fraunces" 
-            fontSize="lg"
-          >
-            No items found
-          </Text>
-        </Box>
+          {filteredAndSortedNFTs.map((nft) => (
+            <NFTCard
+              key={`${nft.contract?.address}-${nft.id?.tokenId}-${nft.network}`}
+              nft={nft}
+              isSelected={selectedNFTs.some(selected => 
+                selected.id?.tokenId === nft.id?.tokenId && 
+                selected.contract?.address === nft.contract?.address
+              )}
+              onSelect={() => onNFTSelect(nft)}
+              onMarkAsSpam={() => onMarkAsSpam(nft)}
+              isSpamFolder={isSpamFolder}
+              isSelectMode={isSelectMode}
+              onClick={() => onNFTClick(nft)}
+              size={viewMode.toLowerCase()}
+            />
+          ))}
+        </SimpleGrid>
       )}
     </VStack>
   );

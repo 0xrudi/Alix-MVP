@@ -18,6 +18,8 @@ import {
   InputLeftElement,
   ButtonGroup,
   Icon,
+  Portal,
+  Text,
 } from "@chakra-ui/react";
 import { 
   FaFilter, 
@@ -29,6 +31,11 @@ import {
   FaThLarge,
   FaCheckSquare
 } from 'react-icons/fa';
+
+const truncateAddress = (address) => {
+  if (!address) return '';
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+};
 
 const VIEW_MODES = {
   LIST: 'list',
@@ -63,13 +70,14 @@ const LibraryControls = ({
   onClearSelections,
   viewMode,
   onViewModeChange,
-  searchTerm,
+  searchTerm = '',
   onSearchChange,
-  showViewModes = true, // Optional prop to show/hide view mode controls
-  containerStyle = {}, // Allow custom styling of container
+  showViewModes = true,
+  containerStyle = {},
 }) => {
   const [activeFilters, setActiveFilters] = useState({});
   const [activeSort, setActiveSort] = useState({ field: 'name', ascending: true });
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
   // Handle filter changes
   const handleFilterAdd = (category, value) => {
@@ -118,6 +126,19 @@ const LibraryControls = ({
     onSelectModeChange(!isSelectMode);
   };
 
+  // Handle search input changes
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    onSearchChange?.(value);
+  };
+
+  // Handle view mode changes
+  const handleViewModeChange = (mode) => {
+    if (onViewModeChange) {
+      onViewModeChange(mode);
+    }
+  };
+
   return (
     <Box 
       bg="var(--paper-white)"
@@ -155,70 +176,86 @@ const LibraryControls = ({
             </MenuButton>
             <MenuList>
               {wallets?.length > 0 && (
-                <Menu placement="right-start">
-                  <MenuButton as={MenuItem}>Wallet</MenuButton>
-                  <MenuList>
-                    {wallets.map(wallet => (
-                      <MenuItem
-                        key={wallet.id}
-                        onClick={() => handleFilterAdd('wallet', wallet.nickname || wallet.address)}
-                      >
-                        {wallet.nickname || wallet.address}
-                      </MenuItem>
-                    ))}
-                  </MenuList>
+                <Menu closeOnSelect={false} placement="right-start">
+                  <MenuButton as={MenuItem}>
+                    <Text>Wallet</Text>
+                  </MenuButton>
+                  <Portal>
+                    <MenuList>
+                      {wallets.map(wallet => (
+                        <MenuItem
+                          key={wallet.id}
+                          onClick={() => handleFilterAdd('wallet', wallet.nickname || wallet.address)}
+                        >
+                          {wallet.nickname || truncateAddress(wallet.address)}
+                        </MenuItem>
+                      ))}
+                    </MenuList>
+                  </Portal>
                 </Menu>
               )}
               
               {contracts?.length > 0 && (
-                <Menu placement="right-start">
-                  <MenuButton as={MenuItem}>Contract</MenuButton>
-                  <MenuList>
-                    {contracts.map(contract => (
-                      <MenuItem
-                        key={contract}
-                        onClick={() => handleFilterAdd('contract', contract)}
-                      >
-                        {contract}
-                      </MenuItem>
-                    ))}
-                  </MenuList>
+                <Menu closeOnSelect={false} placement="right-start">
+                  <MenuButton as={MenuItem}>
+                    <Text>Contract</Text>
+                  </MenuButton>
+                  <Portal>
+                    <MenuList maxHeight="300px" overflowY="auto">
+                      {contracts.map(contract => (
+                        <MenuItem
+                          key={contract}
+                          onClick={() => handleFilterAdd('contract', contract)}
+                        >
+                          {contract}
+                        </MenuItem>
+                      ))}
+                    </MenuList>
+                  </Portal>
                 </Menu>
               )}
 
-              {networks?.length > 0 && (
-                <Menu placement="right-start">
-                  <MenuButton as={MenuItem}>Network</MenuButton>
-                  <MenuList>
-                    {networks.map(network => (
-                      <MenuItem
-                        key={network}
-                        onClick={() => handleFilterAdd('network', network)}
-                      >
-                        {network}
-                      </MenuItem>
-                    ))}
-                  </MenuList>
-                </Menu>
-              )}
+    {networks?.length > 0 && (
+      <Menu closeOnSelect={false} placement="right-start">
+        <MenuButton as={MenuItem}>
+          <Text>Network</Text>
+        </MenuButton>
+        <Portal>
+          <MenuList maxHeight="300px" overflowY="auto">
+            {networks.map(network => (
+              <MenuItem
+                key={network}
+                onClick={() => handleFilterAdd('network', network)}
+              >
+                {network}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </Portal>
+      </Menu>
+    )}
 
-              {mediaTypes?.length > 0 && (
-                <Menu placement="right-start">
-                  <MenuButton as={MenuItem}>Media Type</MenuButton>
-                  <MenuList>
-                    {mediaTypes.map(type => (
-                      <MenuItem
-                        key={type}
-                        onClick={() => handleFilterAdd('mediaType', type)}
-                      >
-                        {type}
-                      </MenuItem>
-                    ))}
-                  </MenuList>
-                </Menu>
-              )}
-            </MenuList>
-          </Menu>
+    {mediaTypes?.length > 0 && (
+      <Menu closeOnSelect={false} placement="right-start">
+        <MenuButton as={MenuItem}>
+          <Text>Media Type</Text>
+        </MenuButton>
+        <Portal>
+          <MenuList>
+            {mediaTypes.map(type => (
+              <MenuItem
+                key={type}
+                onClick={() => handleFilterAdd('mediaType', type)}
+              >
+                {type}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </Portal>
+      </Menu>
+    )}
+  </MenuList>
+</Menu>
 
           {/* Sort Menu */}
           <Menu>
@@ -252,7 +289,7 @@ const LibraryControls = ({
             <ButtonGroup isAttached variant="outline">
               <Button
                 leftIcon={<FaList />}
-                onClick={() => typeof onViewModeChange === 'function' && onViewModeChange(VIEW_MODES.LIST)}
+                onClick={() => handleViewModeChange(VIEW_MODES.LIST)}
                 isActive={viewMode === VIEW_MODES.LIST}
                 bg={viewMode === VIEW_MODES.LIST ? 'var(--highlight)' : 'white'}
                 color="var(--ink-grey)"
@@ -263,7 +300,7 @@ const LibraryControls = ({
               </Button>
               <Button
                 leftIcon={<FaThLarge />}
-                onClick={() => typeof onViewModeChange === 'function' && onViewModeChange(VIEW_MODES.SMALL)}
+                onClick={() => handleViewModeChange(VIEW_MODES.SMALL)}
                 isActive={viewMode === VIEW_MODES.SMALL}
                 bg={viewMode === VIEW_MODES.SMALL ? 'var(--highlight)' : 'white'}
                 color="var(--ink-grey)"
@@ -274,7 +311,7 @@ const LibraryControls = ({
               </Button>
               <Button
                 leftIcon={<FaThLarge />}
-                onClick={() => typeof onViewModeChange === 'function' && onViewModeChange(VIEW_MODES.MEDIUM)}
+                onClick={() => handleViewModeChange(VIEW_MODES.MEDIUM)}
                 isActive={viewMode === VIEW_MODES.MEDIUM}
                 bg={viewMode === VIEW_MODES.MEDIUM ? 'var(--highlight)' : 'white'}
                 color="var(--ink-grey)"
@@ -285,7 +322,7 @@ const LibraryControls = ({
               </Button>
               <Button
                 leftIcon={<FaThLarge />}
-                onClick={() => typeof onViewModeChange === 'function' && onViewModeChange(VIEW_MODES.LARGE)}
+                onClick={() => handleViewModeChange(VIEW_MODES.LARGE)}
                 isActive={viewMode === VIEW_MODES.LARGE}
                 bg={viewMode === VIEW_MODES.LARGE ? 'var(--highlight)' : 'white'}
                 color="var(--ink-grey)"
@@ -306,7 +343,7 @@ const LibraryControls = ({
           <Input
             placeholder="Search items..."
             value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={handleSearchChange}
             bg="white"
             borderColor="var(--shadow)"
             fontFamily="Inter"
@@ -316,33 +353,36 @@ const LibraryControls = ({
 
         {/* Active Filters */}
         {Object.keys(activeFilters).length > 0 && (
-          <Wrap spacing={2}>
-            {Object.entries(activeFilters).map(([category, values]) => 
-              values.map(value => (
-                <WrapItem key={`${category}-${value}`}>
-                  <Tag 
-                    size="md" 
-                    borderRadius="full" 
-                    variant="subtle" 
-                    bg="var(--highlight)"
-                    color="var(--ink-grey)"
-                  >
-                    <TagLabel>{`${FILTER_CATEGORIES[category]}: ${value}`}</TagLabel>
-                    <TagCloseButton onClick={() => handleFilterRemove(category, value)} />
-                  </Tag>
-                </WrapItem>
-              ))
-            )}
-            <WrapItem>
+          <Wrap spacing={2} align="center" justify="flex-start" width="100%">
+            <HStack width="100%" justify="space-between" align="center">
+              <Wrap spacing={2}>
+                {Object.entries(activeFilters).map(([category, values]) => 
+                  values.map(value => (
+                    <WrapItem key={`${category}-${value}`}>
+                      <Tag 
+                        size="md" 
+                        borderRadius="full" 
+                        variant="subtle" 
+                        bg="var(--highlight)"
+                        color="var(--ink-grey)"
+                      >
+                        <TagLabel>{`${FILTER_CATEGORIES[category]}: ${value}`}</TagLabel>
+                        <TagCloseButton onClick={() => handleFilterRemove(category, value)} />
+                      </Tag>
+                    </WrapItem>
+                  ))
+                )}
+              </Wrap>
               <Button
                 size="sm"
                 variant="ghost"
                 colorScheme="red"
                 onClick={handleClearFilters}
+                ml="auto"
               >
                 Clear All
               </Button>
-            </WrapItem>
+            </HStack>
           </Wrap>
         )}
       </VStack>
