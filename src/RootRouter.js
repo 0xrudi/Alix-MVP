@@ -15,6 +15,7 @@ import ContactPage from './website/pages/ContactPage';
 import FeaturesPage from './website/pages/FeaturesPage';
 import AboutPage from './website/pages/AboutPage';
 import LoginPage from './website/pages/auth/LoginPage';
+import RoadmapPage from './website/pages/RoadmapPage';
 
 // App pages
 import HomePage from './app/components/HomePage';
@@ -54,6 +55,7 @@ const RootRouter = () => {
         <Route path="contact" element={<ContactPage />} />
         <Route path="features" element={<FeaturesPage />} />
         <Route path="about" element={<AboutPage />} />
+        <Route path="roadmap" element={<RoadmapPage />} />
       </Route>
 
       {/* App Routes - No longer protected */}
