@@ -1,28 +1,19 @@
-// src/components/NFTGrid/NFTGrid.jsx
 import React, { useState } from 'react';
 import { 
   SimpleGrid, 
   VStack, 
-  HStack, 
   Text, 
-  Select, 
-  Input, 
-  InputGroup, 
-  InputLeftElement,
-  Icon,
   Box,
 } from "@chakra-ui/react";
-import { FaSearch } from 'react-icons/fa';
 import NFTCard from './NFTCard';
 import ListViewItem from './ListViewItem';
 import { filterAndSortNFTs } from '../utils/nftUtils';
 
 const VIEW_MODES = {
   LIST: 'list',
-  SMALL: 'small',
-  MEDIUM: 'medium',
-  LARGE: 'large'
+  GRID: 'grid'
 };
+
 
 const NFTGrid = ({ 
   nfts = [], 
@@ -32,8 +23,7 @@ const NFTGrid = ({
   isSpamFolder = false,
   isSelectMode = false,
   onNFTClick,
-  viewMode = VIEW_MODES.MEDIUM,
-  size = "medium",
+  viewMode = VIEW_MODES.GRID,
   showControls = true
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,30 +32,12 @@ const NFTGrid = ({
   const filteredAndSortedNFTs = filterAndSortNFTs(nfts, searchTerm, sortOption);
 
   const gridColumns = {
-    small: {
-      base: 2,
-      sm: 3,
-      md: 4,
-      lg: 6,
-      xl: 8
-    },
-    medium: {
-      base: 1,
-      sm: 2,
-      md: 3,
-      lg: 4,
-      xl: 5
-    },
-    large: {
-      base: 1,
-      sm: 2,
-      md: 2,
-      lg: 3,
-      xl: 4
-    }
+    base: viewMode === VIEW_MODES.GRID ? 1 : 1,
+    sm: viewMode === VIEW_MODES.GRID ? 2 : 1,
+    md: viewMode === VIEW_MODES.GRID ? 3 : 1,
+    lg: viewMode === VIEW_MODES.GRID ? 4 : 1,
+    xl: viewMode === VIEW_MODES.GRID ? 5 : 1
   };
-
-  const currentColumns = gridColumns[size] || gridColumns.medium;
 
   // No items found state
   if (!filteredAndSortedNFTs.length) {
@@ -86,56 +58,7 @@ const NFTGrid = ({
   }
 
   return (
-    <VStack spacing={6} align="stretch" w="100%">
-      {showControls && (
-        <Box
-          bg="var(--paper-white)"
-          borderWidth="1px"
-          borderColor="var(--shadow)"
-          borderRadius="md"
-          p={4}
-        >
-          <VStack spacing={4}>
-            <HStack spacing={4} width="100%">
-              <InputGroup flex={1}>
-                <InputLeftElement pointerEvents="none">
-                  <Icon as={FaSearch} color="var(--ink-grey)" />
-                </InputLeftElement>
-                <Input
-                  placeholder="Search items..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  bg="white"
-                  borderColor="var(--shadow)"
-                  _placeholder={{ color: "var(--ink-grey)" }}
-                  fontFamily="Inter"
-                />
-              </InputGroup>
-              <Select 
-                value={sortOption} 
-                onChange={(e) => setSortOption(e.target.value)}
-                maxW="200px"
-                bg="white"
-                borderColor="var(--shadow)"
-                fontFamily="Inter"
-              >
-                <option value="title">Sort by Title</option>
-                <option value="contractName">Sort by Contract</option>
-                <option value="network">Sort by Network</option>
-              </Select>
-            </HStack>
-
-            <Text 
-              fontSize="sm" 
-              color="var(--ink-grey)"
-              fontFamily="Fraunces"
-            >
-              Showing {filteredAndSortedNFTs.length} of {nfts.length} items
-            </Text>
-          </VStack>
-        </Box>
-      )}
-      
+    <VStack spacing={4} align="stretch" w="100%">
       {viewMode === VIEW_MODES.LIST ? (
         <VStack spacing={2} align="stretch">
           {filteredAndSortedNFTs.map((nft) => (
@@ -150,14 +73,13 @@ const NFTGrid = ({
               onMarkAsSpam={() => onMarkAsSpam(nft)}
               isSpamFolder={isSpamFolder}
               onClick={() => onNFTClick(nft)}
-              isSelectMode={isSelectMode}  // Ensure this prop is passed through
+              isSelectMode={isSelectMode}
             />
           ))}
         </VStack>
       ) : (
-        // Grid View
         <SimpleGrid 
-          columns={currentColumns}
+          columns={gridColumns}
           spacing={4}
           width="100%"
         >
@@ -174,7 +96,7 @@ const NFTGrid = ({
               isSpamFolder={isSpamFolder}
               isSelectMode={isSelectMode}
               onClick={() => onNFTClick(nft)}
-              size={viewMode.toLowerCase()}
+              viewMode={VIEW_MODES.GRID}
             />
           ))}
         </SimpleGrid>
