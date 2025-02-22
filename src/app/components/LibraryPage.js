@@ -11,7 +11,6 @@ import {
   TabPanel,
   SimpleGrid,
   Button,
-  Input,
   Icon,
   Flex,
   Progress,
@@ -62,6 +61,11 @@ import { useCustomToast } from '../utils/toastUtils';
 import { useErrorHandler } from '../utils/errorUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { StyledButton, StyledContainer } from '../styles/commonStyles';
+
+const VIEW_MODES = {
+  LIST: 'list',
+  GRID: 'grid'
+};
 
 // Helper function
 const truncateAddress = (address) => 
@@ -650,16 +654,14 @@ return (
                 isSelectMode={isSelectMode}
                 onSelectModeChange={setIsSelectMode}
                 onClearSelections={handleClearSelections}
-                searchTerm={searchTerm}
-                onSearchChange={handleSearch}
                 viewMode={viewMode}
                 onViewModeChange={handleViewModeChange}
+                searchTerm={searchTerm}
+                onSearchChange={handleSearch}
               />
-
               <Text fontSize="sm" color="gray.500">
                 Showing {filteredAndSortedNFTs.length} of {totalNFTs} NFTs
               </Text>
-
               <NFTGrid
                 nfts={filteredAndSortedNFTs}
                 selectedNFTs={selectedNFTs}
@@ -669,7 +671,7 @@ return (
                 isSelectMode={isSelectMode}
                 onNFTClick={handleNFTClick}
                 viewMode={viewMode}
-                showControls={false} // Since we're using LibraryControls separately
+                showControls={false}
               />
             </VStack>
           </TabPanel>
