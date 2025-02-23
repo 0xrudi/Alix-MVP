@@ -1,4 +1,3 @@
-// src/components/NFTCard/NFTCard.jsx
 import React, { useState, useEffect } from 'react';
 import { 
   Box, 
@@ -6,33 +5,22 @@ import {
   Text, 
   Button, 
   VStack, 
-  HStack, 
   Badge, 
   AspectRatio, 
   Checkbox, 
   Tooltip,
   Skeleton,
-  Icon,
 } from "@chakra-ui/react";
 import { 
   FaExclamationTriangle, 
   FaPlus, 
-  FaInfoCircle, 
   FaCheck,
-  FaExternalLinkAlt 
 } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { getImageUrl } from './../utils/web3Utils';
 import { isERC1155 } from './../utils/nftUtils';
 
 const MotionBox = motion(Box);
-
-const getMediaType = (nft) => {
-  if (nft.metadata?.mimeType?.startsWith('video/')) return 'video';
-  if (nft.metadata?.mimeType?.startsWith('audio/')) return 'audio';
-  if (nft.metadata?.mimeType?.startsWith('model/')) return '3d';
-  return 'image';
-};
 
 const NFTCard = ({ 
   nft, 
@@ -44,13 +32,19 @@ const NFTCard = ({
   onClick,
   isSearchResult = false,
   onAddToCatalog,
-  walletNickname,
   size = "medium",
   catalogType = 'default'
 }) => {
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
   const [isLoading, setIsLoading] = useState(true);
-  const mediaType = getMediaType(nft);
+
+  // Keep track of all data needed for sorting
+  const sortableData = {
+    name: nft.title || `Token ID: ${nft.id?.tokenId}`,
+    contractName: nft.contract?.name,
+    walletId: nft.walletId,
+    network: nft.network
+  };
 
   const shouldShowSpamButton = () => {
     switch (catalogType) {
@@ -121,31 +115,22 @@ const NFTCard = ({
     return () => { mounted = false; };
   }, [nft]);
 
-  const quantity = isERC1155(nft) ? parseInt(nft.balance) || 1 : 1;
-  const displayName = nft.title || `Token ID: ${nft.id?.tokenId}`;
-
   const sizes = {
     small: {
       cardPadding: 2,
-      imagePadding: 2,
       titleSize: "sm",
-      detailsSize: "xs",
       buttonSize: "xs",
       spacing: 1
     },
     medium: {
       cardPadding: 3,
-      imagePadding: 3,
       titleSize: "md",
-      detailsSize: "sm",
       buttonSize: "sm",
       spacing: 2
     },
     large: {
       cardPadding: 4,
-      imagePadding: 4,
       titleSize: "lg",
-      detailsSize: "md",
       buttonSize: "md",
       spacing: 3
     }
@@ -164,7 +149,10 @@ const NFTCard = ({
       onClick={handleCardClick}
       cursor="pointer"
       role="button"
-      aria-label={`View ${displayName}`}
+      aria-label={`View ${sortableData.name}`}
+      data-wallet={sortableData.walletId}
+      data-network={sortableData.network}
+      data-contract={sortableData.contractName}
     >
       <Box
         bg="var(--paper-white)"
@@ -201,7 +189,7 @@ const NFTCard = ({
           <Skeleton isLoaded={!isLoading}>
             <Image
               src={imageUrl}
-              alt={displayName}
+              alt={sortableData.name}
               objectFit="cover"
               width="100%"
               height="100%"
@@ -220,36 +208,14 @@ const NFTCard = ({
             fontSize={currentSize.titleSize}
             fontFamily="Space Grotesk"
             color="var(--rich-black)"
-            noOfLines={1}
+            noOfLines={2}
+            textAlign="center"
           >
-            {displayName}
+            {sortableData.name}
           </Text>
 
-          <HStack justify="space-between" fontSize={currentSize.detailsSize}>
-            <Text 
-              fontFamily="Fraunces"
-              color="var(--ink-grey)"
-              noOfLines={1}
-            >
-              {walletNickname || "Unknown Wallet"}
-            </Text>
-            {isERC1155(nft) && (
-              <Badge 
-                bg="var(--warm-brown)" 
-                color="white"
-                fontSize="xs"
-                px={2}
-                py={0.5}
-                borderRadius="full"
-              >
-                x{quantity}
-              </Badge>
-            )}
-          </HStack>
-
           {/* Action Buttons */}
-          <HStack 
-            spacing={1} 
+          <Box 
             className="action-buttons"
             opacity={0}
             transition="opacity 0.2s"
@@ -292,7 +258,7 @@ const NFTCard = ({
                 )}
               </>
             )}
-          </HStack>
+          </Box>
         </VStack>
 
         {/* Status Badges */}
@@ -305,6 +271,23 @@ const NFTCard = ({
             color="white"
           >
             Spam
+          </Badge>
+        )}
+
+        {/* ERC-1155 Badge */}
+        {isERC1155(nft) && (
+          <Badge
+            position="absolute"
+            bottom={2}
+            right={2}
+            bg="var(--warm-brown)"
+            color="white"
+            fontSize="xs"
+            px={2}
+            py={0.5}
+            borderRadius="full"
+          >
+            x{parseInt(nft.balance) || 1}
           </Badge>
         )}
       </Box>
