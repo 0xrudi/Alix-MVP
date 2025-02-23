@@ -304,32 +304,41 @@ const LibraryPage = () => {
   }, []);
 
   const handleAddToExistingCatalog = useCallback((catalogId) => {
-    const existingCatalog = catalogs.find(c => c.id === catalogId);
+    const existingCatalog = catalogItems[catalogId];
     if (!existingCatalog) return;
-
-    const existingNftIds = new Set(
-      existingCatalog.nftIds.map(nft => `${nft.tokenId}-${nft.contractAddress}`)
+  
+    // Ensure nftIds exists and is an array
+    const existingNftIds = existingCatalog.nftIds || [];
+  
+    // Create a set of existing NFT identifiers for faster lookup
+    const existingNftSet = new Set(
+      existingNftIds.map(nft => 
+        `${nft.tokenId}-${nft.contractAddress}-${nft.network}`
+      )
     );
-
+  
+    // Filter out NFTs that are already in the catalog
     const newNftIds = selectedNFTs
-      .filter(nft => !existingNftIds.includes(`${nft.id.tokenId}-${nft.contract.address}`))
+      .filter(nft => !existingNftSet.has(
+        `${nft.id.tokenId}-${nft.contract.address}-${nft.network}`
+      ))
       .map(nft => ({
         tokenId: nft.id.tokenId,
         contractAddress: nft.contract.address,
         network: nft.network,
         walletId: nft.walletId
       }));
-
+  
     if (newNftIds.length === 0) {
       showInfoToast("No Changes", "These artifacts are already in the catalog");
       return;
     }
-
+  
     dispatch(updateCatalog({
       id: catalogId,
-      nftIds: [...existingCatalog.nftIds, ...newNftIds]
+      nftIds: [...existingNftIds, ...newNftIds]
     }));
-
+  
     setSelectedNFTs([]);
     setIsSelectMode(false);
     showSuccessToast(
@@ -337,7 +346,7 @@ const LibraryPage = () => {
       `${newNftIds.length} artifacts added to ${existingCatalog.name}`
     );
     logger.log('Added NFTs to catalog:', { catalogId, count: newNftIds.length });
-  }, [catalogs, selectedNFTs, dispatch, showSuccessToast, showInfoToast]);
+  }, [catalogItems, selectedNFTs, dispatch, showSuccessToast, showInfoToast]);
 
   const handleEditCatalog = useCallback((catalog) => {
     logger.log('Editing catalog:', catalog);
@@ -840,10 +849,10 @@ return (
         onAddToSpam={handleMarkSelectedAsSpam}
         onCreateCatalog={() => setIsNewCatalogModalOpen(true)}
         onAddToExistingCatalog={handleAddToExistingCatalog}
-        catalogs={Object.values({
-          ...catalogs.items,
-          ...catalogs.systemCatalogs
-        }).filter(c => !c.isSystem)}
+        onClearSelections={handleClearSelections}
+        catalogs={Object.values(catalogItems)
+          .filter(catalog => !catalog.isSystem)
+        }
       />
     )}
   {/* {process.env.NODE_ENV === 'development' && <StateDebugger />} */}
