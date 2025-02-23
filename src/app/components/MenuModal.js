@@ -5,12 +5,10 @@ import {
   HStack,
   Button,
   Text,
-  useColorModeValue,
   IconButton,
   Tooltip,
   useBreakpointValue,
 } from "@chakra-ui/react";
-import { useCustomColorMode } from '../../app/hooks/useColorMode';
 import { FaBookOpen, FaUser } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -23,13 +21,6 @@ const MenuModal = () => {
   const iconSpacing = useBreakpointValue({ base: 1, md: 2 });
   const contentPadding = useBreakpointValue({ base: 2, md: 4 });
   const isMobile = useBreakpointValue({ base: true, md: false });
-  
-  // Theme colors - using our light theme palette
-  const bgColor = useCustomColorMode('var(--paper-white)', 'var(--paper-white)');
-  const textColor = useCustomColorMode('var(--rich-black)', 'var(--rich-black)');
-  const hoverColor = useCustomColorMode('var(--highlight)', 'var(--highlight)');
-  const activeColor = useCustomColorMode('var(--warm-brown)', 'var(--warm-brown)');
-  const borderColor = useCustomColorMode('var(--shadow)', 'var(--shadow)');
 
   const menuItems = [
     { name: 'Library', icon: FaBookOpen, path: '/app/library' },
@@ -48,16 +39,18 @@ const MenuModal = () => {
       top={0}
       bottom={0}
       width="200px"
-      bg={bgColor}
+      bg="rgba(248, 247, 244, 0.95)"
+      backdropFilter="blur(8px)"
       p={contentPadding}
       zIndex={1000}
-      color={textColor}
+      color="var(--rich-black)"
       display={{ base: "none", md: "block" }}
       borderRight="1px solid"
-      borderColor={borderColor}
+      borderColor="var(--shadow)"
       transition="all 0.2s"
       height="100vh"
       overflowY="auto"
+      boxShadow="0 4px 12px rgba(0, 0, 0, 0.05)"
     >
       <Text 
         fontSize="2xl" 
@@ -67,40 +60,63 @@ const MenuModal = () => {
         cursor="pointer"
         onClick={() => navigate('/')}
         transition="color 0.2s"
-        color={textColor}
-        _hover={{ color: activeColor }}
+        color="var(--rich-black)"
+        _hover={{ color: "var(--warm-brown)" }}
       >
         Alix
       </Text>
       <VStack spacing={iconSpacing} align="stretch">
-        {menuItems.map((item) => (
-          <Tooltip
-            key={item.path}
-            label={item.name}
-            placement="right"
-            hasArrow
-            isDisabled={!isMobile}
-          >
-            <Button
-              onClick={() => handleNavigate(item.path)}
-              variant="ghost"
-              justifyContent="flex-start"
-              leftIcon={<item.icon />}
-              color={location.pathname === item.path ? activeColor : 'var(--ink-grey)'}
-              bg={location.pathname === item.path ? hoverColor : 'transparent'}
-              fontFamily="Inter"
-              fontSize="14px"
-              _hover={{ bg: hoverColor }}
-              _active={{ bg: hoverColor, color: activeColor }}
-              w="100%"
-              borderRadius="md"
-              py={3}
-              transition="all 0.2s"
+        {menuItems.map((item) => {
+          const isActive = location.pathname === item.path;
+          return (
+            <Tooltip
+              key={item.path}
+              label={item.name}
+              placement="right"
+              hasArrow
+              isDisabled={!isMobile}
             >
-              {item.name}
-            </Button>
-          </Tooltip>
-        ))}
+              <Button
+                onClick={() => handleNavigate(item.path)}
+                variant="ghost"
+                justifyContent="flex-start"
+                leftIcon={<item.icon />}
+                color={isActive ? "var(--warm-brown)" : "var(--ink-grey)"}
+                bg={isActive ? "var(--highlight)" : "transparent"}
+                fontFamily="Inter"
+                fontSize="14px"
+                _hover={{ 
+                  bg: "var(--highlight)",
+                  color: "var(--warm-brown)"
+                }}
+                _active={{ 
+                  bg: "var(--highlight)", 
+                  color: "var(--warm-brown)"
+                }}
+                w="100%"
+                borderRadius="md"
+                py={3}
+                transition="all 0.2s"
+                position="relative"
+                overflow="hidden"
+                sx={{
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    left: '0',
+                    top: '0',
+                    bottom: '0',
+                    width: '3px',
+                    bg: isActive ? "var(--warm-brown)" : "transparent",
+                    transition: "all 0.2s"
+                  }
+                }}
+              >
+                {item.name}
+              </Button>
+            </Tooltip>
+          );
+        })}
       </VStack>
     </Box>
   );
@@ -113,12 +129,14 @@ const MenuModal = () => {
       right={0}
       bottom={0}
       height="60px"
-      bg={bgColor}
+      bg="rgba(248, 247, 244, 0.95)"
+      backdropFilter="blur(8px)"
       display={{ base: "block", md: "none" }}
       zIndex={1000}
       borderTop="1px solid"
-      borderColor={borderColor}
+      borderColor="var(--shadow)"
       transition="all 0.2s"
+      boxShadow="0 -4px 12px rgba(0, 0, 0, 0.05)"
     >
       <HStack 
         spacing={0} 
@@ -127,45 +145,52 @@ const MenuModal = () => {
         align="center"
         px={2}
       >
-        {menuItems.map((item) => (
-          <Tooltip 
-            key={item.path} 
-            label={item.name}
-            placement="top"
-            hasArrow
-          >
-            <VStack 
-              spacing={0.5}
-              cursor="pointer"
-              onClick={() => handleNavigate(item.path)}
-              color={location.pathname === item.path ? activeColor : 'var(--ink-grey)'}
-              flex={1}
-              role="button"
-              aria-label={`Navigate to ${item.name}`}
-              transition="all 0.2s"
-              _hover={{ color: activeColor }}
-              _active={{ transform: 'scale(0.95)' }}
+        {menuItems.map((item) => {
+          const isActive = location.pathname === item.path;
+          return (
+            <Tooltip 
+              key={item.path} 
+              label={item.name}
+              placement="top"
+              hasArrow
             >
-              <IconButton
-                icon={<item.icon />}
-                variant="ghost"
-                aria-label={item.name}
-                size={buttonSize}
-                color="inherit"
-                _hover={{ bg: 'transparent' }}
-                _active={{ bg: 'transparent' }}
-              />
-              <Text 
-                fontSize="xs" 
-                fontFamily="Inter"
-                fontWeight={location.pathname === item.path ? "bold" : "normal"}
-                display={isMobile ? "block" : "none"}
+              <VStack 
+                spacing={0.5}
+                cursor="pointer"
+                onClick={() => handleNavigate(item.path)}
+                color={isActive ? "var(--warm-brown)" : "var(--ink-grey)"}
+                flex={1}
+                role="button"
+                aria-label={`Navigate to ${item.name}`}
+                transition="all 0.2s"
+                _hover={{ color: "var(--warm-brown)" }}
+                _active={{ transform: 'scale(0.95)' }}
+                position="relative"
+                bg={isActive ? "var(--highlight)" : "transparent"}
+                py={2}
+                borderRadius="md"
               >
-                {item.name}
-              </Text>
-            </VStack>
-          </Tooltip>
-        ))}
+                <IconButton
+                  icon={<item.icon />}
+                  variant="ghost"
+                  aria-label={item.name}
+                  size={buttonSize}
+                  color="inherit"
+                  _hover={{ bg: 'transparent' }}
+                  _active={{ bg: 'transparent' }}
+                />
+                <Text 
+                  fontSize="xs" 
+                  fontFamily="Inter"
+                  fontWeight={isActive ? "bold" : "normal"}
+                  display={isMobile ? "block" : "none"}
+                >
+                  {item.name}
+                </Text>
+              </VStack>
+            </Tooltip>
+          );
+        })}
       </HStack>
     </Box>
   );
