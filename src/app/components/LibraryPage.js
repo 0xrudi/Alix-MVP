@@ -14,12 +14,9 @@ import {
   Icon,
   Flex,
   Progress,
-  Slider, 
-  SliderTrack, 
-  SliderFilledTrack, 
-  SliderThumb,
+  HStack,
 } from "@chakra-ui/react";
-import { FaPlus, FaSync, FaFolderPlus } from 'react-icons/fa';
+import { FaBook, FaSync, FaFolderPlus } from 'react-icons/fa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { 
@@ -155,14 +152,14 @@ const LibraryPage = () => {
   const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false);
   const [isNewCatalogModalOpen, setIsNewCatalogModalOpen] = useState(false);
   const [viewingFolder, setViewingFolder] = useState(null);
-  const [cardSize, setCardSize] = useState("md");
+  const [cardSize] = useState("md");
   const [editingCatalog, setEditingCatalog] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredNFTs, setFilteredNFTs] = useState([]);
   const [isEditCatalogModalOpen, setIsEditCatalogModalOpen] = useState(false);
   const [isEditFolderModalOpen, setIsEditFolderModalOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState(null);
-  const [viewMode, setViewMode] = useState('medium');
+  const [viewMode, setViewMode] = useState('list');
 
 
   // Initialize tab from URL if present
@@ -412,15 +409,6 @@ const LibraryPage = () => {
     });
   }, []);
 
-  const handleSizeChange = (value) => {
-    const sizes = {
-      0: "sm",
-      1: "md",
-      2: "lg"
-    };
-    setCardSize(sizes[value]);
-  };
-
   // Utility functions
   const getWalletNickname = useCallback((walletId) => {
     const wallet = wallets.find(w => w.id === walletId);
@@ -622,8 +610,17 @@ if (viewingFolder) {
 return (
   <StyledContainer>
     <VStack spacing="1.5rem" align="stretch">
+      {/* Updated Header with new styling */}
       <Flex justify="space-between" align="center">
-        <Heading as="h1" fontSize={headingSize}>Your Artifact Library</Heading>
+        <Text
+          as="h1"
+          fontSize={{ base: "24px", md: "32px" }}
+          fontFamily="Space Grotesk"
+          letterSpacing="-0.02em"
+          color="var(--rich-black)"
+        >
+          Library
+        </Text>
         <StyledButton
           leftIcon={<Icon as={FaSync} />}
           onClick={handleRefreshNFTs}
@@ -634,16 +631,51 @@ return (
           {showFullText ? "Refresh Artifacts" : null}
         </StyledButton>
       </Flex>
-      
+    
       {isRefreshing && (
         <Progress value={refreshProgress} size="sm" colorScheme="blue" />
       )}
 
-      <Tabs index={activeTab} onChange={setActiveTab} variant="enclosed">
-        <TabList>
-          <Tab fontSize="1rem">Artifacts</Tab>
-          <Tab fontSize="1rem">Library</Tab>
-        </TabList>
+        <Tabs 
+          index={activeTab} 
+          onChange={setActiveTab} 
+          variant="enclosed"
+        >
+          <TabList
+            bg="var(--paper-white)"
+            borderBottom="1px solid"
+            borderColor="var(--shadow)"
+            width="fit-content"
+          >
+            <Tab
+              fontFamily="Inter"
+              fontSize="14px"
+              color="var(--ink-grey)"
+              bg="transparent"
+              _selected={{
+                bg: "white",
+                color: "var(--warm-brown)",
+                borderColor: "var(--shadow)",
+                borderBottomColor: "white"
+              }}
+            >
+              Artifacts
+            </Tab>
+            <Tab
+              fontFamily="Inter"
+              fontSize="14px"
+              color="var(--ink-grey)"
+              bg="transparent"
+              _selected={{
+                bg: "white",
+                color: "var(--warm-brown)",
+                borderColor: "var(--shadow)",
+                borderBottomColor: "white"
+              }}
+            >
+              Catalogs
+            </Tab>
+          </TabList>
         
         <TabPanels>
           {/* Artifacts Tab */}
@@ -687,39 +719,33 @@ return (
           
           {/* Library Tab */}
           <TabPanel>
-            <Flex justify="space-between" align="center" mb={4}>
+            <HStack spacing={4} mb={6}>
               <Button
-                leftIcon={<FaFolderPlus />}
+                leftIcon={<Icon as={FaFolderPlus} />}
                 onClick={() => setIsNewFolderModalOpen(true)}
-                colorScheme="blue"
+                bg="var(--warm-brown)"
+                color="white"
+                fontFamily="Inter"
+                _hover={{
+                  bg: "var(--deep-brown)"
+                }}
               >
                 New Folder
               </Button>
+              
               <Button
-                leftIcon={<FaPlus />}
+                leftIcon={<Icon as={FaBook} />}
                 onClick={() => setIsNewCatalogModalOpen(true)}
-                colorScheme="blue"
+                bg="var(--warm-brown)"
+                color="white"
+                fontFamily="Inter"
+                _hover={{
+                  bg: "var(--deep-brown)"
+                }}
               >
                 New Catalog
               </Button>
-            </Flex>
-
-            <Flex align="center" gap={4} mb={4}>
-              <Text fontSize="sm" whiteSpace="nowrap">Card Size:</Text>
-              <Slider
-                defaultValue={1}
-                min={0}
-                max={2}
-                step={1}
-                onChange={handleSizeChange}
-                width="150px"
-              >
-                <SliderTrack>
-                  <SliderFilledTrack />
-                </SliderTrack>
-                <SliderThumb />
-              </Slider>
-            </Flex>
+            </HStack>
 
             <VStack spacing={6} align="stretch">
               {/* Folders Section */}
@@ -740,7 +766,7 @@ return (
                         onView={() => setViewingFolder(folder)}
                         onEdit={() => handleEditFolder(folder)}
                         onDelete={() => handleDeleteFolder(folder.id)}
-                        cardSize={cardSize}
+                        cardSize="md"  // hardcoding to md size
                       />
                     ))}
                   </SimpleGrid>
@@ -765,7 +791,7 @@ return (
                         nftCount: catalog.count // Add the count to the display
                       }}
                       onView={() => handleOpenCatalog(catalog)}
-                      cardSize={cardSize}
+                      cardSize="md" // hard coding md card size
                       isSystem={true}
                     />
                   ))}
@@ -792,7 +818,7 @@ return (
                           onView={() => handleOpenCatalog(catalog)}
                           onEdit={() => handleEditCatalog(catalog)}
                           onDelete={() => handleDeleteCatalog(catalog.id)}
-                          cardSize={cardSize}
+                          cardSize= "md" // hard coding md card size
                         />
                       );
                     })}
