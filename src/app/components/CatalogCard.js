@@ -1,20 +1,16 @@
-// src/components/CatalogView/CatalogCard.jsx
 import React from 'react';
 import {
-  Box,
   VStack,
   Text,
   IconButton,
-  Flex,
   Icon,
-  HStack,
-  Tooltip,
+  Flex,
+  Badge,
 } from "@chakra-ui/react";
 import { FaBook, FaEdit, FaTrash } from 'react-icons/fa';
-import { motion } from 'framer-motion';
-
-
-const MotionBox = motion(Box);
+import { StyledCard } from '../styles/commonStyles';
+import { cardSizes } from '../constants/sizes';
+import { logger } from '../utils/logger';
 
 const CatalogCard = ({ 
   catalog, 
@@ -26,191 +22,132 @@ const CatalogCard = ({
 }) => {
   const handleEdit = (e) => {
     e.stopPropagation();
-    if (!isSystem && onEdit) {
+    if (!isSystem && onEdit && typeof onEdit === 'function') {
+      logger.log('Editing catalog:', { catalogId: catalog.id });
       onEdit(catalog);
     }
   };
 
   const handleDelete = (e) => {
     e.stopPropagation();
-    if (!isSystem && onDelete) {
+    if (!isSystem && onDelete && typeof onDelete === 'function') {
+      logger.log('Deleting catalog:', { catalogId: catalog.id });
       onDelete(catalog.id);
     }
   };
 
-  const sizes = {
-    sm: {
-      padding: 4,
-      iconSize: 8,
-      titleSize: "md",
-      statSize: "sm",
-    },
-    md: {
-      padding: 6,
-      iconSize: 12,
-      titleSize: "lg",
-      statSize: "md",
-    },
-    lg: {
-      padding: 8,
-      iconSize: 16,
-      titleSize: "xl",
-      statSize: "lg",
+  const handleView = () => {
+    if (onView && typeof onView === 'function') {
+      logger.log('Viewing catalog:', { catalogId: catalog.id });
+      onView(catalog);
     }
   };
 
-  const currentSize = sizes[cardSize];
+  const nftCount = catalog.nftIds?.length || 0;
 
   return (
-    <MotionBox
-      as="article"
-      position="relative"
-      cursor="pointer"
-      onClick={() => onView(catalog)}
-      whileHover={{ 
-        y: -4,
-        transition: { duration: 0.2 }
-      }}
-      bg="var(--paper-white)"
-      borderRadius="md"
-      borderWidth="1px"
-      borderColor="var(--shadow)"
-      p={currentSize.padding}
+    <StyledCard 
+      onClick={handleView}
       role="button"
-      aria-label={`View ${catalog.name} catalog`}
-      _hover={{
-        borderColor: "var(--warm-brown)",
-        boxShadow: "lg",
-        "& .action-buttons": {
-          opacity: 1
-        }
+      cursor="pointer"
+      transition="transform 0.2s"
+      _hover={{ 
+        transform: 'translateY(-4px)',
+        '& .action-buttons': { opacity: 1 }
       }}
-      transition="all 0.2s"
+      position="relative"
+      p={cardSizes[cardSize].padding}
+      width={cardSizes[cardSize].width}
+      maxW="100%"
+      bg="white"
+      boxShadow="0 2px 4px rgba(47, 47, 47, 0.05)"
+      borderColor="var(--shadow)"
     >
       {/* Action Buttons */}
       {!isSystem && (
         <Flex 
           position="absolute"
-          top={2}
-          right={2}
-          opacity={0}
+          top={1}
+          right={1}
           className="action-buttons"
+          opacity={0}
           transition="opacity 0.2s"
           zIndex={2}
-          gap={1}
         >
-          <Tooltip label="Edit catalog" placement="top">
-            <IconButton
-              icon={<FaEdit />}
-              aria-label="Edit catalog"
-              size="sm"
-              variant="ghost"
-              color="var(--ink-grey)"
-              onClick={handleEdit}
-              _hover={{
-                color: "var(--warm-brown)",
-                bg: "var(--highlight)"
-              }}
-            />
-          </Tooltip>
-          <Tooltip label="Delete catalog" placement="top">
-            <IconButton
-              icon={<FaTrash />}
-              aria-label="Delete catalog"
-              size="sm"
-              variant="ghost"
-              color="var(--ink-grey)"
-              onClick={handleDelete}
-              _hover={{
-                color: "red.500",
-                bg: "red.50"
-              }}
-            />
-          </Tooltip>
+          <IconButton
+            icon={<FaEdit />}
+            aria-label="Edit catalog"
+            size="sm"
+            variant="ghost"
+            color="var(--ink-grey)"
+            onClick={handleEdit}
+            mr={1}
+            padding={1}
+            minW="auto"
+            height="auto"
+            _hover={{ color: "var(--warm-brown)" }}
+          />
+          <IconButton
+            icon={<FaTrash />}
+            aria-label="Delete catalog"
+            size="sm"
+            variant="ghost"
+            color="var(--ink-grey)"
+            onClick={handleDelete}
+            padding={1}
+            minW="auto"
+            height="auto"
+            _hover={{ color: "red.500" }}
+          />
         </Flex>
       )}
 
-      {/* Main Content */}
-      <VStack spacing={4} align="center">
+      {/* System Badge */}
+      {isSystem && (
+        <Badge
+          position="absolute"
+          top={2}
+          right={2}
+          bg="var(--warm-brown)"
+          color="white"
+          fontSize="xs"
+          px={2}
+          py={0.5}
+          borderRadius="full"
+          fontFamily="Inter"
+        >
+          System
+        </Badge>
+      )}
+  
+      <VStack 
+        spacing={cardSizes[cardSize].spacing} 
+        align="center"
+        my={cardSizes[cardSize].marginY}
+      >
         <Icon 
           as={FaBook} 
-          boxSize={currentSize.iconSize} 
+          boxSize={cardSizes[cardSize].icon}
           color="var(--warm-brown)"
         />
-        
-        <VStack spacing={1}>
-          <Text
-            fontSize={currentSize.titleSize}
-            fontWeight="medium"
-            fontFamily="Space Grotesk"
-            color="var(--rich-black)"
-            textAlign="center"
-            noOfLines={2}
-          >
-            {catalog.name}
-          </Text>
-          
-          {catalog.description && (
-            <Text
-              fontSize={currentSize.statSize}
-              fontFamily="Fraunces"
-              color="var(--ink-grey)"
-              textAlign="center"
-              noOfLines={2}
-            >
-              {catalog.description}
-            </Text>
-          )}
-        </VStack>
-
-        <VStack spacing={1}>
-          <HStack 
-            spacing={2}
-            justify="center"
-            fontSize={currentSize.statSize}
-          >
-            <Text 
-              fontFamily="Space Grotesk"
-              color="var(--rich-black)"
-            >
-              {catalog.nftIds?.length || 0}
-            </Text>
-            <Text
-              fontFamily="Fraunces"
-              color="var(--ink-grey)"
-            >
-              {catalog.nftIds?.length === 1 ? 'Item' : 'Items'}
-            </Text>
-          </HStack>
-
-          <Text
-            fontSize="xs"
-            fontFamily="Inter"
-            color="var(--ink-grey)"
-          >
-            Updated {new Date(catalog.updatedAt).toLocaleDateString()}
-          </Text>
-        </VStack>
-
-        {/* System Badge */}
-        {isSystem && (
-          <Box
-            position="absolute"
-            top={2}
-            right={2}
-            bg="var(--warm-brown)"
-            color="white"
-            px={2}
-            py={1}
-            borderRadius="md"
-            fontSize="xs"
-            fontFamily="Inter"
-          >
-            System
-          </Box>
-        )}
+        <Text 
+          fontSize={cardSizes[cardSize].fontSize}
+          fontFamily="Space Grotesk"
+          color="var(--rich-black)"
+          textAlign="center"
+          noOfLines={2}
+        >
+          {catalog.name}
+        </Text>
+        <Text 
+          fontSize="sm"
+          fontFamily="Fraunces"
+          color="var(--ink-grey)"
+        >
+          {nftCount} {nftCount === 1 ? 'Item' : 'Items'}
+        </Text>
       </VStack>
-    </MotionBox>
+    </StyledCard>
   );
 };
 

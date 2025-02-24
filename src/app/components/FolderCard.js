@@ -5,7 +5,6 @@ import {
   IconButton,
   Icon,
   Flex,
-  useColorModeValue,
 } from "@chakra-ui/react";
 import { FaFolder, FaEdit, FaTrash } from 'react-icons/fa';
 import { useSelector } from 'react-redux';
@@ -16,26 +15,25 @@ import { selectCatalogsInFolder } from '../redux/slices/folderSlice';
 
 const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
   const catalogCount = useSelector(state => selectCatalogsInFolder(state, folder.id)).length;
-  const folderColor = useColorModeValue('blue.400', 'blue.600');
 
   const handleEdit = (e) => {
     e.stopPropagation();
-    if (onEdit && typeof onEdit === 'function') { // Add function check
+    if (onEdit && typeof onEdit === 'function') {
       logger.log('Editing folder:', { folderId: folder.id });
-      onEdit(folder); // Pass the folder to the handler
+      onEdit(folder);
     }
   };
 
   const handleDelete = (e) => {
     e.stopPropagation();
-    if (onDelete && typeof onDelete === 'function') { // Add function check
+    if (onDelete && typeof onDelete === 'function') {
       logger.log('Deleting folder:', { folderId: folder.id });
       onDelete(folder.id);
     }
   };
 
   const handleView = () => {
-    if (onView && typeof onView === 'function') { // Add function check
+    if (onView && typeof onView === 'function') {
       logger.log('Viewing folder:', { folderId: folder.id });
       onView(folder);
     }
@@ -55,6 +53,9 @@ const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
       p={cardSizes[cardSize].padding}
       width={cardSizes[cardSize].width}
       maxW="100%"
+      bg="white"
+      boxShadow="0 2px 4px rgba(47, 47, 47, 0.05)"
+      borderColor="var(--shadow)"
     >
       <Flex 
         position="absolute"
@@ -70,23 +71,25 @@ const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
           aria-label="Edit folder"
           size="sm"
           variant="ghost"
-          colorScheme="blue"
+          color="var(--ink-grey)"
           onClick={handleEdit}
           mr={1}
           padding={1}
           minW="auto"
           height="auto"
+          _hover={{ color: "var(--warm-brown)" }}
         />
         <IconButton
           icon={<FaTrash />}
           aria-label="Delete folder"
           size="sm"
           variant="ghost"
-          colorScheme="red"
+          color="var(--ink-grey)"
           onClick={handleDelete}
           padding={1}
           minW="auto"
           height="auto"
+          _hover={{ color: "red.500" }}
         />
       </Flex>
   
@@ -98,17 +101,22 @@ const FolderCard = ({ folder, onView, onEdit, onDelete, cardSize = "md" }) => {
         <Icon 
           as={FaFolder} 
           boxSize={cardSizes[cardSize].icon}
-          color={folderColor} 
+          color="var(--warm-brown)"
         />
         <Text 
           fontSize={cardSizes[cardSize].fontSize}
-          fontWeight="bold"
+          fontFamily="Space Grotesk"
+          color="var(--rich-black)"
           textAlign="center"
           noOfLines={2}
         >
           {folder.name}
         </Text>
-        <Text fontSize="xs" color="gray.500">
+        <Text 
+          fontSize="sm" 
+          fontFamily="Fraunces"
+          color="var(--ink-grey)"
+        >
           {catalogCount} {catalogCount === 1 ? 'Catalog' : 'Catalogs'}
         </Text>
       </VStack>
