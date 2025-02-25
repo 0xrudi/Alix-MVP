@@ -6,8 +6,10 @@ import {
   Box,
   Tooltip,
   Skeleton,
+  Divider,
+  HStack,
 } from "@chakra-ui/react";
-import { FaTrash, FaExclamationTriangle } from 'react-icons/fa';
+import { FaTrash, FaExclamationTriangle, FaEllipsisH } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { getImageUrl } from '../utils/web3Utils';
 
@@ -20,7 +22,8 @@ const ListViewItem = ({
   onMarkAsSpam, 
   isSpamFolder,
   onClick,
-  isSelectMode = false 
+  isSelectMode = false,
+  isLastItem = false
 }) => {
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
   const [isLoading, setIsLoading] = useState(true);
@@ -67,91 +70,124 @@ const ListViewItem = ({
   };
 
   return (
-    <MotionFlex
-      align="center"
-      borderWidth="2px"
-      borderColor={isSelected ? "var(--library-brown)" : "var(--shadow)"}
-      borderRadius="md"
-      bg={isSelected ? "var(--highlight)" : "var(--paper-white)"}
-      p={3}
-      mb={2}
-      transition="all 0.2s"
-      whileHover={{ 
-        y: -2,
-        transition: { duration: 0.2 }
-      }}
-      _hover={{ 
-        borderColor: isSelected ? "var(--library-brown)" : "var(--warm-brown)",
-        bg: isSelected ? "var(--highlight)" : "white",
-        "& .action-buttons": { opacity: 1 }
-      }}
-      role="button"
-      onClick={handleClick}
-      cursor="pointer"
-      height="fit-content"
-      position="relative"
-    >
-      <Skeleton 
-        isLoaded={!isLoading} 
-        borderRadius="md"
-        flexShrink={0}
+    <Box>
+      <MotionFlex
+        align="center"
+        bg={isSelected ? "var(--highlight)" : "transparent"}
+        py={2}
+        px={1}
+        transition="all 0.2s"
+        whileHover={{ 
+          bg: isSelected ? "var(--highlight)" : "var(--paper-white)",
+          transition: { duration: 0.2 }
+        }}
+        _hover={{ 
+          "& .action-buttons": { opacity: 1 }
+        }}
+        role="button"
+        onClick={handleClick}
+        cursor="pointer"
+        position="relative"
       >
-        <Image 
-          src={imageUrl}
-          alt={nft.title || 'NFT'} 
-          width={{ base: "80px", sm: "100px" }}
-          height={{ base: "80px", sm: "100px" }}
-          objectFit="cover"
+        <Skeleton 
+          isLoaded={!isLoading} 
           borderRadius="md"
-          border="1px solid"
-          borderColor="var(--shadow)"
-        />
-      </Skeleton>
+          flexShrink={0}
+          mr={3}
+        >
+          <Image 
+            src={imageUrl}
+            alt={nft.title || 'NFT'} 
+            width={{ base: "50px", sm: "60px" }}
+            height={{ base: "50px", sm: "60px" }}
+            objectFit="cover"
+            borderRadius="md"
+            boxShadow="sm"
+          />
+        </Skeleton>
 
-      <Text 
-        fontFamily="Space Grotesk"
-        fontSize={{ base: "md", sm: "lg" }}
-        color="var(--rich-black)"
-        flex={1}
-        mx={4}
-        noOfLines={2}
-      >
-        {nft.title || `Token ID: ${nft.id?.tokenId || 'Unknown'}`}
-      </Text>
+        <Box flex={1} overflow="hidden">
+          <Text 
+            fontFamily="Space Grotesk"
+            fontSize={{ base: "sm", sm: "md" }}
+            fontWeight="normal"
+            color="var(--rich-black)"
+            noOfLines={1}
+          >
+            {nft.title || `Token ID: ${nft.id?.tokenId || 'Unknown'}`}
+          </Text>
+          
+          {/* Subtitle - could be collection name or other metadata */}
+          <Text
+            fontSize={{ base: "xs", sm: "sm" }}
+            color="var(--ink-grey)"
+            fontFamily="Inter"
+            fontWeight="light"
+            noOfLines={1}
+          >
+            {nft.contract?.name || nft.network || 'Unknown collection'}
+          </Text>
+        </Box>
 
-      {/* Only show spam button if not in select mode */}
-      {!isSelectMode && (
-        <Box 
+        {/* Action buttons */}
+        <HStack 
           className="action-buttons"
           opacity={{ base: 1, sm: 0 }}
           transition="opacity 0.2s"
+          spacing={1}
           onClick={e => e.stopPropagation()}
         >
-          <Tooltip 
-            label={isSpamFolder ? "Remove from Spam" : "Mark as Spam"}
-            placement="top"
-          >
+          {!isSelectMode && (
+            <Tooltip 
+              label={isSpamFolder ? "Remove from Spam" : "Mark as Spam"}
+              placement="top"
+            >
+              <Box 
+                as="button"
+                onClick={onMarkAsSpam}
+                p={2}
+                borderRadius="full"
+                color="var(--ink-grey)"
+                _hover={{
+                  color: isSpamFolder ? "green.500" : "red.500",
+                  bg: isSpamFolder ? "green.50" : "red.50"
+                }}
+              >
+                {isSpamFolder ? (
+                  <FaExclamationTriangle size={14} />
+                ) : (
+                  <FaTrash size={14} />
+                )}
+              </Box>
+            </Tooltip>
+          )}
+          
+          <Tooltip label="More options" placement="top">
             <Box 
               as="button"
-              onClick={onMarkAsSpam}
               p={2}
-              borderRadius="md"
+              borderRadius="full"
               color="var(--ink-grey)"
               _hover={{
-                color: isSpamFolder ? "green.500" : "red.500",
-                bg: isSpamFolder ? "green.50" : "red.50"
+                color: "var(--warm-brown)",
+                bg: "var(--highlight)"
               }}
             >
-              {isSpamFolder ? (
-                <FaExclamationTriangle size={16} />
-              ) : (
-                <FaTrash size={16} />
-              )}
+              <FaEllipsisH size={14} />
             </Box>
           </Tooltip>
-        </Box>
+        </HStack>
+      </MotionFlex>
+      
+      {/* Add divider after each item except the last one */}
+      {!isLastItem && (
+        <Divider 
+          ml="70px" 
+          opacity={0.3} 
+          borderColor="var(--shadow)" 
+        />
       )}
-    </MotionFlex>
+    </Box>
   );
 };
 
