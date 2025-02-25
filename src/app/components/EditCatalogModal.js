@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -7,18 +7,64 @@ import {
   ModalFooter,
   ModalBody,
   ModalCloseButton,
-  FormControl,
-  FormLabel,
-  Input,
   Button,
   VStack,
-  Select,
+  Box,
+  Alert,
+  AlertIcon,
+  Text,
+  FormControl,
+  Input,
 } from "@chakra-ui/react";
 import { useDispatch, useSelector } from 'react-redux';
 import { updateCatalog } from '../redux/slices/catalogSlice';
 import { selectAllFolders, addCatalogToFolder, removeCatalogFromFolder } from '../redux/slices/folderSlice';
 import { useCustomToast } from '../utils/toastUtils';
 import { logger } from '../utils/logger';
+import { Select as ChakraReactSelect } from 'chakra-react-select';
+
+// Custom Floating Label Input Component
+const FloatingLabelInput = ({ value, onChange, placeholder, isRequired, showError, ...props }) => {
+  return (
+    <Box position="relative" width="100%">
+      <Input
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        borderColor={showError ? "red.500" : "var(--shadow)"}
+        _hover={{ borderColor: "var(--warm-brown)" }}
+        _focus={{ 
+          borderColor: "var(--warm-brown)",
+          boxShadow: "0 0 0 1px var(--warm-brown)"
+        }}
+        pt={value ? "16px" : "8px"}
+        pb={value ? "8px" : "8px"}
+        fontFamily="Space Grotesk"
+        {...props}
+      />
+      {value && (
+        <Text
+          position="absolute"
+          top="2px"
+          left="16px"
+          fontSize="xs"
+          color={showError ? "red.500" : "var(--ink-grey)"}
+          fontFamily="Inter"
+          pointerEvents="none"
+          transition="all 0.2s"
+        >
+          {placeholder} {isRequired && "*"}
+        </Text>
+      )}
+      {showError && (
+        <Alert status="error" mt={2} py={2} px={3} borderRadius="md" opacity={0.8}>
+          <AlertIcon />
+          <Text fontSize="sm" fontFamily="Inter">This field is required</Text>
+        </Alert>
+      )}
+    </Box>
+  );
+};
 
 const EditCatalogModal = ({ isOpen, onClose, catalog }) => {
   const dispatch = useDispatch();
@@ -27,21 +73,60 @@ const EditCatalogModal = ({ isOpen, onClose, catalog }) => {
   const { showSuccessToast, showErrorToast } = useCustomToast();
   
   const [catalogName, setCatalogName] = useState('');
-  const [selectedFolder, setSelectedFolder] = useState('');
+  const [selectedFolders, setSelectedFolders] = useState([]);
+  const [showError, setShowError] = useState(false);
 
+  // Create folder options for the select dropdown
+  const folderOptions = useMemo(() => {
+    return folders
+      .filter(folder => !folder.isSystem)
+      .map(folder => ({
+        value: folder.id,
+        label: folder.name
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [folders]);
+
+  // Reset state when modal opens with a catalog
   useEffect(() => {
-    if (catalog) {
-      setCatalogName(catalog.name);
-      // Find folder containing this catalog
-      const containingFolderId = Object.entries(folderRelationships)
-        .find(([_, catalogs]) => Array.isArray(catalogs) && catalogs.includes(catalog.id))?.[0];
-      setSelectedFolder(containingFolderId || '');
+    if (catalog && isOpen) {
+      setCatalogName(catalog.name || '');
+      setShowError(false);
+      
+      // Find all folders containing this catalog
+      const containingFolderIds = Object.entries(folderRelationships)
+        .filter(([_, catalogs]) => Array.isArray(catalogs) && catalogs.includes(catalog.id))
+        .map(([folderId]) => folderId);
+      
+      // Transform folder IDs to the format expected by the multi-select
+      const folderSelections = containingFolderIds
+        .map(id => {
+          const folder = folders.find(f => f.id === id);
+          return folder ? { value: folder.id, label: folder.name } : null;
+        })
+        .filter(Boolean);
+      
+      setSelectedFolders(folderSelections);
+      
+      logger.log('Loaded catalog for editing:', {
+        catalogId: catalog.id,
+        name: catalog.name,
+        assignedFolders: folderSelections.length
+      });
     }
-  }, [catalog, folderRelationships]);
+  }, [catalog, folders, isOpen, folderRelationships]);
+
+  const handleFolderSelect = (options) => {
+    if (options && options.length > 0) {
+      setSelectedFolders(options);
+    } else {
+      setSelectedFolders([]);
+    }
+  };
 
   const handleSave = () => {
     if (!catalogName.trim()) {
-      showErrorToast("Catalog Name Required", "Please enter a name for your catalog.");
+      setShowError(true);
       return;
     }
 
@@ -52,33 +137,37 @@ const EditCatalogModal = ({ isOpen, onClose, catalog }) => {
         name: catalogName.trim()
       }));
 
-      // Handle folder relationship changes
-      const currentFolderId = Object.entries(folderRelationships)
-        .find(([_, catalogs]) => Array.isArray(catalogs) && catalogs.includes(catalog.id))?.[0];
-
-      if (currentFolderId !== selectedFolder) {
-        // Remove from current folder if exists
-        if (currentFolderId) {
-          dispatch(removeCatalogFromFolder({
-            folderId: currentFolderId,
-            catalogId: catalog.id
-          }));
-        }
-
-        // Add to new folder if selected
-        if (selectedFolder) {
-          dispatch(addCatalogToFolder({
-            folderId: selectedFolder,
-            catalogId: catalog.id
-          }));
-        }
+      // Find current folder relationships for this catalog
+      const currentFolderIds = Object.entries(folderRelationships)
+        .filter(([_, catalogs]) => Array.isArray(catalogs) && catalogs.includes(catalog.id))
+        .map(([folderId]) => folderId);
+      
+      // Get the selected folder IDs
+      const newFolderIds = selectedFolders.map(folder => folder.value);
+      
+      // Remove catalog from folders that are no longer selected
+      const foldersToRemoveFrom = currentFolderIds.filter(id => !newFolderIds.includes(id));
+      for (const folderId of foldersToRemoveFrom) {
+        dispatch(removeCatalogFromFolder({
+          folderId,
+          catalogId: catalog.id
+        }));
+      }
+      
+      // Add catalog to newly selected folders
+      const foldersToAddTo = newFolderIds.filter(id => !currentFolderIds.includes(id));
+      for (const folderId of foldersToAddTo) {
+        dispatch(addCatalogToFolder({
+          folderId,
+          catalogId: catalog.id
+        }));
       }
 
       logger.log('Catalog updated:', {
         catalogId: catalog.id,
         newName: catalogName,
-        oldFolderId: currentFolderId,
-        newFolderId: selectedFolder
+        removedFolders: foldersToRemoveFrom,
+        addedFolders: foldersToAddTo
       });
 
       showSuccessToast(
@@ -96,8 +185,6 @@ const EditCatalogModal = ({ isOpen, onClose, catalog }) => {
   };
 
   const handleClose = () => {
-    setCatalogName(catalog?.name || '');
-    setSelectedFolder('');
     onClose();
   };
 
@@ -105,46 +192,146 @@ const EditCatalogModal = ({ isOpen, onClose, catalog }) => {
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} size="md">
-      <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Edit Catalog</ModalHeader>
-        <ModalCloseButton />
+      <ModalOverlay bg="rgba(0, 0, 0, 0.4)" backdropFilter="blur(8px)" />
+      <ModalContent 
+        borderRadius="lg" 
+        bg="white" 
+        boxShadow="0 4px 20px rgba(0, 0, 0, 0.1)"
+      >
+        <ModalHeader 
+          fontFamily="Space Grotesk" 
+          fontSize="xl" 
+          color="var(--rich-black)"
+        >
+          Edit Catalog
+        </ModalHeader>
+        <ModalCloseButton 
+          color="var(--ink-grey)" 
+          _hover={{ color: "var(--warm-brown)" }} 
+        />
         <ModalBody>
-          <VStack spacing={4}>
+          <VStack spacing={6}>
             <FormControl isRequired>
-              <FormLabel>Catalog Name</FormLabel>
-              <Input
+              <FloatingLabelInput
                 value={catalogName}
-                onChange={(e) => setCatalogName(e.target.value)}
-                placeholder="Enter catalog name"
-                autoFocus
+                onChange={(e) => {
+                  setCatalogName(e.target.value);
+                  setShowError(false);
+                }}
+                placeholder="Catalog Name"
+                isRequired={true}
+                showError={showError}
               />
             </FormControl>
 
             {folders.length > 0 && (
               <FormControl>
-                <FormLabel>Assign to Folder (Optional)</FormLabel>
-                <Select
-                  value={selectedFolder}
-                  onChange={(e) => setSelectedFolder(e.target.value)}
-                  placeholder="Select a folder"
+                <Text 
+                  fontSize="sm" 
+                  mb={2} 
+                  fontFamily="Inter" 
+                  color="var(--ink-grey)"
                 >
-                  {folders.map(folder => (
-                    <option key={folder.id} value={folder.id}>
-                      {folder.name}
-                    </option>
-                  ))}
-                </Select>
+                  Assign to Folders (Optional)
+                </Text>
+                <Box position="relative">
+                  <ChakraReactSelect
+                    options={folderOptions}
+                    value={selectedFolders}
+                    onChange={handleFolderSelect}
+                    isMulti
+                    closeMenuOnSelect={false}
+                    placeholder="Select folders"
+                    isClearable
+                    menuPortalTarget={document.body}
+                    styles={{ 
+                      menuPortal: base => ({ ...base, zIndex: 9999 }),
+                      control: (base, state) => ({
+                        ...base,
+                        borderColor: state.isFocused ? 'var(--warm-brown)' : 'var(--shadow)',
+                        boxShadow: state.isFocused ? '0 0 0 1px var(--warm-brown)' : 'none',
+                        outline: 'none',
+                        '&:hover': {
+                          borderColor: 'var(--warm-brown)',
+                        },
+                        fontFamily: 'Space Grotesk'
+                      }),
+                      menu: (base) => ({
+                        ...base,
+                        fontFamily: 'Space Grotesk',
+                        zIndex: 9999,
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                        border: '1px solid var(--shadow)'
+                      }),
+                      option: (base, state) => ({
+                        ...base,
+                        backgroundColor: state.isSelected 
+                          ? 'var(--warm-brown)' 
+                          : state.isFocused 
+                            ? 'var(--highlight)' 
+                            : base.backgroundColor,
+                        color: state.isSelected ? 'white' : 'var(--rich-black)',
+                        '&:active': {
+                          backgroundColor: 'var(--warm-brown)'
+                        }
+                      }),
+                      multiValue: (base) => ({
+                        ...base,
+                        backgroundColor: 'var(--highlight)',
+                        border: '1px solid var(--shadow)',
+                        borderRadius: '16px'
+                      }),
+                      multiValueLabel: (base) => ({
+                        ...base,
+                        color: 'var(--rich-black)',
+                        fontFamily: 'Inter',
+                        fontSize: '14px'
+                      }),
+                      multiValueRemove: (base) => ({
+                        ...base,
+                        '&:hover': {
+                          backgroundColor: 'transparent',
+                          color: 'var(--warm-brown)'
+                        }
+                      }),
+                      placeholder: (base) => ({
+                        ...base,
+                        color: 'var(--ink-grey)'
+                      }),
+                      dropdownIndicator: (base) => ({
+                        ...base,
+                        color: 'var(--ink-grey)',
+                        '&:hover': {
+                          color: 'var(--warm-brown)'
+                        }
+                      })
+                    }}
+                    noOptionsMessage={() => "No folders available"}
+                  />
+                </Box>
               </FormControl>
             )}
           </VStack>
         </ModalBody>
 
         <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={handleClose}>
+          <Button 
+            variant="ghost" 
+            mr={3} 
+            onClick={handleClose}
+            color="var(--ink-grey)"
+            fontFamily="Inter"
+            _hover={{ color: "var(--warm-brown)", bg: "var(--highlight)" }}
+          >
             Cancel
           </Button>
-          <Button colorScheme="blue" onClick={handleSave}>
+          <Button 
+            onClick={handleSave}
+            bg="var(--warm-brown)"
+            color="white"
+            fontFamily="Inter"
+            _hover={{ bg: "var(--deep-brown)" }}
+          >
             Save Changes
           </Button>
         </ModalFooter>

@@ -7,7 +7,6 @@ import {
   ModalBody,
   ModalFooter,
   ModalCloseButton,
-  Input,
   Button,
   VStack,
   Box,
@@ -19,8 +18,7 @@ import {
   Heading,
   IconButton,
   FormControl,
-  FormLabel,
-  useColorModeValue,
+  Input,
   Wrap,
   WrapItem,
   Tag,
@@ -35,22 +33,53 @@ import { useCustomToast } from '../utils/toastUtils';
 import { logger } from '../utils/logger';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
 
-// Constants
-const FOLDER_COLORS = {
-  existing: {
-    light: 'blue.100',
-    dark: 'blue.700'
-  },
-  new: {
-    light: 'green.100',
-    dark: 'green.700'
-  }
-};
-
 // Helper function to truncate addresses
 const truncateAddress = (address) => {
   if (!address) return '';
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+};
+
+// Custom Floating Label Input Component
+const FloatingLabelInput = ({ value, onChange, placeholder, isRequired, showError, ...props }) => {
+  return (
+    <Box position="relative" width="100%">
+      <Input
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        borderColor={showError ? "red.500" : "var(--shadow)"}
+        _hover={{ borderColor: "var(--warm-brown)" }}
+        _focus={{ 
+          borderColor: "var(--warm-brown)",
+          boxShadow: "0 0 0 1px var(--warm-brown)"
+        }}
+        pt={value ? "16px" : "8px"}
+        pb={value ? "8px" : "8px"}
+        fontFamily="Space Grotesk"
+        {...props}
+      />
+      {value && (
+        <Text
+          position="absolute"
+          top="2px"
+          left="16px"
+          fontSize="xs"
+          color={showError ? "red.500" : "var(--ink-grey)"}
+          fontFamily="Inter"
+          pointerEvents="none"
+          transition="all 0.2s"
+        >
+          {placeholder} {isRequired && "*"}
+        </Text>
+      )}
+      {showError && (
+        <Alert status="error" mt={2} py={2} px={3} borderRadius="md" opacity={0.8}>
+          <AlertIcon />
+          <Text fontSize="sm" fontFamily="Inter">This field is required</Text>
+        </Alert>
+      )}
+    </Box>
+  );
 };
 
 // Artifact Selector Component
@@ -100,7 +129,7 @@ const ArtifactSelector = ({ selectedArtifacts, onSelectArtifact, searchTerm }) =
 
   if (!searchTerm.trim()) {
     return (
-      <Box p={4} textAlign="center" color="gray.500">
+      <Box p={4} textAlign="center" color="var(--ink-grey)" fontFamily="Fraunces">
         Begin typing to search your library
       </Box>
     );
@@ -118,19 +147,26 @@ const ArtifactSelector = ({ selectedArtifacts, onSelectArtifact, searchTerm }) =
             selected => 
               selected.id?.tokenId === nft.id?.tokenId &&
               selected.contract?.address === nft.contract?.address
-          ) ? "blue.50" : "white"}
-          _hover={{ bg: "gray.50" }}
+          ) ? "var(--highlight)" : "white"}
+          _hover={{ bg: "var(--highlight)" }}
           cursor="pointer"
           onClick={() => onSelectArtifact(nft)}
+          borderWidth="1px"
+          borderColor="var(--shadow)"
+          mb={1}
         >
           <Box flex={1}>
-            <Text fontWeight="medium">{nft.title}</Text>
-            <Text fontSize="xs" color="gray.600">{nft.walletNickname}</Text>
+            <Text fontWeight="medium" fontFamily="Space Grotesk" color="var(--rich-black)">
+              {nft.title}
+            </Text>
+            <Text fontSize="xs" color="var(--ink-grey)" fontFamily="Inter">
+              {nft.walletNickname}
+            </Text>
           </Box>
         </Flex>
       ))}
       {filteredNFTs.length === 0 && (
-        <Text color="gray.500" p={4} textAlign="center">
+        <Text color="var(--ink-grey)" p={4} textAlign="center" fontFamily="Fraunces">
           No artifacts found matching "{searchTerm}"
         </Text>
       )}
@@ -162,10 +198,12 @@ const SelectedArtifactItem = ({ artifact, onRemove }) => {
     <Flex
       width="100%"
       p={2}
-      bg="blue.50"
+      bg="var(--highlight)"
       borderRadius="md"
       alignItems="center"
       gap={3}
+      borderWidth="1px"
+      borderColor="var(--shadow)"
     >
       <Box width="40px" height="40px" borderRadius="md" overflow="hidden" flexShrink={0}>
         <Image
@@ -178,10 +216,10 @@ const SelectedArtifactItem = ({ artifact, onRemove }) => {
         />
       </Box>
       <Box flex={1}>
-        <Text fontWeight="medium" fontSize="sm">
+        <Text fontWeight="medium" fontSize="sm" fontFamily="Space Grotesk" color="var(--rich-black)">
           {artifact.title || `Token ID: ${artifact.id?.tokenId}`}
         </Text>
-        <Text fontSize="xs" color="gray.600">
+        <Text fontSize="xs" color="var(--ink-grey)" fontFamily="Inter">
           {truncateAddress(artifact.walletId)}
         </Text>
       </Box>
@@ -191,6 +229,8 @@ const SelectedArtifactItem = ({ artifact, onRemove }) => {
         variant="ghost"
         onClick={() => onRemove(artifact)}
         aria-label="Remove artifact"
+        color="var(--ink-grey)"
+        _hover={{ color: "var(--warm-brown)" }}
       />
     </Flex>
   );
@@ -212,10 +252,6 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
   const dispatch = useDispatch();
   const folders = useSelector(selectAllFolders);
   const { showSuccessToast, showErrorToast } = useCustomToast();
-
-  // Colors
-  const existingFolderBg = useColorModeValue(FOLDER_COLORS.existing.light, FOLDER_COLORS.existing.dark);
-  const newFolderBg = useColorModeValue(FOLDER_COLORS.new.light, FOLDER_COLORS.new.dark);
 
   // Form state
   const [formState, setFormState] = useState(INITIAL_FORM_STATE);
@@ -253,43 +289,25 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
     });
   }, [handleFormUpdate]);
 
-  const handleFolderInputChange = useCallback((value) => {
-    handleFormUpdate({
-      folderSearchTerm: value
-    });
+  // Handle folder select with multi-select
+  const handleFolderSelect = useCallback((options) => {
+    if (options && options.length > 0) {
+      const selectedFolders = options.map(option => ({
+        id: option.value,
+        name: option.label,
+        isNew: false
+      }));
+      
+      handleFormUpdate({
+        selectedFolders: selectedFolders
+      });
+      
+    } else {
+      handleFormUpdate({
+        selectedFolders: []
+      });
+    }
   }, [handleFormUpdate]);
-
-  const handleFolderSelect = useCallback((option) => {
-    if (!option) return;
-    
-    setFormState(prev => {
-      // Prevent duplicate folder selections
-      if (prev.selectedFolders.some(f => f.id === option.value)) {
-        return prev;
-      }
-  
-      const newFolder = {
-        id: option.isNew ? `folder-${Date.now()}` : option.value, // Fix for new folder IDs
-        name: option.isNew ? option.name : option.label,
-        isNew: option.isNew
-      };
-  
-      logger.log('Selected folder:', newFolder);
-  
-      return {
-        ...prev,
-        selectedFolders: [...prev.selectedFolders, newFolder],
-        folderSearchTerm: ''
-      };
-    });
-  }, []);
-
-  const handleRemoveFolder = useCallback((folderId) => {
-    setFormState(prev => ({
-      ...prev,
-      selectedFolders: prev.selectedFolders.filter(f => f.id !== folderId)
-    }));
-  }, []);
 
   const handleAddArtifact = useCallback((nft) => {
     setFormState(prev => {
@@ -320,30 +338,14 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
 
   // Folder options
   const folderOptions = useMemo(() => {
-    const existingFolders = folders
+    return folders
       .filter(folder => !folder.isSystem)
       .map(folder => ({
         value: folder.id,
-        label: folder.name,
-        isNew: false
-      }));
-
-    const searchTerm = formState.folderSearchTerm?.trim();
-    if (searchTerm && !folders.some(f => 
-      f.name.toLowerCase() === searchTerm.toLowerCase()
-    )) {
-      return [
-        {
-          value: `new-${searchTerm}`,
-          label: `Create "${searchTerm}" folder`,
-          isNew: true,
-          name: searchTerm
-        },
-        ...existingFolders
-      ];
-    }
-    return existingFolders;
-  }, [folders, formState.folderSearchTerm]);
+        label: folder.name
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [folders]);
 
   const handleCreateCatalog = async () => {
     if (!formState.catalogName.trim()) {
@@ -389,27 +391,11 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
       });
   
       for (const folderInfo of formState.selectedFolders) {
-        if (folderInfo.isNew) {
-          // First create the folder
-          const newFolderId = `folder-${Date.now()}`;
-          await dispatch(addFolder({
-            id: newFolderId,
-            name: folderInfo.name,
-            description: ''
-          }));
-  
-          // Then create the relationship
-          await dispatch(addCatalogToFolder({
-            folderId: newFolderId,
-            catalogId: newCatalogId
-          }));
-        } else {
-          // Add to existing folder
-          await dispatch(addCatalogToFolder({
-            folderId: folderInfo.id,
-            catalogId: newCatalogId
-          }));
-        }
+        // Add to existing folder
+        await dispatch(addCatalogToFolder({
+          folderId: folderInfo.id,
+          catalogId: newCatalogId
+        }));
       }
   
       logger.log('Catalog creation completed:', {
@@ -417,14 +403,13 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
         name: formState.catalogName,
         assignedFolders: formState.selectedFolders.map(f => ({
           id: f.id,
-          name: f.name,
-          isNew: f.isNew
+          name: f.name
         }))
       });
   
       showSuccessToast(
-        "Success",
-        `Created catalog "${formState.catalogName.trim()}" with ${formState.selectedFolders.length} folder(s)`
+        "Catalog Created",
+        `Created catalog "${formState.catalogName.trim()}" with ${formState.artifacts.length} artifacts`
       );
       
       onClose();
@@ -443,78 +428,151 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
     }
   };
 
+  const handleClose = () => {
+    setFormState(INITIAL_FORM_STATE);
+    onClose();
+  };
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
-      <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>New Catalog</ModalHeader>
-        <ModalCloseButton />
+    <Modal isOpen={isOpen} onClose={handleClose} size="lg">
+      <ModalOverlay bg="rgba(0, 0, 0, 0.4)" backdropFilter="blur(8px)" />
+      <ModalContent 
+        borderRadius="lg" 
+        bg="white" 
+        boxShadow="0 4px 20px rgba(0, 0, 0, 0.1)"
+      >
+        <ModalHeader 
+          fontFamily="Space Grotesk" 
+          fontSize="xl" 
+          color="var(--rich-black)"
+        >
+          Create New Catalog
+        </ModalHeader>
+        <ModalCloseButton 
+          color="var(--ink-grey)" 
+          _hover={{ color: "var(--warm-brown)" }} 
+        />
         <ModalBody>
           <VStack spacing={6} align="stretch">
             {/* Catalog Name Input */}
             <FormControl isRequired>
-              <FormLabel>Catalog Name</FormLabel>
-              <Input
+              <FloatingLabelInput
                 value={formState.catalogName}
                 onChange={handleCatalogNameChange}
-                placeholder="Enter catalog name"
+                placeholder="Catalog Name"
+                isRequired={true}
+                showError={formState.showError}
               />
-              {formState.showError && (
-                <Alert status="error" mt={2} py={2} px={3} borderRadius="md">
-                  <AlertIcon />
-                  <Text fontSize="sm">Catalog name is required</Text>
-                </Alert>
-              )}
             </FormControl>
 
             {/* Folder Selection */}
             <FormControl>
-              <FormLabel>Add to Folders (Optional)</FormLabel>
-              <ChakraReactSelect
-                options={folderOptions}
-                value={null}
-                inputValue={formState.folderSearchTerm}
-                onInputChange={handleFolderInputChange}
-                onChange={handleFolderSelect}
-                placeholder="Select or create folder"
-                isClearable
-                menuPortalTarget={document.body}
-                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
-                isDisabled={formState.isSubmitting}
-              />
-              
-              {formState.selectedFolders.length > 0 && (
-                <Box mt={2}>
-                  <Wrap spacing={2}>
-                    {formState.selectedFolders.map(folder => (
-                      <WrapItem key={folder.id}>
-                        <Tag
-                          size="md"
-                          borderRadius="full"
-                          variant="subtle"
-                          bg={folder.isNew ? newFolderBg : existingFolderBg}
-                        >
-                          <TagLabel>{folder.name}</TagLabel>
-                          <TagCloseButton 
-                            onClick={() => handleRemoveFolder(folder.id)}
-                            isDisabled={formState.isSubmitting}
-                          />
-                        </Tag>
-                      </WrapItem>
-                    ))}
-                  </Wrap>
-                </Box>
-              )}
+              <Text 
+                fontSize="sm" 
+                mb={2} 
+                fontFamily="Inter" 
+                color="var(--ink-grey)"
+              >
+                Add to Folders (Optional)
+              </Text>
+              <Box position="relative">
+                <ChakraReactSelect
+                  options={folderOptions}
+                  value={formState.selectedFolders.map(f => ({ value: f.id, label: f.name }))}
+                  onChange={handleFolderSelect}
+                  isMulti
+                  closeMenuOnSelect={false}
+                  placeholder="Select folders"
+                  isClearable
+                  menuPortalTarget={document.body}
+                  styles={{ 
+                    menuPortal: base => ({ ...base, zIndex: 9999 }),
+                    control: (base, state) => ({
+                      ...base,
+                      borderColor: state.isFocused ? 'var(--warm-brown)' : 'var(--shadow)',
+                      boxShadow: state.isFocused ? '0 0 0 1px var(--warm-brown)' : 'none',
+                      outline: 'none',
+                      '&:hover': {
+                        borderColor: 'var(--warm-brown)',
+                      },
+                      fontFamily: 'Space Grotesk'
+                    }),
+                    menu: (base) => ({
+                      ...base,
+                      fontFamily: 'Space Grotesk',
+                      zIndex: 9999,
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      border: '1px solid var(--shadow)'
+                    }),
+                    option: (base, state) => ({
+                      ...base,
+                      backgroundColor: state.isSelected 
+                        ? 'var(--warm-brown)' 
+                        : state.isFocused 
+                          ? 'var(--highlight)' 
+                          : base.backgroundColor,
+                      color: state.isSelected ? 'white' : 'var(--rich-black)',
+                      '&:active': {
+                        backgroundColor: 'var(--warm-brown)'
+                      }
+                    }),
+                    multiValue: (base) => ({
+                      ...base,
+                      backgroundColor: 'var(--highlight)',
+                      border: '1px solid var(--shadow)',
+                      borderRadius: '16px'
+                    }),
+                    multiValueLabel: (base) => ({
+                      ...base,
+                      color: 'var(--rich-black)',
+                      fontFamily: 'Inter',
+                      fontSize: '14px'
+                    }),
+                    multiValueRemove: (base) => ({
+                      ...base,
+                      '&:hover': {
+                        backgroundColor: 'transparent',
+                        color: 'var(--warm-brown)'
+                      }
+                    }),
+                    placeholder: (base) => ({
+                      ...base,
+                      color: 'var(--ink-grey)'
+                    }),
+                    dropdownIndicator: (base) => ({
+                      ...base,
+                      color: 'var(--ink-grey)',
+                      '&:hover': {
+                        color: 'var(--warm-brown)'
+                      }
+                    })
+                  }}
+                  noOptionsMessage={() => "No folders available"}
+                  isDisabled={formState.isSubmitting}
+                />
+              </Box>
             </FormControl>
 
             {/* Selected Artifacts Section */}
             {formState.artifacts.length > 0 && (
               <Box>
-                <Heading size="sm" mb={2}>
+                <Text 
+                  fontSize="sm" 
+                  mb={2} 
+                  fontFamily="Inter" 
+                  color="var(--ink-grey)"
+                >
                   Selected Artifacts ({formState.artifacts.length})
-                </Heading>
-                <Box maxHeight="300px" overflowY="auto">
-                  <VStack spacing={2}>
+                </Text>
+                <Box 
+                  maxHeight="200px" 
+                  overflowY="auto"
+                  borderWidth="1px"
+                  borderColor="var(--shadow)"
+                  borderRadius="md"
+                  p={2}
+                >
+                  <VStack spacing={2} align="stretch">
                     {formState.artifacts.map(artifact => (
                       <SelectedArtifactItem
                         key={`${artifact.contract?.address}-${artifact.id?.tokenId}`}
@@ -531,12 +589,18 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
             {!initialArtifacts.length && (
               <>
                 <FormControl>
-                  <FormLabel>Search Artifacts</FormLabel>
-                  <Input
-                    placeholder="Search library artifacts"
+                  <Text 
+                    fontSize="sm" 
+                    mb={2} 
+                    fontFamily="Inter" 
+                    color="var(--ink-grey)"
+                  >
+                    Search Artifacts
+                  </Text>
+                  <FloatingLabelInput
                     value={formState.searchTerm}
                     onChange={handleSearchTermChange}
-                    size="lg"
+                    placeholder="Search library artifacts"
                     isDisabled={formState.isSubmitting}
                   />
                 </FormControl>
@@ -559,14 +623,20 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
           <Button 
             variant="ghost" 
             mr={3} 
-            onClick={onClose}
+            onClick={handleClose}
+            color="var(--ink-grey)"
+            fontFamily="Inter"
+            _hover={{ color: "var(--warm-brown)", bg: "var(--highlight)" }}
             isDisabled={formState.isSubmitting}
           >
             Cancel
           </Button>
           <Button 
-            colorScheme="blue" 
             onClick={handleCreateCatalog}
+            bg="var(--warm-brown)"
+            color="white"
+            fontFamily="Inter"
+            _hover={{ bg: "var(--deep-brown)" }}
             isLoading={formState.isSubmitting}
             loadingText="Creating..."
           >
