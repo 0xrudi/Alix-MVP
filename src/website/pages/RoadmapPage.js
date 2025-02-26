@@ -102,7 +102,7 @@ const RoadmapPage = () => {
               fontFamily="Fraunces"
               maxW="3xl"
             >
-              Follow our journey as we build the future of Web3 artifact management. 
+              Follow our journey while your personal library is under construction. 
               Track our progress, see completed features, and get a glimpse of what's coming next.
             </Text>
           </Box>
