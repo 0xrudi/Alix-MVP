@@ -1,9 +1,9 @@
-// src/redux/slices/catalogSlice.js
 import { createSlice, createSelector } from '@reduxjs/toolkit';
 import { selectSpamNFTs } from './nftSlice';
 import { logger } from '../../utils/logger';
 
 // Base selectors
+const selectCatalogState = state => state.catalogs;
 const selectCatalogItems = state => state.catalogs.items;
 const selectSystemCatalogsBase = state => state.catalogs.systemCatalogs;
 
@@ -105,7 +105,6 @@ const catalogSlice = createSlice({
 export const selectAllCatalogs = createSelector(
   [selectCatalogItems, selectSystemCatalogsBase],
   (items, systemCatalogs) => {
-    console.log('Catalog items:', items); // Debug log
     const itemArray = Object.values(items || {});
     const systemArray = Object.values(systemCatalogs || {});
     return [...itemArray, ...systemArray];
@@ -115,7 +114,6 @@ export const selectAllCatalogs = createSelector(
 export const selectUserCatalogs = createSelector(
   [selectCatalogItems],
   (items) => {
-    console.log('User catalogs:', items); // Debug log
     return Object.values(items || {}).filter(cat => !cat.isSystem);
   }
 );
