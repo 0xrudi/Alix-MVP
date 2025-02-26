@@ -24,6 +24,8 @@ import {
   selectAutomatedCatalogs,
   removeCatalog,
   updateCatalog,
+  updateSpamCatalog, 
+  updateUnorganizedCatalog,
 } from '../redux/slices/catalogSlice';
 import { 
   selectTotalNFTs, 
@@ -51,7 +53,6 @@ import FolderCard from './FolderCard';
 import EditCatalogModal from './EditCatalogModal';
 import EditFolderModal from './EditFolderModal';
 import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
-import StateDebugger from './StateDebugger';
 
 // Hooks
 import { useCustomToast } from '../utils/toastUtils';
@@ -77,70 +78,17 @@ const LibraryPage = () => {
   const wallets = useSelector(state => state.wallets.list);
   const nfts = useSelector(state => state.nfts.byWallet);
   const catalogs = useSelector(selectAllCatalogs);
-  const catalogItems = useSelector(state => {
-    console.log('Full catalog state:', state.catalogs);
-    console.log('Catalog items:', state.catalogs.items);
-    return state.catalogs.items || {};
-  });
+  const catalogItems = useSelector(state => state.catalogs.items) || {};
+  const systemCatalogs = useSelector(state => state.catalogs.systemCatalogs) || {};  
   const folders = useSelector(selectAllFolders);
   const folderRelationships = useSelector(state => state.folders.relationships);
   const totalNFTs = useSelector(selectTotalNFTs);
   const automatedCatalogs = useSelector(selectAutomatedCatalogs);
 
-  const debugCatalogState = () => {
-    console.group('Unassigned Catalogs Debug');
-    console.log('Full catalogs state:', catalogs);
-    console.log('Catalogs.items:', catalogs.items);
-    console.log('All catalogs array:', Object.values(catalogs.items || {}));
-    console.log('Folder relationships:', folderRelationships);
-    
-    // Get all assigned catalog IDs
-    const assignedIds = Object.values(folderRelationships)
-      .flat()
-      .filter(Boolean);
-    
-    console.log('Assigned catalog IDs:', assignedIds);
-    
-    // Get all catalog IDs
-    const allCatalogIds = Object.values(catalogs.items || {})
-      .map(cat => cat.id);
-    
-    console.log('All catalog IDs:', allCatalogIds);
-    
-    // Find actually unassigned IDs
-    const unassignedIds = allCatalogIds
-      .filter(id => !assignedIds.includes(id));
-    
-    console.log('Calculated unassigned IDs:', unassignedIds);
-    console.groupEnd();
-    
-    return unassignedIds;
-  };
-
-  console.log('Catalogs from selector:', catalogs);
-  console.log('Catalog items:', catalogs.items);
-  
-  const unassignedCatalogs = useMemo(() => {
-    // Get all assigned catalog IDs from folder relationships
-    const assignedCatalogIds = Object.values(folderRelationships)
-      .flat()
-      .filter(Boolean);
-  
-    // Get all non-system catalogs from the items object
-    return Object.values(catalogItems)
-      .filter(catalog => 
-        // Make sure catalog exists and is not a system catalog
-        catalog && 
-        !catalog.isSystem &&
-        // Make sure it's not in any folder
-        !assignedCatalogIds.includes(catalog.id)
-      );
-  }, [catalogItems, folderRelationships]);
-
   // Custom Hooks
   const { showSuccessToast, showInfoToast } = useCustomToast();
   const { handleError } = useErrorHandler();
-  const { buttonSize, headingSize, showFullText } = useResponsive();
+  const { buttonSize, showFullText } = useResponsive();
 
   // Local State
   const [selectedNFTs, setSelectedNFTs] = useState([]);
@@ -161,14 +109,13 @@ const LibraryPage = () => {
   const [editingFolder, setEditingFolder] = useState(null);
   const [viewMode, setViewMode] = useState('list');
 
-
   // Initialize tab from URL if present
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
     if (tab === 'nfts') setActiveTab(0);
     if (tab === 'catalogs') setActiveTab(1);
-  }, [location.search]); // Only depend on search params
+  }, [location.search]);
 
   // Initialize all NFTs
   useEffect(() => {
@@ -183,9 +130,9 @@ const LibraryPage = () => {
       })
     );
     setFilteredNFTs(allNFTs);
-  }, [nfts, setFilteredNFTs]); // Add proper dependencies
+  }, [nfts]);
 
-  // Callback handlers
+  // Utility functions for system catalogs
   const getSpamCount = useCallback(() => {
     return Object.values(nfts).reduce((total, walletNFTs) =>
       total + Object.values(walletNFTs).reduce((walletTotal, networkNFTs) =>
@@ -196,45 +143,128 @@ const LibraryPage = () => {
     , 0);
   }, [nfts]);
 
+  // Function to get NFTs that are marked as spam
+  const getSpamNFTs = useCallback(() => {
+    const spamNFTs = [];
+    
+    Object.entries(nfts).forEach(([walletId, walletNFTs]) => {
+      Object.entries(walletNFTs).forEach(([network, networkNFTs]) => {
+        const spamERC721 = (networkNFTs.ERC721 || [])
+          .filter(nft => nft.isSpam)
+          .map(nft => ({ ...nft, walletId, network }));
+          
+        const spamERC1155 = (networkNFTs.ERC1155 || [])
+          .filter(nft => nft.isSpam)
+          .map(nft => ({ ...nft, walletId, network }));
+          
+        spamNFTs.push(...spamERC721, ...spamERC1155);
+      });
+    });
+    
+    return spamNFTs;
+  }, [nfts]);
+
+  // Function to get unorganized NFTs
   const getUnorganizedNFTs = useCallback(() => {
     try {
       // Create a Set of all NFTs in catalogs for faster lookup
-      const allCatalogs = [
-        ...Object.values(catalogs.items || {}),
-        ...Object.values(catalogs.systemCatalogs || {})
-      ];
+      const catalogsFromItems = Object.values(catalogItems || {});
+      const catalogsFromSystem = Object.values(systemCatalogs || {});
+      const allCatalogObjects = [...catalogsFromItems, ...catalogsFromSystem];
       
-      // Create a Set of catalog NFT identifiers
-      const catalogedNFTs = new Set(
-        allCatalogs.flatMap(catalog => 
-          (catalog.nftIds || []).map(nft => `${nft.tokenId}-${nft.contractAddress}`)
-        )
-      );
+      // Create a Set of catalog NFT identifiers for efficient lookups
+      const catalogedNFTs = new Set();
+      
+      allCatalogObjects.forEach(catalog => {
+        if (catalog && Array.isArray(catalog.nftIds)) {
+          catalog.nftIds.forEach(nft => {
+            const key = `${nft.tokenId}-${nft.contractAddress}-${nft.network}`;
+            catalogedNFTs.add(key);
+          });
+        }
+      });
   
-      const unorganizedNFTs = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
-        Object.entries(walletNFTs || {}).flatMap(([network, networkNFTs]) => {
-          if (!networkNFTs) return [];
+      // Find NFTs that aren't in any catalog and aren't spam
+      const unorganizedNFTs = [];
+      
+      Object.entries(nfts).forEach(([walletId, walletNfts]) => {
+        Object.entries(walletNfts || {}).forEach(([network, networkNfts]) => {
+          if (!networkNfts) return;
           
-          const allNFTs = [
-            ...(networkNFTs.ERC721 || []), 
-            ...(networkNFTs.ERC1155 || [])
+          const allWalletNFTs = [
+            ...(networkNfts.ERC721 || []), 
+            ...(networkNfts.ERC1155 || [])
           ];
           
-          return allNFTs.filter(nft => {
-            if (!nft || !nft.id || !nft.contract) return false;
-            const nftKey = `${nft.id.tokenId}-${nft.contract.address}`;
-            return !nft.isSpam && !catalogedNFTs.has(nftKey);
+          allWalletNFTs.forEach(nft => {
+            if (!nft || !nft.id || !nft.contract) return;
+            
+            const nftKey = `${nft.id.tokenId}-${nft.contract.address}-${network}`;
+            if (!nft.isSpam && !catalogedNFTs.has(nftKey)) {
+              unorganizedNFTs.push({
+                ...nft,
+                network,
+                walletId
+              });
+            }
           });
-        })
-      );
+        });
+      });
   
       return unorganizedNFTs;
     } catch (error) {
       console.error('Error in getUnorganizedNFTs:', error);
       return [];
     }
-  }, [nfts, catalogs]);
+  }, [nfts, catalogItems, systemCatalogs]);
 
+  // Unassigned catalogs calculation
+  const unassignedCatalogs = useMemo(() => {
+    // Get all assigned catalog IDs from folder relationships
+    const assignedCatalogIds = Object.values(folderRelationships)
+      .flat()
+      .filter(Boolean);
+  
+    // Get all non-system catalogs from the items object
+    return Object.values(catalogItems)
+      .filter(catalog => 
+        // Make sure catalog exists and is not a system catalog
+        catalog && 
+        !catalog.isSystem &&
+        // Make sure it's not in any folder
+        !assignedCatalogIds.includes(catalog.id)
+      );
+  }, [catalogItems, folderRelationships]);
+
+  // Update system catalogs when NFTs change
+  useEffect(() => {
+    // Update spam catalog
+    const spamNFTs = getSpamNFTs();
+    if (spamNFTs.length > 0) {
+      dispatch(updateSpamCatalog(spamNFTs));
+    }
+  }, [getSpamNFTs, dispatch]);
+
+  // Update unorganized catalog - separate to avoid dependency issues
+  useEffect(() => {
+    const unorganizedNFTs = getUnorganizedNFTs();
+    if (unorganizedNFTs.length > 0) {
+      dispatch(updateUnorganizedCatalog(unorganizedNFTs));
+    }
+  }, [getUnorganizedNFTs, dispatch]);
+
+  // Calculated counts for system catalogs
+  const automatedCatalogsWithCounts = useMemo(() => {
+    return Object.values(systemCatalogs).map(catalog => ({
+      ...catalog,
+      count: catalog.id === 'spam' ? getSpamCount() :
+             catalog.id === 'unorganized' ? getUnorganizedNFTs().length : 0,
+      // Add this to ensure nftIds is always an array
+      nftIds: catalog.nftIds || []
+    }));
+  }, [systemCatalogs, getSpamCount, getUnorganizedNFTs]);
+
+  // Handle removing NFTs from a catalog
   const handleRemoveFromCatalog = (catalogId, nftsToRemove) => {
     const catalog = catalogs.find(c => c.id === catalogId);
     if (!catalog) return;
@@ -256,6 +286,7 @@ const LibraryPage = () => {
     );
   };
 
+  // Handle search in the NFT grid
   const handleSearch = (value) => {
     setSearchTerm(value);
     // Convert nested nfts object structure into flat array before filtering
@@ -291,15 +322,18 @@ const LibraryPage = () => {
     }
   };
   
+  // Change view mode between list and grid
   const handleViewModeChange = (mode) => {
     setViewMode(mode);
   };
 
+  // Handle clearing selections
   const handleClearSelections = useCallback(() => {
     setSelectedNFTs([]);
     setIsSelectMode(false);
   }, []);
 
+  // Add selected NFTs to an existing catalog
   const handleAddToExistingCatalog = useCallback((catalogId) => {
     const existingCatalog = catalogItems[catalogId];
     if (!existingCatalog) return;
@@ -345,22 +379,26 @@ const LibraryPage = () => {
     logger.log('Added NFTs to catalog:', { catalogId, count: newNftIds.length });
   }, [catalogItems, selectedNFTs, dispatch, showSuccessToast, showInfoToast]);
 
+  // Handle editing a catalog
   const handleEditCatalog = useCallback((catalog) => {
     logger.log('Editing catalog:', catalog);
     setEditingCatalog(catalog);
     setIsEditCatalogModalOpen(true);
   }, []);
   
+  // Handle editing a folder
   const handleEditFolder = useCallback((folder) => {
     logger.log('Editing folder:', folder);
     setEditingFolder(folder);
     setIsEditFolderModalOpen(true);
   }, []);
   
+  // Handle opening a catalog
   const handleOpenCatalog = useCallback((catalog) => {
     setViewingCatalog(catalog);
   }, []);
 
+  // Handle toggling spam status for NFTs
   const handleSpamToggle = useCallback((nft) => {
     dispatch(updateNFT({ 
       walletId: nft.walletId, 
@@ -373,11 +411,13 @@ const LibraryPage = () => {
     );
   }, [dispatch, showSuccessToast]);
 
+  // Handle marking selected NFTs as spam
   const handleMarkSelectedAsSpam = useCallback(() => {
     selectedNFTs.forEach(nft => handleSpamToggle(nft));
     setSelectedNFTs([]);
-  }, [handleSpamToggle, selectedNFTs]); // Add selectedNFTs to dependencies
+  }, [handleSpamToggle, selectedNFTs]);
 
+  // Handle removing NFT from selection
   const handleRemoveFromSelection = useCallback((nft) => {
     setSelectedNFTs(prev => 
       prev.filter(selected => 
@@ -385,12 +425,14 @@ const LibraryPage = () => {
         selected.contract?.address !== nft.contract?.address
       )
     );
-  }, []); // Empty dependency array is fine since we're using functional updates
+  }, []);
 
+  // Handle clicking on an NFT
   const handleNFTClick = useCallback((nft) => {
     navigate('/app/artifact', { state: { nft } });
   }, [navigate]);
 
+  // Handle selecting an NFT
   const handleNFTSelect = useCallback((nft) => {
     setSelectedNFTs(prev => {
       const isSelected = prev.some(selected => 
@@ -409,12 +451,13 @@ const LibraryPage = () => {
     });
   }, []);
 
-  // Utility functions
+  // Utility function for wallet display
   const getWalletNickname = useCallback((walletId) => {
     const wallet = wallets.find(w => w.id === walletId);
     return wallet ? (wallet.nickname || truncateAddress(wallet.address)) : 'Unknown Wallet';
   }, [wallets]);
 
+  // Get media type for filter
   const getMediaType = (nft) => {
     if (nft.metadata?.mimeType?.startsWith('video/')) return 'Video';
     if (nft.metadata?.mimeType?.startsWith('audio/')) return 'Audio';
@@ -422,10 +465,10 @@ const LibraryPage = () => {
     return 'Image';
   };
 
-  // Filter and Sort handlers
+  // Handle filtering NFTs
   const handleFilterChange = useCallback((filters) => {
-    const filteredNFTs = Object.values(nfts).flatMap(walletNFTs =>
-      Object.values(walletNFTs).flatMap(networkNFTs => {
+    const filteredNFTs = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
+      Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
         const allNFTs = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
         return allNFTs.filter(nft => {
           return Object.entries(filters).every(([category, values]) => {
@@ -450,6 +493,7 @@ const LibraryPage = () => {
     setFilteredNFTs(filteredNFTs);
   }, [nfts, getWalletNickname]);
 
+  // Handle sorting NFTs
   const handleSortChange = useCallback(({ field, ascending }) => {
     setFilteredNFTs(prev => {
       const sorted = [...prev].sort((a, b) => {
@@ -487,155 +531,148 @@ const LibraryPage = () => {
     [filteredNFTs, searchTerm]
   );
 
-  const automatedCatalogsWithCounts = useMemo(() => 
-    automatedCatalogs.map(catalog => ({
-      ...catalog,
-      count: catalog.id === 'spam' ? getSpamCount() :
-             catalog.id === 'unorganized' ? getUnorganizedNFTs().length : 0
-    })),
-    [automatedCatalogs, getSpamCount, getUnorganizedNFTs]
-  );
-
-// Render helper functions
-const handleRefreshNFTs = async () => {
-  setIsRefreshing(true);
-  setRefreshProgress(0);
-  
-  let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
-  let completedFetches = 0;
-
-  for (const wallet of wallets) {
-    try {
-      const result = await dispatch(fetchWalletNFTs({
-        walletId: wallet.id,
-        address: wallet.address,
-        networks: wallet.networks
-      })).unwrap();
-
-      if (result.includesNewNFTs) {
-        showSuccessToast(
-          "New NFTs Found", 
-          `Found new or updated NFTs for ${wallet.nickname || wallet.address}`
-        );
-      }
-      
-      completedFetches++;
-      setRefreshProgress((completedFetches / totalFetches) * 100);
-    } catch (error) {
-      handleError(error, `refreshing NFTs for ${wallet.address}`);
-    }
-  }
-
-  setIsRefreshing(false);
-  showSuccessToast(
-    "Refresh Complete", 
-    "Your NFT collection has been updated."
-  );
-};
-
-const handleDeleteFolder = (folderId) => {
-  dispatch(removeFolder(folderId));
-  showInfoToast("Folder Deleted", "The folder has been deleted successfully.");
-};
-
-const handleDeleteCatalog = useCallback((catalogId) => {
-  if (Object.keys(folderRelationships).length > 0) {
-    Object.entries(folderRelationships).forEach(([folderId, catalogs]) => {
-      if (catalogs.includes(catalogId)) {
-        dispatch(removeCatalogFromFolder({ folderId, catalogId }));
-      }
-    });
-  }
-
-  dispatch(removeCatalog(catalogId));
-  showSuccessToast("Catalog Deleted", "The catalog has been successfully removed.");
-  logger.log('Catalog deleted:', { catalogId });
-}, [dispatch, folderRelationships, showSuccessToast]);
-
-// Render Folder View
-const renderFolderView = () => {
-  if (!viewingFolder) return null;
-  
-  return (
-    <Box>
-      <Flex justify="space-between" align="center" mb={6}>
-        <Heading as="h2" size="lg">{viewingFolder.name}</Heading>
-        <StyledButton onClick={() => setViewingFolder(null)}>
-          Back to Library
-        </StyledButton>
-      </Flex>
-      
-      {viewingFolder.description && (
-        <Text mb={6} color="gray.600">{viewingFolder.description}</Text>
-      )}
-
-      <SimpleGrid 
-        columns={cardSizes[cardSize].columns}
-        spacing={2}
-        width="100%"
-      >
-        {catalogs
-          .filter(catalog => 
-            folderRelationships[viewingFolder.id]?.includes(catalog.id)
-          )
-          .map(catalog => (
-            <CatalogCard
-              key={catalog.id}
-              catalog={catalog}
-              onView={() => handleOpenCatalog(catalog)}
-              cardSize={cardSize}
-            />
-          ))}
-      </SimpleGrid>
-    </Box>
-  );
-};
-
-// Render main content based on current view
-if (viewingCatalog) {
-  return (
-    <CatalogViewPage
-      catalog={viewingCatalog}
-      onBack={() => setViewingCatalog(null)}
-      onRemoveNFTs={(nfts) => handleRemoveFromCatalog(viewingCatalog.id, nfts)}
-      onSpamToggle={handleSpamToggle}  // Changed to use the new handler
-    />
-  );
-}
-
-if (viewingFolder) {
-  return renderFolderView();
-}
-
-return (
-  <StyledContainer>
-    <VStack spacing="1.5rem" align="stretch">
-      {/* Updated Header with new styling */}
-      <Flex justify="space-between" align="center">
-        <Text
-          as="h1"
-          fontSize={{ base: "24px", md: "32px" }}
-          fontFamily="Space Grotesk"
-          letterSpacing="-0.02em"
-          color="var(--rich-black)"
-        >
-          Library
-        </Text>
-        <StyledButton
-          leftIcon={<Icon as={FaSync} />}
-          onClick={handleRefreshNFTs}
-          isLoading={isRefreshing}
-          loadingText="Refreshing..."
-          size={buttonSize}
-        >
-          {showFullText ? "Refresh Artifacts" : null}
-        </StyledButton>
-      </Flex>
+  // Helper function to refresh NFTs
+  const handleRefreshNFTs = async () => {
+    setIsRefreshing(true);
+    setRefreshProgress(0);
     
-      {isRefreshing && (
-        <Progress value={refreshProgress} size="sm" colorScheme="blue" />
-      )}
-
+    let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
+    let completedFetches = 0;
+  
+    for (const wallet of wallets) {
+      try {
+        const result = await dispatch(fetchWalletNFTs({
+          walletId: wallet.id,
+          address: wallet.address,
+          networks: wallet.networks
+        })).unwrap();
+  
+        if (result.includesNewNFTs) {
+          showSuccessToast(
+            "New NFTs Found", 
+            `Found new or updated NFTs for ${wallet.nickname || wallet.address}`
+          );
+        }
+        
+        completedFetches++;
+        setRefreshProgress((completedFetches / totalFetches) * 100);
+      } catch (error) {
+        handleError(error, `refreshing NFTs for ${wallet.address}`);
+      }
+    }
+  
+    setIsRefreshing(false);
+    showSuccessToast(
+      "Refresh Complete", 
+      "Your NFT collection has been updated."
+    );
+  };
+  
+  // Handle folder deletion
+  const handleDeleteFolder = (folderId) => {
+    dispatch(removeFolder(folderId));
+    showInfoToast("Folder Deleted", "The folder has been deleted successfully.");
+  };
+  
+  // Handle catalog deletion
+  const handleDeleteCatalog = useCallback((catalogId) => {
+    if (Object.keys(folderRelationships).length > 0) {
+      Object.entries(folderRelationships).forEach(([folderId, catalogs]) => {
+        if (catalogs.includes(catalogId)) {
+          dispatch(removeCatalogFromFolder({ folderId, catalogId }));
+        }
+      });
+    }
+  
+    dispatch(removeCatalog(catalogId));
+    showSuccessToast("Catalog Deleted", "The catalog has been successfully removed.");
+    logger.log('Catalog deleted:', { catalogId });
+  }, [dispatch, folderRelationships, showSuccessToast]);
+  
+  // Render folder view
+  const renderFolderView = () => {
+    if (!viewingFolder) return null;
+    
+    return (
+      <Box>
+        <Flex justify="space-between" align="center" mb={6}>
+          <Heading as="h2" size="lg">{viewingFolder.name}</Heading>
+          <StyledButton onClick={() => setViewingFolder(null)}>
+            Back to Library
+          </StyledButton>
+        </Flex>
+        
+        {viewingFolder.description && (
+          <Text mb={6} color="gray.600">{viewingFolder.description}</Text>
+        )}
+  
+        <SimpleGrid 
+          columns={cardSizes[cardSize].columns}
+          spacing={2}
+          width="100%"
+        >
+          {catalogs
+            .filter(catalog => 
+              folderRelationships[viewingFolder.id]?.includes(catalog.id)
+            )
+            .map(catalog => (
+              <CatalogCard
+                key={catalog.id}
+                catalog={catalog}
+                onView={() => handleOpenCatalog(catalog)}
+                cardSize={cardSize}
+              />
+            ))}
+        </SimpleGrid>
+      </Box>
+    );
+  };
+  
+  // Render main content based on current view
+  if (viewingCatalog) {
+    return (
+      <CatalogViewPage
+        catalog={viewingCatalog}
+        onBack={() => setViewingCatalog(null)}
+        onRemoveNFTs={(nfts) => handleRemoveFromCatalog(viewingCatalog.id, nfts)}
+        onSpamToggle={handleSpamToggle}
+      />
+    );
+  }
+  
+  if (viewingFolder) {
+    return renderFolderView();
+  }
+  
+  return (
+    <StyledContainer>
+      <VStack spacing="1.5rem" align="stretch">
+        {/* Header */}
+        <Flex justify="space-between" align="center">
+          <Text
+            as="h1"
+            fontSize={{ base: "24px", md: "32px" }}
+            fontFamily="Space Grotesk"
+            letterSpacing="-0.02em"
+            color="var(--rich-black)"
+          >
+            Library
+          </Text>
+          <StyledButton
+            leftIcon={<Icon as={FaSync} />}
+            onClick={handleRefreshNFTs}
+            isLoading={isRefreshing}
+            loadingText="Refreshing..."
+            size={buttonSize}
+          >
+            {showFullText ? "Refresh Artifacts" : null}
+          </StyledButton>
+        </Flex>
+      
+        {isRefreshing && (
+          <Progress value={refreshProgress} size="sm" colorScheme="blue" />
+        )}
+  
         <Tabs 
           index={activeTab} 
           onChange={setActiveTab} 
@@ -677,213 +714,209 @@ return (
             </Tab>
           </TabList>
         
-        <TabPanels>
-          {/* Artifacts Tab */}
-          <TabPanel>
-            <VStack spacing={4} align="stretch">
-              <LibraryControls
-                wallets={wallets}
-                contracts={[...new Set(Object.values(nfts).flatMap(wallet => 
-                  Object.values(wallet).flatMap(network => 
-                    [...network.ERC721, ...network.ERC1155].map(nft => nft.contract?.name)
-                  )
-                ))]}
-                networks={networks.map(n => n.label)}
-                mediaTypes={['Image', 'Video', 'Audio', '3D']}
-                onFilterChange={handleFilterChange}
-                onSortChange={handleSortChange}
-                isSelectMode={isSelectMode}
-                onSelectModeChange={setIsSelectMode}
-                onClearSelections={handleClearSelections}
-                viewMode={viewMode}
-                onViewModeChange={handleViewModeChange}
-                searchTerm={searchTerm}
-                onSearchChange={handleSearch}
-              />
-              <Text fontSize="sm" color="gray.500">
-                Showing {filteredAndSortedNFTs.length} of {totalNFTs} NFTs
-              </Text>
-              <NFTGrid
-                nfts={filteredAndSortedNFTs}
-                selectedNFTs={selectedNFTs}
-                onNFTSelect={handleNFTSelect}
-                onMarkAsSpam={handleSpamToggle}
-                isSpamFolder={false}
-                isSelectMode={isSelectMode}
-                onNFTClick={handleNFTClick}
-                viewMode={viewMode}
-                showControls={false}
-              />
-            </VStack>
-          </TabPanel>
-          
-          {/* Library Tab */}
-          <TabPanel>
-            <HStack spacing={4} mb={6}>
-              <Button
-                leftIcon={<Icon as={FaFolderPlus} />}
-                onClick={() => setIsNewFolderModalOpen(true)}
-                bg="var(--warm-brown)"
-                color="white"
-                fontFamily="Inter"
-                _hover={{
-                  bg: "var(--deep-brown)"
-                }}
-              >
-                New Folder
-              </Button>
-              
-              <Button
-                leftIcon={<Icon as={FaBook} />}
-                onClick={() => setIsNewCatalogModalOpen(true)}
-                bg="var(--warm-brown)"
-                color="white"
-                fontFamily="Inter"
-                _hover={{
-                  bg: "var(--deep-brown)"
-                }}
-              >
-                New Catalog
-              </Button>
-            </HStack>
+          <TabPanels>
+            {/* Artifacts Tab */}
+            <TabPanel>
+              <VStack spacing={4} align="stretch">
+                <LibraryControls
+                  wallets={wallets}
+                  contracts={[...new Set(Object.values(nfts).flatMap(wallet => 
+                    Object.values(wallet).flatMap(network => 
+                      [...network.ERC721, ...network.ERC1155].map(nft => nft.contract?.name)
+                    )
+                  ))]}
+                  networks={networks.map(n => n.label)}
+                  mediaTypes={['Image', 'Video', 'Audio', '3D']}
+                  onFilterChange={handleFilterChange}
+                  onSortChange={handleSortChange}
+                  isSelectMode={isSelectMode}
+                  onSelectModeChange={setIsSelectMode}
+                  onClearSelections={handleClearSelections}
+                  viewMode={viewMode}
+                  onViewModeChange={handleViewModeChange}
+                  searchTerm={searchTerm}
+                  onSearchChange={handleSearch}
+                />
+                <Text fontSize="sm" color="gray.500">
+                  Showing {filteredAndSortedNFTs.length} of {totalNFTs} NFTs
+                </Text>
+                <NFTGrid
+                  nfts={filteredAndSortedNFTs}
+                  selectedNFTs={selectedNFTs}
+                  onNFTSelect={handleNFTSelect}
+                  onMarkAsSpam={handleSpamToggle}
+                  isSpamFolder={false}
+                  isSelectMode={isSelectMode}
+                  onNFTClick={handleNFTClick}
+                  viewMode={viewMode}
+                  showControls={false}
+                />
+              </VStack>
+            </TabPanel>
+            
+            {/* Library Tab */}
+            <TabPanel>
+              <HStack spacing={4} mb={6}>
+                <Button
+                  leftIcon={<Icon as={FaFolderPlus} />}
+                  onClick={() => setIsNewFolderModalOpen(true)}
+                  bg="var(--warm-brown)"
+                  color="white"
+                  fontFamily="Inter"
+                  _hover={{
+                    bg: "var(--deep-brown)"
+                  }}
+                >
+                  New Folder
+                </Button>
+                
+                <Button
+                  leftIcon={<Icon as={FaBook} />}
+                  onClick={() => setIsNewCatalogModalOpen(true)}
+                  bg="var(--warm-brown)"
+                  color="white"
+                  fontFamily="Inter"
+                  _hover={{
+                    bg: "var(--deep-brown)"
+                  }}
+                >
+                  New Catalog
+                </Button>
+              </HStack>
+  
+              <VStack spacing={6} align="stretch">
+                {/* Folders Section */}
+                {folders.length > 0 && (
+                  <Box>
+                    <Heading as="h3" size="md" mb={4}>
+                      Folders
+                    </Heading>
+                    <SimpleGrid 
+                      columns={cardSizes[cardSize].columns}
+                      spacing={2}
+                      width="100%"
+                    >
+                      {folders.map((folder) => (
+                        <FolderCard
+                          key={`folder-${folder.id}`}
+                          folder={folder}
+                          onView={() => setViewingFolder(folder)}
+                          onEdit={() => handleEditFolder(folder)}
+                          onDelete={() => handleDeleteFolder(folder.id)}
+                          cardSize="md"
+                        />
+                      ))}
+                    </SimpleGrid>
+                  </Box>
+                )}
 
-            <VStack spacing={6} align="stretch">
-              {/* Folders Section */}
-              {folders.length > 0 && (
+                {/* Automated Catalogs Section */}
                 <Box>
                   <Heading as="h3" size="md" mb={4}>
-                    Folders
+                    Automated Catalogs
                   </Heading>
                   <SimpleGrid 
                     columns={cardSizes[cardSize].columns}
                     spacing={2}
                     width="100%"
                   >
-                    {folders.map((folder) => (
-                      <FolderCard
-                        key={`folder-${folder.id}`}
-                        folder={folder}
-                        onView={() => setViewingFolder(folder)}
-                        onEdit={() => handleEditFolder(folder)}
-                        onDelete={() => handleDeleteFolder(folder.id)}
-                        cardSize="md"  // hardcoding to md size
+                    {automatedCatalogsWithCounts.map((catalog) => (
+                      <CatalogCard
+                        key={catalog.id}
+                        catalog={{
+                          ...catalog,
+                          nftCount: catalog.count
+                        }}
+                        onView={() => handleOpenCatalog(catalog)}
+                        cardSize="md"
+                        isSystem={true}
                       />
                     ))}
                   </SimpleGrid>
                 </Box>
-              )}
 
-              {/* Automated Catalogs Section */}
-              <Box>
-                <Heading as="h3" size="md" mb={4}>
-                  Automated Catalogs
-                </Heading>
-                <SimpleGrid 
-                  columns={cardSizes[cardSize].columns}
-                  spacing={2}
-                  width="100%"
-                >
-                  {automatedCatalogsWithCounts.map((catalog) => (
-                    <CatalogCard
-                      key={catalog.id}
-                      catalog={{
-                        ...catalog,
-                        nftCount: catalog.count // Add the count to the display
-                      }}
-                      onView={() => handleOpenCatalog(catalog)}
-                      cardSize="md" // hard coding md card size
-                      isSystem={true}
-                    />
-                  ))}
-                </SimpleGrid>
-              </Box>
-
-              {/* Unassigned Catalogs Section */}
-              <Box>
-                <Heading as="h3" size="md" mb={4}>
-                  Unassigned Catalogs ({unassignedCatalogs?.length || 0})
-                </Heading>
-                {unassignedCatalogs?.length > 0 ? (
-                  <SimpleGrid 
-                    columns={cardSizes[cardSize].columns}
-                    spacing={2}
-                    width="100%"
-                  >
-                    {unassignedCatalogs.map((catalog) => {
-                      console.log('Rendering unassigned catalog:', catalog);
-                      return (
+                {/* Unassigned Catalogs Section */}
+                <Box>
+                  <Heading as="h3" size="md" mb={4}>
+                    Unassigned Catalogs ({unassignedCatalogs?.length || 0})
+                  </Heading>
+                  {unassignedCatalogs?.length > 0 ? (
+                    <SimpleGrid 
+                      columns={cardSizes[cardSize].columns}
+                      spacing={2}
+                      width="100%"
+                    >
+                      {unassignedCatalogs.map((catalog) => (
                         <CatalogCard
                           key={catalog.id}
                           catalog={catalog}
                           onView={() => handleOpenCatalog(catalog)}
                           onEdit={() => handleEditCatalog(catalog)}
                           onDelete={() => handleDeleteCatalog(catalog.id)}
-                          cardSize= "md" // hard coding md card size
+                          cardSize="md"
                         />
-                      );
-                    })}
-                  </SimpleGrid>
-                ) : (
-                  <Text color="gray.500">No unassigned catalogs</Text>
-                )}
-              </Box>
-            </VStack>
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
-    </VStack>
+                      ))}
+                    </SimpleGrid>
+                  ) : (
+                    <Text color="gray.500">No unassigned catalogs</Text>
+                  )}
+                </Box>
+              </VStack>
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
+      </VStack>
 
-    {/* Modals */}
-    <NewFolderModal 
-      isOpen={isNewFolderModalOpen}
-      onClose={() => setIsNewFolderModalOpen(false)}
-    />
-
-    <NewCatalogModal 
-      isOpen={isNewCatalogModalOpen}
-      onClose={() => {
-        setIsNewCatalogModalOpen(false);
-        setSelectedNFTs([]); 
-        setIsSelectMode(false);
-      }}
-      selectedArtifacts={selectedNFTs}
-    />
-
-    <EditCatalogModal 
-      isOpen={isEditCatalogModalOpen}
-      onClose={() => {
-        setIsEditCatalogModalOpen(false);
-        setEditingCatalog(null);
-      }}
-      catalog={editingCatalog}
-    />
-
-    <EditFolderModal
-      isOpen={isEditFolderModalOpen}
-      onClose={() => {
-        setIsEditFolderModalOpen(false);
-        setEditingFolder(null);
-      }}
-      folder={editingFolder}
-    />
-
-    {/* Selected Artifacts Overlay */}
-    {isSelectMode && selectedNFTs.length > 0 && (
-      <SelectedArtifactsOverlay 
-        selectedArtifacts={selectedNFTs}
-        onRemoveArtifact={handleRemoveFromSelection}
-        onAddToSpam={handleMarkSelectedAsSpam}
-        onCreateCatalog={() => setIsNewCatalogModalOpen(true)}
-        onAddToExistingCatalog={handleAddToExistingCatalog}
-        onClearSelections={handleClearSelections}
-        catalogs={Object.values(catalogItems)
-          .filter(catalog => !catalog.isSystem)
-        }
+      {/* Modals */}
+      <NewFolderModal 
+        isOpen={isNewFolderModalOpen}
+        onClose={() => setIsNewFolderModalOpen(false)}
       />
-    )}
-  {/* {process.env.NODE_ENV === 'development' && <StateDebugger />} */}
-  </StyledContainer>
-);
+
+      <NewCatalogModal 
+        isOpen={isNewCatalogModalOpen}
+        onClose={() => {
+          setIsNewCatalogModalOpen(false);
+          setSelectedNFTs([]); 
+          setIsSelectMode(false);
+        }}
+        selectedArtifacts={selectedNFTs}
+      />
+
+      <EditCatalogModal 
+        isOpen={isEditCatalogModalOpen}
+        onClose={() => {
+          setIsEditCatalogModalOpen(false);
+          setEditingCatalog(null);
+        }}
+        catalog={editingCatalog}
+      />
+
+      <EditFolderModal
+        isOpen={isEditFolderModalOpen}
+        onClose={() => {
+          setIsEditFolderModalOpen(false);
+          setEditingFolder(null);
+        }}
+        folder={editingFolder}
+      />
+
+      {/* Selected Artifacts Overlay */}
+      {isSelectMode && selectedNFTs.length > 0 && (
+        <SelectedArtifactsOverlay 
+          selectedArtifacts={selectedNFTs}
+          onRemoveArtifact={handleRemoveFromSelection}
+          onAddToSpam={handleMarkSelectedAsSpam}
+          onCreateCatalog={() => setIsNewCatalogModalOpen(true)}
+          onAddToExistingCatalog={handleAddToExistingCatalog}
+          onClearSelections={handleClearSelections}
+          catalogs={Object.values(catalogItems)
+            .filter(catalog => !catalog.isSystem)
+          }
+        />
+      )}
+    </StyledContainer>
+  );
 };
 
 export default LibraryPage;
