@@ -73,7 +73,7 @@ const LandingPage = () => {
       </div>
 
       {/* Hero Section */}
-      <section id="hero" className="min-h-screen flex items-center justify-center px-4">
+      <section id="hero" className="min-h-screen flex items-center justify-center px-6 sm:px-8 md:px-12">
         <div className="max-w-4xl mx-auto text-center pt-20">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -99,7 +99,7 @@ const LandingPage = () => {
       </section>
 
       {/* Library Experience Section */}
-      <section id="experience" className="min-h-screen flex items-center px-4 bg-[#EFEDE8]">
+      <section id="experience" className="min-h-screen flex items-center px-6 sm:px-8 md:px-12 bg-[#EFEDE8]">
         <div className="max-w-4xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0 }}
@@ -125,7 +125,7 @@ const LandingPage = () => {
       </section>
 
       {/* Collection Types Section */}
-      <section id="collection" className="min-h-screen flex items-center px-4">
+      <section id="collection" className="min-h-screen flex items-center px-6 sm:px-8 md:px-12">
         <div className="max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0 }}
@@ -133,42 +133,46 @@ const LandingPage = () => {
             transition={{ duration: 0.8 }}
             viewport={{ once: true, margin: "-20%" }}
           >
-            <h2 className="text-3xl md:text-4xl text-center text-[#2F2F2F] mb-12 md:mb-16">
-              Take your shoes off, it's time to get comfortable
+            <h2 className="text-3xl md:text-4xl text-center text-[#2F2F2F] mb-12 md:mb-16 px-4">
+              All your media, in one place
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="text-center p-6 md:p-8 bg-white rounded-lg shadow-sm border border-[#D8D3CC]
-                            hover:transform hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-                <Music className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-6 text-[#8C7355]" />
-                <h3 className="text-xl md:text-2xl mb-4 text-[#2F2F2F]">Audio</h3>
-                <p className="text-[#575757]">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              <div className="text-center p-4 sm:p-6 md:p-8 bg-white rounded-lg shadow-sm border border-[#D8D3CC]
+                            hover:transform hover:-translate-y-1 hover:shadow-lg transition-all duration-200
+                            max-w-[160px] sm:max-w-none mx-auto w-full">
+                <Music className="w-10 h-10 md:w-16 md:h-16 mx-auto mb-4 md:mb-6 text-[#8C7355]" />
+                <h3 className="text-lg md:text-2xl mb-2 md:mb-4 text-[#2F2F2F]">Audio</h3>
+                <p className="text-[#575757] text-sm md:text-base">
                   Sound.xyz<br />Pods.media
                 </p>
               </div>
 
-              <div className="text-center p-6 md:p-8 bg-white rounded-lg shadow-sm border border-[#D8D3CC]
-                            hover:transform hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-                <FileText className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-6 text-[#8C7355]" />
-                <h3 className="text-xl md:text-2xl mb-4 text-[#2F2F2F]">Writing</h3>
-                <p className="text-[#575757]">
+              <div className="text-center p-4 sm:p-6 md:p-8 bg-white rounded-lg shadow-sm border border-[#D8D3CC]
+                            hover:transform hover:-translate-y-1 hover:shadow-lg transition-all duration-200
+                            max-w-[160px] sm:max-w-none mx-auto w-full">
+                <FileText className="w-10 h-10 md:w-16 md:h-16 mx-auto mb-4 md:mb-6 text-[#8C7355]" />
+                <h3 className="text-lg md:text-2xl mb-2 md:mb-4 text-[#2F2F2F]">Writing</h3>
+                <p className="text-[#575757] text-sm md:text-base">
                   Paragraph<br />Mirror
                 </p>
               </div>
 
-              <div className="text-center p-6 md:p-8 bg-white rounded-lg shadow-sm border border-[#D8D3CC]
-                            hover:transform hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-                <Palette className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-6 text-[#8C7355]" />
-                <h3 className="text-xl md:text-2xl mb-4 text-[#2F2F2F]">Art</h3>
-                <p className="text-[#575757]">
+              <div className="text-center p-4 sm:p-6 md:p-8 bg-white rounded-lg shadow-sm border border-[#D8D3CC]
+                            hover:transform hover:-translate-y-1 hover:shadow-lg transition-all duration-200
+                            max-w-[160px] sm:max-w-none mx-auto w-full">
+                <Palette className="w-10 h-10 md:w-16 md:h-16 mx-auto mb-4 md:mb-6 text-[#8C7355]" />
+                <h3 className="text-lg md:text-2xl mb-2 md:mb-4 text-[#2F2F2F]">Art</h3>
+                <p className="text-[#575757] text-sm md:text-base">
                   Art Blocks<br />SuperRare
                 </p>
               </div>
 
-              <div className="text-center p-6 md:p-8 bg-white rounded-lg shadow-sm border border-[#D8D3CC]
-                            hover:transform hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-                <Book className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-6 text-[#8C7355]" />
-                <h3 className="text-xl md:text-2xl mb-4 text-[#2F2F2F]">Collectibles</h3>
-                <p className="text-[#575757]">
+              <div className="text-center p-4 sm:p-6 md:p-8 bg-white rounded-lg shadow-sm border border-[#D8D3CC]
+                            hover:transform hover:-translate-y-1 hover:shadow-lg transition-all duration-200
+                            max-w-[160px] sm:max-w-none mx-auto w-full">
+                <Book className="w-10 h-10 md:w-16 md:h-16 mx-auto mb-4 md:mb-6 text-[#8C7355]" />
+                <h3 className="text-lg md:text-2xl mb-2 md:mb-4 text-[#2F2F2F]">Collectibles</h3>
+                <p className="text-[#575757] text-sm md:text-base">
                   Zora<br />Rodeo
                 </p>
               </div>
@@ -178,7 +182,7 @@ const LandingPage = () => {
       </section>
 
       {/* Personal Space Section */}
-      <section id="personal" className="min-h-screen flex items-center bg-[#EFEDE8] px-4">
+      <section id="personal" className="min-h-screen flex items-center bg-[#EFEDE8] px-6 sm:px-8 md:px-12">
         <div className="max-w-4xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0 }}
@@ -208,7 +212,7 @@ const LandingPage = () => {
       </section>
 
       {/* Community Section */}
-      <section id="community" className="min-h-screen flex items-center px-4">
+      <section id="community" className="min-h-screen flex items-center px-6 sm:px-8 md:px-12">
         <div className="max-w-4xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0 }}
