@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
   VStack,
@@ -246,11 +246,16 @@ const LibraryPage = () => {
     }
   }, [getSpamNFTs, dispatch]);
 
-  // Update unorganized catalog - separate to avoid dependency issues
+  const prevUnorganizedCount = useRef(0);
+
   useEffect(() => {
     const unorganizedNFTs = getUnorganizedNFTs();
-    if (unorganizedNFTs.length > 0) {
-      dispatch(updateUnorganizedCatalog(unorganizedNFTs));
+    // Only update if the count has changed to prevent unnecessary updates
+    if (unorganizedNFTs.length !== prevUnorganizedCount.current) {
+      prevUnorganizedCount.current = unorganizedNFTs.length;
+      if (unorganizedNFTs.length > 0) {
+        dispatch(updateUnorganizedCatalog(unorganizedNFTs));
+      }
     }
   }, [getUnorganizedNFTs, dispatch]);
 
