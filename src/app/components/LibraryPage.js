@@ -52,6 +52,7 @@ import NewCatalogModal from './NewCatalogModal';
 import FolderCard from './FolderCard';
 import EditCatalogModal from './EditCatalogModal';
 import EditFolderModal from './EditFolderModal';
+import NewMenuPopover from './NewMenuPopover';
 import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
 
 // Hooks
@@ -658,15 +659,21 @@ const LibraryPage = () => {
           >
             Library
           </Text>
-          <StyledButton
-            leftIcon={<Icon as={FaSync} />}
-            onClick={handleRefreshNFTs}
-            isLoading={isRefreshing}
-            loadingText="Refreshing..."
-            size={buttonSize}
-          >
-            {showFullText ? "Refresh Artifacts" : null}
-          </StyledButton>
+          <HStack spacing={2}>
+            <NewMenuPopover 
+              onNewFolder={() => setIsNewFolderModalOpen(true)}
+              onNewCatalog={() => setIsNewCatalogModalOpen(true)}
+            />
+            <StyledButton
+              leftIcon={<Icon as={FaSync} />}
+              onClick={handleRefreshNFTs}
+              isLoading={isRefreshing}
+              loadingText="Refreshing..."
+              size={buttonSize}
+            >
+              {showFullText ? "Refresh Artifacts" : null}
+            </StyledButton>
+          </HStack>
         </Flex>
       
         {isRefreshing && (
@@ -754,36 +761,8 @@ const LibraryPage = () => {
               </VStack>
             </TabPanel>
             
-            {/* Library Tab */}
-            <TabPanel>
-              <HStack spacing={4} mb={6}>
-                <Button
-                  leftIcon={<Icon as={FaFolderPlus} />}
-                  onClick={() => setIsNewFolderModalOpen(true)}
-                  bg="var(--warm-brown)"
-                  color="white"
-                  fontFamily="Inter"
-                  _hover={{
-                    bg: "var(--deep-brown)"
-                  }}
-                >
-                  New Folder
-                </Button>
-                
-                <Button
-                  leftIcon={<Icon as={FaBook} />}
-                  onClick={() => setIsNewCatalogModalOpen(true)}
-                  bg="var(--warm-brown)"
-                  color="white"
-                  fontFamily="Inter"
-                  _hover={{
-                    bg: "var(--deep-brown)"
-                  }}
-                >
-                  New Catalog
-                </Button>
-              </HStack>
-  
+            {/* Catalogs Tab */}
+            <TabPanel>  
               <VStack spacing={6} align="stretch">
                 {/* Folders Section */}
                 {folders.length > 0 && (
