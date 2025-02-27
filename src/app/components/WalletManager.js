@@ -10,6 +10,9 @@ import {
   useToast,
   Spinner,
   Text,
+  Heading,
+  Collapse,
+  Flex,
 } from "@chakra-ui/react";
 import { FaPlus, FaTimes } from 'react-icons/fa';
 import { addWallet, removeWallet, updateWallet } from '../redux/slices/walletSlice';
@@ -27,6 +30,7 @@ const WalletManager = () => {
 
   // State for managing multiple wallet inputs
   const [walletInputs, setWalletInputs] = useState([{ id: Date.now(), value: '', isLoading: false }]);
+  const [showAddWallet, setShowAddWallet] = useState(wallets.length === 0);
   
   // Keep track of wallets being processed
   const [processingWallets, setProcessingWallets] = useState(new Set());
@@ -222,6 +226,11 @@ const WalletManager = () => {
 
       // If all wallets were added successfully, ensure there's one empty input
       setWalletInputs([{ id: Date.now(), value: '', isLoading: false }]);
+      
+      // Hide the add wallet form if we now have wallets
+      if (wallets.length > 0 || validInputs.length > 0) {
+        setShowAddWallet(false);
+      }
 
     } catch (error) {
       // Clear all loading states on unexpected error
@@ -242,83 +251,125 @@ const WalletManager = () => {
       handleAddWallets();
     }
   };
+  
+  // Toggle the add wallet form visibility
+  const toggleAddWallet = () => {
+    setShowAddWallet(!showAddWallet);
+    // Reset inputs when showing the form
+    if (!showAddWallet) {
+      setWalletInputs([{ id: Date.now(), value: '', isLoading: false }]);
+    }
+  };
 
   return (
     <VStack spacing={6} align="stretch" maxW="600px">
-      <Box
-        bg="white"
-        borderWidth="1px"
-        borderColor="var(--shadow)"
-        borderRadius="12px"
-        p={6}
-      >
-        <Text
-          fontSize="18px"
-          fontFamily="Space Grotesk"
-          color="var(--rich-black)"
-          mb={4}
+      {/* Add Wallet Form */}
+      <Collapse in={showAddWallet || wallets.length === 0}>
+        <Box
+          bg="white"
+          borderWidth="1px"
+          borderColor="var(--shadow)"
+          borderRadius="12px"
+          p={6}
+          mb={6}
         >
-          Add New Wallet
-        </Text>
-
-        <VStack spacing={4}>
-          {walletInputs.map((input, index) => (
-            <HStack key={input.id} width="100%" spacing={2}>
-              <Input
-                value={input.value}
-                onChange={(e) => handleInputChange(input.id, e.target.value)}
-                placeholder="Enter wallet address, ENS, or Unstoppable Domain"
-                isDisabled={input.isLoading}
-                onKeyPress={(e) => handleKeyPress(e, input)}
-                bg={input.isLoading ? "gray.50" : "white"}
-                _placeholder={{ color: 'var(--ink-grey)' }}
-              />
-              {input.isLoading && (
-                <Box px={2}>
-                  <Spinner size="sm" color="var(--warm-brown)" />
-                </Box>
-              )}
-              {index === walletInputs.length - 1 ? (
-                <IconButton
-                  icon={<FaPlus />}
-                  onClick={addInputField}
-                  aria-label="Add another wallet"
-                  isDisabled={!input.value.trim() || input.isLoading}
-                  color="var(--ink-grey)"
-                  _hover={{ color: "var(--warm-brown)" }}
-                  variant="ghost"
-                />
-              ) : (
-                <IconButton
-                  icon={<FaTimes />}
-                  onClick={() => removeInputField(input.id)}
-                  aria-label="Remove wallet input"
-                  isDisabled={input.isLoading}
-                  color="var(--ink-grey)"
-                  _hover={{ color: "red.500" }}
-                  variant="ghost"
-                />
-              )}
-            </HStack>
-          ))}
-
-          <Button
-            onClick={handleAddWallets}
-            width="full"
-            bg="var(--warm-brown)"
-            color="white"
-            _hover={{
-              bg: "var(--deep-brown)"
-            }}
-            isDisabled={walletInputs.every(input => !input.value.trim())}
+          <Text
+            fontSize="18px"
+            fontFamily="Space Grotesk"
+            color="var(--rich-black)"
+            mb={4}
           >
-            Add Wallet{walletInputs.filter(i => i.value.trim()).length > 1 ? 's' : ''}
-          </Button>
-        </VStack>
-      </Box>
+            Add New Wallet
+          </Text>
 
-      {/* Display existing wallets */}
-      <WalletList wallets={wallets} />
+          <VStack spacing={4}>
+            {walletInputs.map((input, index) => (
+              <HStack key={input.id} width="100%" spacing={2}>
+                <Input
+                  value={input.value}
+                  onChange={(e) => handleInputChange(input.id, e.target.value)}
+                  placeholder="Enter wallet address, ENS, or Unstoppable Domain"
+                  isDisabled={input.isLoading}
+                  onKeyPress={(e) => handleKeyPress(e, input)}
+                  bg={input.isLoading ? "gray.50" : "white"}
+                  _placeholder={{ color: 'var(--ink-grey)' }}
+                />
+                {input.isLoading && (
+                  <Box px={2}>
+                    <Spinner size="sm" color="var(--warm-brown)" />
+                  </Box>
+                )}
+                {index === walletInputs.length - 1 ? (
+                  <IconButton
+                    icon={<FaPlus />}
+                    onClick={addInputField}
+                    aria-label="Add another wallet"
+                    isDisabled={!input.value.trim() || input.isLoading}
+                    color="var(--ink-grey)"
+                    _hover={{ color: "var(--warm-brown)" }}
+                    variant="ghost"
+                  />
+                ) : (
+                  <IconButton
+                    icon={<FaTimes />}
+                    onClick={() => removeInputField(input.id)}
+                    aria-label="Remove wallet input"
+                    isDisabled={input.isLoading}
+                    color="var(--ink-grey)"
+                    _hover={{ color: "red.500" }}
+                    variant="ghost"
+                  />
+                )}
+              </HStack>
+            ))}
+
+            <Button
+              onClick={handleAddWallets}
+              width="full"
+              bg="var(--warm-brown)"
+              color="white"
+              _hover={{
+                bg: "var(--deep-brown)"
+              }}
+              isDisabled={walletInputs.every(input => !input.value.trim())}
+            >
+              Add Wallet{walletInputs.filter(i => i.value.trim()).length > 1 ? 's' : ''}
+            </Button>
+          </VStack>
+        </Box>
+      </Collapse>
+
+      {/* Wallet List */}
+      {wallets.length > 0 && (
+        <Box
+          bg="white"
+          borderWidth="1px"
+          borderColor="var(--shadow)"
+          borderRadius="12px"
+          p={6}
+        >
+          <Flex justify="space-between" align="center" mb={4}>
+            <Text
+              fontSize="18px"
+              fontFamily="Space Grotesk"
+              color="var(--rich-black)"
+            >
+              Your Wallets
+            </Text>
+            <IconButton
+              icon={<FaPlus />}
+              onClick={toggleAddWallet}
+              aria-label={showAddWallet ? "Hide add wallet form" : "Add another wallet"}
+              size="sm"
+              color="var(--warm-brown)"
+              variant="ghost"
+              _hover={{ bg: "var(--highlight)" }}
+            />
+          </Flex>
+          
+          <WalletList wallets={wallets} />
+        </Box>
+      )}
     </VStack>
   );
 };
