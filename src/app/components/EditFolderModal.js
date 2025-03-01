@@ -19,8 +19,8 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { updateFolder } from '../redux/slices/folderSlice';
 import { selectAllCatalogs } from '../redux/slices/catalogSlice';
-import { useCustomToast } from '../utils/toastUtils';
-import { logger } from '../utils/logger';
+import { useCustomToast } from '../../utils/toastUtils';
+import { logger } from '../../utils/logger';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
 
 // Custom Floating Label Input Component

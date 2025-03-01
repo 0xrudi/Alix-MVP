@@ -1,6 +1,6 @@
 import { createSlice } from '@reduxjs/toolkit';
-import { serializeNFT, serializeAddress } from '../../utils/serializationUtils';
-import { logger } from '../../utils/logger';
+import { serializeNFT, serializeAddress } from '../../../utils/serializationUtils';
+import { logger } from '../../../utils/logger';
 
 const safeCompareAddresses = (addr1, addr2) => {
   try {

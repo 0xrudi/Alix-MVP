@@ -29,8 +29,8 @@ import { FaTimes } from 'react-icons/fa';
 import { useDispatch, useSelector } from 'react-redux';
 import { addCatalog } from '../redux/slices/catalogSlice';
 import { addFolder, addCatalogToFolder, selectAllFolders } from '../redux/slices/folderSlice';
-import { useCustomToast } from '../utils/toastUtils';
-import { logger } from '../utils/logger';
+import { useCustomToast } from '../../utils/toastUtils';
+import { logger } from '../../utils/logger';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
 
 // Helper function to truncate addresses

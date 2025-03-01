@@ -11,7 +11,7 @@ import {
 } from "@chakra-ui/react";
 import { FaTrash, FaExclamationTriangle, FaEllipsisH } from 'react-icons/fa';
 import { motion } from 'framer-motion';
-import { getImageUrl } from '../utils/web3Utils';
+import { getImageUrl } from '../../utils/web3Utils';
 
 const MotionFlex = motion(Flex);
 

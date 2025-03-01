@@ -1,3 +1,4 @@
+// src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { ChakraProvider, Box, Spinner } from "@chakra-ui/react";
@@ -11,19 +12,22 @@ import ErrorBoundary from './components/ErrorBoundary';
 import AdminPage from './components/AdminPage';
 import './global.css';
 import ArtifactDetailPage from './components/ArtifactDetailPage';
-import { AppProvider } from '../context/app/AppContext';
-import { Provider } from 'react-redux';
-import store from './redux/store';
+import ServiceTestComponent from './components/ServiceTestComponent';
+import { AppProvider } from './context/AppContext';
 import { Analytics } from "@vercel/analytics/react";
-import { AuthProvider, useAuth } from '../context/auth/AuthContext';
+import { AuthProvider, useAuth } from './context/auth/AuthContext';
 import LoginPage from './website/pages/auth/LoginPage';
-import '../assets/fonts.css';
+import { ServiceProvider, useServices } from './services/service-provider'; // Import the ServiceProvider and hook
+import ReduxStoreProvider from './redux/ReduxStoreProvider';
 
 // Create a PrivateRoute component
 const PrivateRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user: authUser, loading: authLoading } = useAuth();
+  const { loading: serviceLoading } = useServices();
   
-  if (loading) {
+  const isLoading = authLoading || serviceLoading;
+  
+  if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
         <Spinner size="xl" />
@@ -31,7 +35,7 @@ const PrivateRoute = ({ children }) => {
     );
   }
   
-  if (!user) {
+  if (!authUser) {
     return <Navigate to="/login" />;
   }
   
@@ -40,7 +44,8 @@ const PrivateRoute = ({ children }) => {
 
 // Update AppContent to include protected routes
 function AppContent() {
-  const showMenu = true; // Always show menu in dev
+  const location = useLocation();
+  const showMenu = location.pathname !== '/' && location.pathname !== '/login';
 
   return (
     <ChakraProvider theme={theme}>
@@ -51,13 +56,17 @@ function AppContent() {
           marginBottom={{ base: "60px", md: 0 }}
         >
           <Routes>
-            {/* All routes now public */}
+            {/* Public routes */}
             <Route path="/" element={<WelcomePage />} />
-            <Route path="/home" element={<HomePage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/library" element={<LibraryPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/artifact" element={<ArtifactDetailPage />} />
+            <Route path="/login" element={<LoginPage />} />
+
+            {/* Protected routes */}
+            <Route path="/home" element={<PrivateRoute><HomePage /></PrivateRoute>} />
+            <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
+            <Route path="/library" element={<PrivateRoute><LibraryPage /></PrivateRoute>} />
+            <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+            <Route path="/artifact" element={<PrivateRoute><ArtifactDetailPage /></PrivateRoute>} />
+            <Route path="/service-test" element={<PrivateRoute><ServiceTestComponent /></PrivateRoute>} />
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
         </Box>
@@ -66,21 +75,23 @@ function AppContent() {
   );
 }
 
-
 function App() {
   return (
-    <Provider store={store}>
-      <Router>
-        <ChakraProvider theme={theme}>
-          <AuthProvider>
-            <AppProvider>
-              <AppContent />
-              <Analytics />
-            </AppProvider>
-          </AuthProvider>
-        </ChakraProvider>
-      </Router>
-    </Provider>
+    <Router>
+      <ChakraProvider theme={theme}>
+        <AuthProvider>
+          <ServiceProvider>
+            {/* Use ReduxStoreProvider to get services and update the store */}
+            <ReduxStoreProvider>
+              <AppProvider>
+                <AppContent />
+                <Analytics />
+              </AppProvider>
+            </ReduxStoreProvider>
+          </ServiceProvider>
+        </AuthProvider>
+      </ChakraProvider>
+    </Router>
   );
 }
 

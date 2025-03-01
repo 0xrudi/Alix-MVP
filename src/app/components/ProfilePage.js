@@ -20,7 +20,7 @@ import {
 import UserProfile from './UserProfile';
 import WalletManager from './WalletManager';
 import { useAppContext } from '../../context/app/AppContext';
-import { useCustomToast } from '../utils/toastUtils';
+import { useCustomToast } from '../../utils/toastUtils';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 import { useCustomColorMode } from '../hooks/useColorMode';
 import { selectTotalNFTs, selectTotalSpamNFTs } from '../redux/slices/nftSlice';

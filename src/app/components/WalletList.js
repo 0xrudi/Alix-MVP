@@ -34,7 +34,7 @@ import {
   FaTimes
 } from 'react-icons/fa';
 import { removeWallet, updateWallet } from '../redux/slices/walletSlice';
-import { useCustomToast } from '../utils/toastUtils';
+import { useCustomToast } from '../../utils/toastUtils';
 
 // Helper function to truncate addresses
 const truncateAddress = (address) => {

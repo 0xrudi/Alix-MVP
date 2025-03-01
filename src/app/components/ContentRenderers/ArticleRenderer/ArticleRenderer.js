@@ -23,7 +23,7 @@ import { FaExpand, FaChevronLeft, FaChevronRight, FaBook, FaScroll } from 'react
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkImages from 'remark-images';
-import { logger } from '../../../utils/logger';
+import { logger } from '../../../../utils/logger';
 
 // Design system colors
 const designTokens = {

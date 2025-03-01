@@ -1,6 +1,6 @@
 // src/redux/slices/folderSlice.js
 import { createSlice, createSelector } from '@reduxjs/toolkit';
-import { logger } from '../../utils/logger';
+import { logger } from '../../../utils/logger';
 
 const initialState = {
   folders: {}, // { folderId: { id, name, description, createdAt, updatedAt } }

@@ -37,8 +37,8 @@ import {
   removeCatalogFromFolder
 } from '../redux/slices/folderSlice';
 import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
-import { networks } from '../utils/web3Utils';
-import { logger } from '../utils/logger';
+import { networks } from '../../utils/web3Utils';
+import { logger } from '../../utils/logger';
 import { cardSizes } from './constants/sizes';
 
 // Components
@@ -56,8 +56,8 @@ import NewMenuPopover from './NewMenuPopover';
 import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
 
 // Hooks
-import { useCustomToast } from '../utils/toastUtils';
-import { useErrorHandler } from '../utils/errorUtils';
+import { useCustomToast } from '../../utils/toastUtils';
+import { useErrorHandler } from '../../utils/errorUtils';
 import { useResponsive } from '../hooks/useResponsive';
 import { StyledButton, StyledContainer } from '../styles/commonStyles';
 

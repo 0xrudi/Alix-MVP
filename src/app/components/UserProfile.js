@@ -1,4 +1,3 @@
-// src/components/UserProfile.js
 import React, { useState, useEffect } from 'react';
 import {
   VStack,
@@ -18,10 +17,10 @@ import {
   Flex,
 } from "@chakra-ui/react";
 import { FaSave, FaTimes, FaEdit, FaLink, FaUpload, FaUser } from 'react-icons/fa';
-import { fetchENSAvatar, getAvailableENS, getImageUrl } from '../utils/web3Utils';
+import { fetchENSAvatar, getAvailableENS, getImageUrl } from '../../utils/web3Utils';
 import { useAppContext } from '../../context/app/AppContext';
 import { useSelector } from 'react-redux';
-import { useCustomToast } from '../utils/toastUtils';
+import { useCustomToast } from '../../utils/toastUtils';
 import { StyledButton, StyledInput } from '../styles/commonStyles';
 import { useCustomColorMode } from '../hooks/useColorMode';
 

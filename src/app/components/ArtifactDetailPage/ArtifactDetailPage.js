@@ -53,11 +53,12 @@ import {
   WrapItem
 } from "@chakra-ui/react";
 
-import { getImageUrl } from '../../utils/web3Utils.js';
+import { getImageUrl } from '../../../utils/web3Utils.js';
+import { parseContent } from '../../../utils/contentUtils.js';
 import { useAppContext } from '../../../context/app/AppContext.js';
 import { updateNFT } from '../../redux/slices/nftSlice.js';
 import MediaTabPanel from './MediaTabPanel.js';
-import { parseContent } from '../../utils/contentUtils.js';
+
 
 const MetadataDisplay = ({ data, level = 0 }) => {
   const bgColor = useColorModeValue('gray.50', 'gray.700');

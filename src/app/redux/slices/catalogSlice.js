@@ -1,6 +1,6 @@
 import { createSlice, createSelector } from '@reduxjs/toolkit';
 import { selectSpamNFTs } from './nftSlice';
-import { logger } from '../../utils/logger';
+import { logger } from '../../../utils/logger';
 
 // Base selectors
 const selectCatalogState = state => state.catalogs;

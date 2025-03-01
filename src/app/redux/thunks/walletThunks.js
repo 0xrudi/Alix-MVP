@@ -1,11 +1,10 @@
-// src/app/redux/thunks/walletThunks.js
+import { fetchNFTs } from '../../../utils/web3Utils';
+import { serializeAddress, serializeNFT } from '../../../utils/serializationUtils';
 import { createAsyncThunk } from '@reduxjs/toolkit';
-import { fetchNFTs } from '../../utils/web3Utils';
 import { fetchNFTsStart, fetchNFTsSuccess, fetchNFTsFailure } from '../slices/nftSlice';
 import { setWallets, updateWallet } from '../slices/walletSlice';
-import { logger } from '../../utils/logger';
-import { serializeAddress, serializeNFT } from '../../utils/serializationUtils';
-import { supabase } from '../../utils/supabase';
+import { logger } from '../../../utils/logger';
+import { supabase } from '../../../utils/supabase';
 
 // Load wallets from Supabase
 export const loadWallets = createAsyncThunk(

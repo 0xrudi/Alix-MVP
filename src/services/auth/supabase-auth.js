@@ -1,5 +1,4 @@
-// src/services/auth/supabase-auth.js
-import { supabase } from '../../app/utils/supabase';
+import { supabase } from '../../utils/supabase';
 
 export class SupabaseAuthProvider {
   async login(email) {

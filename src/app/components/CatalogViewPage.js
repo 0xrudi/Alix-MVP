@@ -21,7 +21,7 @@ import { useSelector } from 'react-redux';
 import NFTCard from './NFTCard';
 import ListViewItem from './ListViewItem';
 import LibraryControls from './LibraryControls';
-import { useCustomToast } from '../utils/toastUtils';
+import { useCustomToast } from '../../utils/toastUtils';
 
 const MotionBox = motion(Box);
 

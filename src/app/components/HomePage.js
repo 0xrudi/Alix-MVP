@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { Box, Heading, Text, VStack, Button, Input, InputGroup, InputRightElement, useColorModeValue, SimpleGrid, useToast, Alert, AlertIcon, AlertTitle, AlertDescription } from "@chakra-ui/react";
 import { useNavigate } from 'react-router-dom';
 import { FaSearch } from 'react-icons/fa';
-import { searchNFTs } from '../utils/zoraUtils';
+import { searchNFTs } from '../../utils/zoraUtils';
 import NFTCard from './NFTCard';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 
 const HomePage = () => {
   const [searchQuery, setSearchQuery] = useState('');

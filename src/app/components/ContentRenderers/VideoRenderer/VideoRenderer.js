@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { getImageUrl } from '../../../utils/web3Utils.js';
+import { getImageUrl } from '../../../../utils/web3Utils.js';
 import { 
   Box,
   IconButton,

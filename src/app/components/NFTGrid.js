@@ -10,7 +10,7 @@ import {
 } from "@chakra-ui/react";
 import NFTCard from './NFTCard';
 import ListViewItem from './ListViewItem';
-import { filterAndSortNFTs } from '../utils/nftUtils';
+import { filterAndSortNFTs } from '../../utils/nftUtils';
 
 const VIEW_MODES = {
   LIST: 'list',
