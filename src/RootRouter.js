@@ -24,7 +24,7 @@ import LibraryPage from './app/components/LibraryPage';
 import ProfilePage from './app/components/ProfilePage';
 import ArtifactDetailPage from './app/components/ArtifactDetailPage/ArtifactDetailPage';
 import ServiceTestComponent from './app/components/ServiceTestComponent';
-import { ServiceProvider } from './services/service-provider';
+import { useServices, ServiceProvider } from './services/service-provider';
 
 
 const PrivateRoute = ({ children }) => {
