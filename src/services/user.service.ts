@@ -1,5 +1,5 @@
 // src/services/user.service.ts
-import { BaseService } from './base.service';
+import { BaseService } from './base.service.ts';
 import { Database } from '../types/database';
 import { logger } from '../utils/logger';
 

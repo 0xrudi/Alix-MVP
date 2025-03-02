@@ -23,6 +23,8 @@ import AdminPage from './app/components/AdminPage';
 import LibraryPage from './app/components/LibraryPage';
 import ProfilePage from './app/components/ProfilePage';
 import ArtifactDetailPage from './app/components/ArtifactDetailPage/ArtifactDetailPage';
+import ServiceTestComponent from './app/components/ServiceTestComponent';
+
 
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -65,6 +67,7 @@ const RootRouter = () => {
         <Route path="library" element={<LibraryPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="artifact" element={<ArtifactDetailPage />} />
+        <Route path="service-test" element={<ServiceTestComponent/>} />
       </Route>
     </Routes>
   );
