@@ -22,14 +22,14 @@ import {
   Spinner,
 } from "@chakra-ui/react";
 import { FaSave, FaTimes, FaEdit, FaLink, FaUpload, FaUser } from 'react-icons/fa';
-import { fetchENSAvatar, getAvailableENS, getImageUrl } from '../utils/web3Utils';
+import { fetchENSAvatar, getAvailableENS, getImageUrl } from '../../utils/web3Utils';
 import { useAppContext } from '../../context/app/AppContext';
 import { useSelector } from 'react-redux';
-import { useCustomToast } from '../utils/toastUtils';
+import { useCustomToast } from '../../utils/toastUtils';
 import { StyledButton, StyledInput } from '../styles/commonStyles';
 import { useCustomColorMode } from '../hooks/useColorMode';
 import { useServices } from '../../services/service-provider';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 
 const UserProfile = ({ supabaseUser, supabaseProfile, onProfileUpdated }) => {
   const { userProfile, updateUserProfile } = useAppContext();
