@@ -1,7 +1,8 @@
 // src/services/wallet.service.ts
-import { BaseService } from './base.service.ts';
+import { BaseService } from './base.service';
 import { Database } from '../types/database';
 import { logger } from '../utils/logger';
+import { v4 as uuidv4 } from 'uuid'; // Add this import
 
 // Use direct types from the Database type
 type Wallet = Database['public']['Tables']['wallets']['Row'];
@@ -30,10 +31,14 @@ export class WalletService extends BaseService {
         return existing;
       }
 
-      // Create new wallet - DO NOT try to set the ID manually
+      // Generate a UUID for the wallet ID
+      const walletId = uuidv4();
+
+      // Create new wallet with explicit ID
       const { data, error } = await this.supabase
         .from('wallets')
         .insert([{
+          id: walletId, // Explicitly provide the ID
           user_id: userId,
           address: address,
           nickname: nickname || null,
@@ -46,13 +51,14 @@ export class WalletService extends BaseService {
       if (error) throw error;
       if (!data) throw new Error('Failed to create wallet');
 
-      logger.log('Wallet created:', { userId, address, type });
+      logger.log('Wallet created:', { userId, address, type, walletId });
       return data;
     } catch (error) {
       this.handleError(error, 'addWallet');
     }
   }
 
+  // Rest of the service methods remain the same
   /**
    * Update wallet networks
    */
