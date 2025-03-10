@@ -1,4 +1,5 @@
 // src/services/user.service.ts
+
 import { BaseService } from './base.service.ts';
 import { Database } from '../types/database';
 import { logger } from '../utils/logger';
@@ -12,16 +13,34 @@ export class UserService extends BaseService {
    */
   async getProfile(userId: string): Promise<User> {
     try {
-      const { data, error } = await this.supabase
+      // First check if user exists
+      const { data: existingUser, error: checkError } = await this.supabase
         .from('users')
         .select('*')
         .eq('id', userId)
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error('User not found');
-
-      return data;
+        .maybeSingle();
+      
+      // If no user exists, create one
+      if (!existingUser) {
+        logger.log('User not found, creating new profile for:', userId);
+        
+        const { data, error } = await this.supabase
+          .from('users')
+          .insert([{
+            id: userId,
+            nickname: null,
+            avatar_url: null
+          }])
+          .select()
+          .single();
+        
+        if (error) throw error;
+        if (!data) throw new Error('Failed to create user profile');
+        
+        return data;
+      }
+      
+      return existingUser;
     } catch (error) {
       this.handleError(error, 'getProfile');
     }

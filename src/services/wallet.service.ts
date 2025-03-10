@@ -30,7 +30,7 @@ export class WalletService extends BaseService {
         return existing;
       }
 
-      // Create new wallet
+      // Create new wallet - DO NOT try to set the ID manually
       const { data, error } = await this.supabase
         .from('wallets')
         .insert([{
