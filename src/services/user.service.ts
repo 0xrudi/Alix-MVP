@@ -1,5 +1,3 @@
-// src/services/user.service.ts
-
 import { BaseService } from './base.service.ts';
 import { Database } from '../types/database';
 import { logger } from '../utils/logger';
@@ -76,6 +74,23 @@ export class UserService extends BaseService {
    */
   async uploadAvatar(userId: string, file: File): Promise<string> {
     try {
+      // Ensure the bucket exists first
+      const { data: buckets } = await this.supabase.storage.listBuckets();
+      
+      // Check if avatars bucket exists
+      const avatarsBucketExists = buckets?.some(bucket => bucket.name === 'avatars');
+      
+      // Create bucket if it doesn't exist
+      if (!avatarsBucketExists) {
+        logger.log('Creating avatars bucket');
+        const { error: createBucketError } = await this.supabase.storage.createBucket('avatars', {
+          public: true,
+          fileSizeLimit: 1024 * 1024 * 2 // 2MB limit
+        });
+        
+        if (createBucketError) throw createBucketError;
+      }
+      
       const fileExt = file.name.split('.').pop();
       const filePath = `${userId}/avatar.${fileExt}`;
 
