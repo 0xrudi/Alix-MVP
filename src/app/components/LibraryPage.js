@@ -54,7 +54,6 @@ import EditCatalogModal from './EditCatalogModal';
 import EditFolderModal from './EditFolderModal';
 import NewMenuPopover from './NewMenuPopover';
 import SelectedArtifactsOverlay from './SelectedArtifactsOverlay';
-import SupabaseTestButton from './SupabaseTestButton'; 
 
 // Hooks
 import { useCustomToast } from '../../utils/toastUtils';
@@ -666,7 +665,6 @@ const LibraryPage = () => {
             Library
           </Text>
           <HStack spacing={2}>
-            <SupabaseTestButton />
             <NewMenuPopover 
               onNewFolder={() => setIsNewFolderModalOpen(true)}
               onNewCatalog={() => setIsNewCatalogModalOpen(true)}

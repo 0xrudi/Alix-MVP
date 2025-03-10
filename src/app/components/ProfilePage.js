@@ -1,5 +1,5 @@
-// src/components/ProfilePage.js
-import React from 'react';
+// src/app/components/ProfilePage.js
+import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { 
   Heading, 
@@ -15,16 +15,18 @@ import {
   StatLabel,
   StatNumber,
   VStack,
-  Text
+  Text,
+  Spinner
 } from "@chakra-ui/react";
 import UserProfile from './UserProfile';
 import WalletManager from './WalletManager';
 import { useAppContext } from '../../context/app/AppContext';
-import { useCustomToast } from '../../utils/toastUtils';
+import { useCustomToast } from '../utils/toastUtils';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 import { useCustomColorMode } from '../hooks/useColorMode';
 import { selectTotalNFTs, selectTotalSpamNFTs } from '../redux/slices/nftSlice';
 import { FaSave } from 'react-icons/fa';
+import { useServices } from '../../services/service-provider';
 
 const ProfileStats = () => {
   const totalArtifacts = useSelector(selectTotalNFTs);
@@ -122,10 +124,48 @@ const ProfilePage = () => {
   const { userProfile } = useAppContext();
   const { showSuccessToast } = useCustomToast();
   const { cardBg, borderColor, textColor } = useCustomColorMode();
+  const [activeTab, setActiveTab] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Supabase integration
+  const { user, userService } = useServices();
+  const [supabaseProfile, setSupabaseProfile] = useState(null);
+
+  // Load user profile from Supabase
+  useEffect(() => {
+    if (user) {
+      loadSupabaseProfile();
+    } else {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  const loadSupabaseProfile = async () => {
+    try {
+      setIsLoading(true);
+      const profile = await userService.getProfile(user.id);
+      setSupabaseProfile(profile);
+    } catch (error) {
+      console.error('Error loading user profile from Supabase:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSaveProfile = () => {
     showSuccessToast("Profile Saved", "Your profile has been updated successfully.");
   };
+
+  // Show loading state while fetching profile
+  if (isLoading) {
+    return (
+      <StyledContainer>
+        <Flex justify="center" align="center" height="400px">
+          <Spinner size="xl" color="blue.500" />
+        </Flex>
+      </StyledContainer>
+    );
+  }
 
   return (
     <StyledContainer>
@@ -164,7 +204,12 @@ const ProfilePage = () => {
           overflow="hidden"
           width="100%"
         >
-          <Tabs variant="enclosed" width="auto">
+          <Tabs 
+            variant="enclosed" 
+            width="auto" 
+            index={activeTab}
+            onChange={setActiveTab}
+          >
             <TabList
               bg="var(--paper-white)"
               borderBottom="1px solid"
@@ -216,7 +261,11 @@ const ProfilePage = () => {
             </TabList>
             <TabPanels>
               <TabPanel p={6}>
-                <UserProfile />
+                <UserProfile 
+                  supabaseUser={user} 
+                  supabaseProfile={supabaseProfile} 
+                  onProfileUpdated={loadSupabaseProfile}
+                />
               </TabPanel>
               <TabPanel p={6}>
                 <WalletManager />
