@@ -1,26 +1,35 @@
 // src/components/SupabaseTestButton.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, Text, VStack, useToast, Box } from '@chakra-ui/react';
 import { useServices } from '../../services/service-provider';
 
 const SupabaseTestButton = () => {
   const [testResult, setTestResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [serviceError, setServiceError] = useState(null);
   const toast = useToast();
-  let services;
   
-  try {
-    services = useServices();
-  } catch (error) {
+  // Always call hooks at the top level
+  const services = useServices();
+  
+  // Check if services are available and set error if not
+  useEffect(() => {
+    if (!services) {
+      setServiceError("ServiceProvider not available. Make sure this component is within a ServiceProvider.");
+    } else {
+      setServiceError(null);
+    }
+  }, [services]);
+  
+  // If we have an error with the services, display it
+  if (serviceError) {
     return (
       <Box p={4} borderWidth="1px" borderRadius="md" bg="red.50" color="red.500">
-        <Text>ServiceProvider not available. Make sure this component is within a ServiceProvider.</Text>
+        <Text>{serviceError}</Text>
       </Box>
     );
   }
   
-  const { userService, walletService } = services;
-
   const runTest = async () => {
     setIsLoading(true);
     setTestResult(null);
@@ -42,7 +51,7 @@ const SupabaseTestButton = () => {
       }
       
       // Try to get user profile
-      const userProfile = await userService.getProfile(user.id);
+      const userProfile = await services.userService.getProfile(user.id);
       
       setTestResult({
         success: true,
