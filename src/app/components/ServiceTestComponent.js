@@ -1,5 +1,5 @@
 // src/app/components/ServiceTestComponent.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Box,
   Heading,
@@ -18,10 +18,21 @@ import {
   FormControl,
   FormLabel,
   Input,
+  Accordion,
+  AccordionItem,
+  AccordionButton,
+  AccordionPanel,
+  AccordionIcon,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel,
+  useToast,
+  Textarea,
 } from '@chakra-ui/react';
 import { useServices } from '../../services/service-provider';
 import { logger } from '../../utils/logger';
-import { useCustomToast } from '../../utils/toastUtils';
 import { useSelector } from 'react-redux';
 import { StyledContainer } from '../styles/commonStyles';
 
@@ -43,135 +54,288 @@ const ServiceTestCard = ({ title, children }) => (
   </Box>
 );
 
+// TestResult component to display results
+const TestResult = ({ result }) => {
+  if (!result) return null;
+  
+  return (
+    <Box mt={2}>
+      {result.success ? (
+        <Alert status="success" borderRadius="md">
+          <AlertIcon />
+          <Box>
+            <AlertTitle>Success</AlertTitle>
+            <AlertDescription>
+              <Code whiteSpace="pre-wrap" fontSize="sm">
+                {JSON.stringify(result.data, null, 2)}
+              </Code>
+            </AlertDescription>
+          </Box>
+        </Alert>
+      ) : (
+        <Alert status="error" borderRadius="md">
+          <AlertIcon />
+          <Box>
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{result.error}</AlertDescription>
+          </Box>
+        </Alert>
+      )}
+    </Box>
+  );
+};
+
 const ServiceTestComponent = () => {
-  // Get services from the service provider (but only once)
+  // Get all services from context (single call to avoid recreation)
   const services = useServices();
+  const { user, userService, walletService, catalogService, folderService, artifactService } = services;
   
-  // Destructure necessary services
-  const { user, userService, walletService, catalogService, folderService } = services;
-  
-  const { showSuccessToast, showErrorToast } = useCustomToast();
+  // Redux selectors
   const wallets = useSelector((state) => state.wallets.list);
+  const catalogs = useSelector((state) => state.catalogs.items);
+  const folders = useSelector((state) => state.folders.folders);
   
-  // Local state for test operations
-  const [testResults, setTestResults] = useState({});
+  // State for test operations grouped by service type
+  const [results, setResults] = useState({});
+  const [loading, setLoading] = useState({});
+  
+  // Form state for different services
   const [selectedWallet, setSelectedWallet] = useState('');
-  const [isLoading, setIsLoading] = useState({});
+  const [selectedCatalog, setSelectedCatalog] = useState('');
+  const [selectedFolder, setSelectedFolder] = useState('');
   const [newFolder, setNewFolder] = useState({ name: '', description: '' });
-  const [lastSynced, setLastSynced] = useState(null);
+  const [newCatalog, setNewCatalog] = useState({ name: '', description: '' });
+  const [artifactData, setArtifactData] = useState({
+    contractAddress: '',
+    tokenId: '',
+    network: 'eth',
+    metadata: '{}'
+  });
   
-  // Set initial selected wallet when wallets data is loaded
-  useEffect(() => {
-    if (wallets.length > 0 && !selectedWallet) {
-      setSelectedWallet(wallets[0].id);
-    }
-  }, [wallets, selectedWallet]);
+  // Toast for notifications
+  const toast = useToast();
+  
+  // Create memoized lists for dropdowns
+  const walletOptions = useMemo(() => {
+    return wallets.map(wallet => ({
+      value: wallet.id,
+      label: wallet.nickname || `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
+    }));
+  }, [wallets]);
+  
+  const catalogOptions = useMemo(() => {
+    return Object.values(catalogs || {}).map(catalog => ({
+      value: catalog.id,
+      label: catalog.name
+    }));
+  }, [catalogs]);
+  
+  const folderOptions = useMemo(() => {
+    return Object.values(folders || {}).map(folder => ({
+      value: folder.id,
+      label: folder.name
+    }));
+  }, [folders]);
+  
+  const networkOptions = [
+    { value: 'eth', label: 'Ethereum' },
+    { value: 'polygon', label: 'Polygon' },
+    { value: 'base', label: 'Base' },
+    { value: 'solana', label: 'Solana' }
+  ];
   
   // Generic test runner function
   const runTest = useCallback(async (testName, testFn) => {
-    setIsLoading((prev) => ({ ...prev, [testName]: true }));
-    setTestResults((prev) => ({ ...prev, [testName]: null }));
+    setLoading(prev => ({ ...prev, [testName]: true }));
+    setResults(prev => ({ ...prev, [testName]: null }));
     
     try {
       const result = await testFn();
-      setTestResults((prev) => ({
+      setResults(prev => ({
         ...prev,
-        [testName]: { success: true, data: result },
+        [testName]: { success: true, data: result }
       }));
-      showSuccessToast(`${testName} Success`, 'The operation was successful');
+      
+      toast({
+        title: 'Success',
+        description: `${testName} completed successfully`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true
+      });
     } catch (error) {
       logger.error(`${testName} failed:`, error);
-      setTestResults((prev) => ({
+      setResults(prev => ({
         ...prev,
-        [testName]: { success: false, error: error.message },
+        [testName]: { success: false, error: error.message }
       }));
-      showErrorToast(`${testName} Failed`, error.message);
+      
+      toast({
+        title: 'Error',
+        description: error.message,
+        status: 'error',
+        duration: 5000,
+        isClosable: true
+      });
     } finally {
-      setIsLoading((prev) => ({ ...prev, [testName]: false }));
+      setLoading(prev => ({ ...prev, [testName]: false }));
     }
-  }, [showSuccessToast, showErrorToast]);
+  }, [toast]);
+
+  // ==== USER SERVICE TESTS ====
   
-  // Test 1: Get User Profile - memoized to prevent recreation on each render
-  const testGetUserProfile = useCallback(async () => {
+  const testGetProfile = useCallback(async () => {
     if (!user) throw new Error('No user is authenticated');
-    const profile = await userService.getProfile(user.id);
-    return profile;
+    return await userService.getProfile(user.id);
   }, [user, userService]);
   
-  // Test 2: Create Folder - memoized to prevent recreation on each render
-  const testCreateFolder = useCallback(async () => {
-    if (!newFolder.name) throw new Error('Folder name is required');
+  const testUpdateProfile = useCallback(async () => {
     if (!user) throw new Error('No user is authenticated');
     
-    const folder = await folderService.createFolder(
+    // Generate a random nickname to test profile updates
+    const randomNickname = `Test User ${Math.floor(Math.random() * 1000)}`;
+    
+    return await userService.updateProfile(user.id, {
+      nickname: randomNickname
+    });
+  }, [user, userService]);
+  
+  // ==== WALLET SERVICE TESTS ====
+  
+  const testGetWallets = useCallback(async () => {
+    if (!user) throw new Error('No user is authenticated');
+    return await walletService.getUserWallets(user.id);
+  }, [user, walletService]);
+  
+  const testWalletDetails = useCallback(async () => {
+    if (!selectedWallet) throw new Error('No wallet selected');
+    
+    const wallets = await walletService.getUserWallets(user.id);
+    const wallet = wallets.find(w => w.id === selectedWallet);
+    
+    if (!wallet) throw new Error('Wallet not found');
+    return wallet;
+  }, [user, walletService, selectedWallet]);
+  
+  // ==== FOLDER SERVICE TESTS ====
+  
+  const testCreateFolder = useCallback(async () => {
+    if (!user) throw new Error('No user is authenticated');
+    if (!newFolder.name) throw new Error('Folder name is required');
+    
+    return await folderService.createFolder(
       user.id,
       newFolder.name,
       newFolder.description
     );
-    
-    // Clear the form
-    setNewFolder({ name: '', description: '' });
-    
-    return folder;
-  }, [newFolder, user, folderService]);
+  }, [user, folderService, newFolder]);
   
-  // Test 3: Get Wallet Info - memoized to prevent recreation on each render
-  const testGetWalletInfo = useCallback(async () => {
-    if (!selectedWallet) throw new Error('No wallet selected');
-    
-    const wallets = await walletService.getUserWallets(user.id);
-    const selectedWalletInfo = wallets.find(w => w.id === selectedWallet);
-    
-    if (!selectedWalletInfo) {
-      throw new Error('Selected wallet not found');
-    }
-    
-    return selectedWalletInfo;
-  }, [selectedWallet, user, walletService]);
-  
-  // Test 4: List Catalogs - memoized to prevent recreation on each render
-  const testListCatalogs = useCallback(async () => {
+  const testGetFolders = useCallback(async () => {
     if (!user) throw new Error('No user is authenticated');
+    return await folderService.getUserFolders(user.id);
+  }, [user, folderService]);
+  
+  const testFolderDetails = useCallback(async () => {
+    if (!selectedFolder) throw new Error('No folder selected');
     
-    const catalogs = await catalogService.getUserCatalogs(user.id);
-    return {
-      count: catalogs.length,
-      catalogs: catalogs.map(c => ({ id: c.id, name: c.name }))
-    };
+    const folders = await folderService.getUserFolders(user.id);
+    const folder = folders.find(f => f.id === selectedFolder);
+    
+    if (!folder) throw new Error('Folder not found');
+    return folder;
+  }, [user, folderService, selectedFolder]);
+  
+  // ==== CATALOG SERVICE TESTS ====
+  
+  const testCreateCatalog = useCallback(async () => {
+    if (!user) throw new Error('No user is authenticated');
+    if (!newCatalog.name) throw new Error('Catalog name is required');
+    
+    return await catalogService.createCatalog(
+      user.id,
+      newCatalog.name,
+      newCatalog.description
+    );
+  }, [user, catalogService, newCatalog]);
+  
+  const testGetCatalogs = useCallback(async () => {
+    if (!user) throw new Error('No user is authenticated');
+    return await catalogService.getUserCatalogs(user.id);
   }, [user, catalogService]);
   
-  // Render test result
-  const renderTestResult = (testName) => {
-    const result = testResults[testName];
-    if (!result) return null;
+  const testCatalogDetails = useCallback(async () => {
+    if (!selectedCatalog) throw new Error('No catalog selected');
     
-    return (
-      <Box mt={2}>
-        {result.success ? (
-          <Alert status="success" borderRadius="md">
-            <AlertIcon />
-            <Box>
-              <AlertTitle>Success</AlertTitle>
-              <AlertDescription>
-                <Code whiteSpace="pre-wrap" fontSize="sm">
-                  {JSON.stringify(result.data, null, 2)}
-                </Code>
-              </AlertDescription>
-            </Box>
-          </Alert>
-        ) : (
-          <Alert status="error" borderRadius="md">
-            <AlertIcon />
-            <Box>
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{result.error}</AlertDescription>
-            </Box>
-          </Alert>
-        )}
-      </Box>
-    );
-  };
+    const catalogs = await catalogService.getUserCatalogs(user.id);
+    const catalog = catalogs.find(c => c.id === selectedCatalog);
+    
+    if (!catalog) throw new Error('Catalog not found');
+    return catalog;
+  }, [user, catalogService, selectedCatalog]);
   
+  // ==== CATALOG-FOLDER RELATIONSHIP TESTS ====
+  
+  const testAddCatalogToFolder = useCallback(async () => {
+    if (!selectedCatalog) throw new Error('No catalog selected');
+    if (!selectedFolder) throw new Error('No folder selected');
+    
+    await folderService.addCatalogToFolder(selectedFolder, selectedCatalog);
+    return {
+      catalogId: selectedCatalog,
+      folderId: selectedFolder,
+      status: 'added'
+    };
+  }, [folderService, selectedCatalog, selectedFolder]);
+  
+  const testRemoveCatalogFromFolder = useCallback(async () => {
+    if (!selectedCatalog) throw new Error('No catalog selected');
+    if (!selectedFolder) throw new Error('No folder selected');
+    
+    await folderService.removeCatalogFromFolder(selectedFolder, selectedCatalog);
+    return {
+      catalogId: selectedCatalog,
+      folderId: selectedFolder,
+      status: 'removed'
+    };
+  }, [folderService, selectedCatalog, selectedFolder]);
+  
+  // ==== ARTIFACT SERVICE TESTS ====
+  
+  const testAddArtifact = useCallback(async () => {
+    if (!selectedWallet) throw new Error('No wallet selected');
+    const { contractAddress, tokenId, network } = artifactData;
+    
+    if (!contractAddress) throw new Error('Contract address is required');
+    if (!tokenId) throw new Error('Token ID is required');
+    
+    let metadata;
+    try {
+      metadata = JSON.parse(artifactData.metadata || '{}');
+    } catch (error) {
+      throw new Error('Invalid metadata JSON: ' + error.message);
+    }
+    
+    // Add artifact to the database
+    return await artifactService.addArtifact(
+      selectedWallet,
+      tokenId,
+      contractAddress,
+      network,
+      metadata
+    );
+  }, [artifactService, selectedWallet, artifactData]);
+  
+  const testGetArtifacts = useCallback(async () => {
+    if (!selectedWallet) throw new Error('No wallet selected');
+    
+    const artifacts = await artifactService.getWalletArtifacts(selectedWallet);
+    return {
+      count: artifacts.length,
+      artifacts: artifacts.slice(0, 5) // Only return first 5 to keep response small
+    };
+  }, [artifactService, selectedWallet]);
+  
+  // Render the component
   return (
     <StyledContainer>
       <Heading size="xl" mb={6} fontFamily="Space Grotesk" color="var(--rich-black)">
@@ -186,100 +350,531 @@ const ServiceTestComponent = () => {
       ) : (
         <Alert status="info" borderRadius="md" mb={4}>
           <AlertIcon />
-          Logged in as: {user.email || user.id}
+          <HStack spacing={2}>
+            <Text>Logged in as:</Text>
+            <Badge colorScheme="blue" p={1}>
+              {user.email || user.id}
+            </Badge>
+          </HStack>
         </Alert>
       )}
       
-      <VStack spacing={4} align="stretch">
-        {/* User Profile Test */}
-        <ServiceTestCard title="User Profile">
-          <Button
-            onClick={() => runTest('userProfile', testGetUserProfile)}
-            isLoading={isLoading.userProfile}
-            colorScheme="blue"
-            mb={3}
-          >
-            Get User Profile
-          </Button>
-          {renderTestResult('userProfile')}
-        </ServiceTestCard>
+      <Tabs colorScheme="blue" variant="enclosed" mb={4}>
+        <TabList>
+          <Tab>User Services</Tab>
+          <Tab>Wallet Services</Tab>
+          <Tab>Folder Services</Tab>
+          <Tab>Catalog Services</Tab>
+          <Tab>Artifact Services</Tab>
+        </TabList>
         
-        {/* Create Folder Test */}
-        <ServiceTestCard title="Create Folder">
-          <VStack spacing={3} align="stretch" mb={3}>
-            <FormControl>
-              <FormLabel>Folder Name</FormLabel>
-              <Input
-                value={newFolder.name}
-                onChange={(e) => setNewFolder({ ...newFolder, name: e.target.value })}
-                placeholder="Enter folder name"
-              />
-            </FormControl>
-            
-            <FormControl>
-              <FormLabel>Description (Optional)</FormLabel>
-              <Input
-                value={newFolder.description}
-                onChange={(e) => setNewFolder({ ...newFolder, description: e.target.value })}
-                placeholder="Enter description"
-              />
-            </FormControl>
-            
-            <Button
-              onClick={() => runTest('createFolder', testCreateFolder)}
-              isLoading={isLoading.createFolder}
-              colorScheme="blue"
-              isDisabled={!newFolder.name}
-            >
-              Create Folder
-            </Button>
-          </VStack>
-          {renderTestResult('createFolder')}
-        </ServiceTestCard>
-        
-        {/* Wallet Info Test */}
-        <ServiceTestCard title="Wallet Information">
-          <VStack spacing={3} align="stretch" mb={3}>
-            <FormControl>
-              <FormLabel>Select Wallet</FormLabel>
-              <Select
-                value={selectedWallet}
-                onChange={(e) => setSelectedWallet(e.target.value)}
-                placeholder="Select wallet"
-              >
-                {wallets.map((wallet) => (
-                  <option key={wallet.id} value={wallet.id}>
-                    {wallet.nickname || wallet.address.slice(0, 6) + '...' + wallet.address.slice(-4)}
-                  </option>
-                ))}
-              </Select>
-            </FormControl>
-            
-            <Button
-              onClick={() => runTest('getWalletInfo', testGetWalletInfo)}
-              isLoading={isLoading.getWalletInfo}
-              colorScheme="blue"
-              isDisabled={!selectedWallet}
-            >
-              Get Wallet Info
-            </Button>
-          </VStack>
-          {renderTestResult('getWalletInfo')}
-        </ServiceTestCard>
-        
-        {/* List Catalogs Test */}
-        <ServiceTestCard title="List Catalogs">
-          <Button
-            onClick={() => runTest('listCatalogs', testListCatalogs)}
-            isLoading={isLoading.listCatalogs}
-            colorScheme="blue"
-            mb={3}
-          >
-            List User Catalogs
-          </Button>
-          {renderTestResult('listCatalogs')}
-        </ServiceTestCard>
-      </VStack>
+        <TabPanels>
+          {/* USER SERVICES PANEL */}
+          <TabPanel>
+            <VStack spacing={4} align="stretch">
+              <ServiceTestCard title="User Profile">
+                <HStack spacing={4} mb={3}>
+                  <Button
+                    onClick={() => runTest('getProfile', testGetProfile)}
+                    isLoading={loading.getProfile}
+                    colorScheme="blue"
+                  >
+                    Get Profile
+                  </Button>
+                  <Button
+                    onClick={() => runTest('updateProfile', testUpdateProfile)}
+                    isLoading={loading.updateProfile}
+                    colorScheme="green"
+                  >
+                    Update Profile
+                  </Button>
+                </HStack>
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.getProfile} />
+                      <TestResult result={results.updateProfile} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+            </VStack>
+          </TabPanel>
+          
+          {/* WALLET SERVICES PANEL */}
+          <TabPanel>
+            <VStack spacing={4} align="stretch">
+              <ServiceTestCard title="Wallet Management">
+                <HStack spacing={4} mb={3}>
+                  <Button
+                    onClick={() => runTest('getWallets', testGetWallets)}
+                    isLoading={loading.getWallets}
+                    colorScheme="blue"
+                  >
+                    List All Wallets
+                  </Button>
+                </HStack>
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.getWallets} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+              
+              <ServiceTestCard title="Wallet Details">
+                <FormControl mb={3}>
+                  <FormLabel>Select Wallet</FormLabel>
+                  <Select
+                    value={selectedWallet}
+                    onChange={(e) => setSelectedWallet(e.target.value)}
+                    placeholder="Select wallet"
+                  >
+                    {walletOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  onClick={() => runTest('walletDetails', testWalletDetails)}
+                  isLoading={loading.walletDetails}
+                  colorScheme="blue"
+                  isDisabled={!selectedWallet}
+                  mb={3}
+                >
+                  Get Wallet Details
+                </Button>
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.walletDetails} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+            </VStack>
+          </TabPanel>
+          
+          {/* FOLDER SERVICES PANEL */}
+          <TabPanel>
+            <VStack spacing={4} align="stretch">
+              <ServiceTestCard title="Create Folder">
+                <VStack spacing={3} align="stretch" mb={3}>
+                  <FormControl>
+                    <FormLabel>Folder Name</FormLabel>
+                    <Input
+                      value={newFolder.name}
+                      onChange={(e) => setNewFolder({ ...newFolder, name: e.target.value })}
+                      placeholder="Enter folder name"
+                    />
+                  </FormControl>
+                  
+                  <FormControl>
+                    <FormLabel>Description (Optional)</FormLabel>
+                    <Input
+                      value={newFolder.description}
+                      onChange={(e) => setNewFolder({ ...newFolder, description: e.target.value })}
+                      placeholder="Enter description"
+                    />
+                  </FormControl>
+                  
+                  <Button
+                    onClick={() => runTest('createFolder', testCreateFolder)}
+                    isLoading={loading.createFolder}
+                    colorScheme="blue"
+                    isDisabled={!newFolder.name}
+                  >
+                    Create Folder
+                  </Button>
+                </VStack>
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.createFolder} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+              
+              <ServiceTestCard title="Folder Management">
+                <HStack spacing={4} mb={3}>
+                  <Button
+                    onClick={() => runTest('getFolders', testGetFolders)}
+                    isLoading={loading.getFolders}
+                    colorScheme="blue"
+                  >
+                    List All Folders
+                  </Button>
+                </HStack>
+                <FormControl mb={3}>
+                  <FormLabel>Select Folder</FormLabel>
+                  <Select
+                    value={selectedFolder}
+                    onChange={(e) => setSelectedFolder(e.target.value)}
+                    placeholder="Select folder"
+                  >
+                    {folderOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  onClick={() => runTest('folderDetails', testFolderDetails)}
+                  isLoading={loading.folderDetails}
+                  colorScheme="blue"
+                  isDisabled={!selectedFolder}
+                  mb={3}
+                >
+                  Get Folder Details
+                </Button>
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.getFolders} />
+                      <TestResult result={results.folderDetails} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+            </VStack>
+          </TabPanel>
+          
+          {/* CATALOG SERVICES PANEL */}
+          <TabPanel>
+            <VStack spacing={4} align="stretch">
+              <ServiceTestCard title="Create Catalog">
+                <VStack spacing={3} align="stretch" mb={3}>
+                  <FormControl>
+                    <FormLabel>Catalog Name</FormLabel>
+                    <Input
+                      value={newCatalog.name}
+                      onChange={(e) => setNewCatalog({ ...newCatalog, name: e.target.value })}
+                      placeholder="Enter catalog name"
+                    />
+                  </FormControl>
+                  
+                  <FormControl>
+                    <FormLabel>Description (Optional)</FormLabel>
+                    <Input
+                      value={newCatalog.description}
+                      onChange={(e) => setNewCatalog({ ...newCatalog, description: e.target.value })}
+                      placeholder="Enter description"
+                    />
+                  </FormControl>
+                  
+                  <Button
+                    onClick={() => runTest('createCatalog', testCreateCatalog)}
+                    isLoading={loading.createCatalog}
+                    colorScheme="blue"
+                    isDisabled={!newCatalog.name}
+                  >
+                    Create Catalog
+                  </Button>
+                </VStack>
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.createCatalog} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+              
+              <ServiceTestCard title="Catalog Management">
+                <HStack spacing={4} mb={3}>
+                  <Button
+                    onClick={() => runTest('getCatalogs', testGetCatalogs)}
+                    isLoading={loading.getCatalogs}
+                    colorScheme="blue"
+                  >
+                    List All Catalogs
+                  </Button>
+                </HStack>
+                <FormControl mb={3}>
+                  <FormLabel>Select Catalog</FormLabel>
+                  <Select
+                    value={selectedCatalog}
+                    onChange={(e) => setSelectedCatalog(e.target.value)}
+                    placeholder="Select catalog"
+                  >
+                    {catalogOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  onClick={() => runTest('catalogDetails', testCatalogDetails)}
+                  isLoading={loading.catalogDetails}
+                  colorScheme="blue"
+                  isDisabled={!selectedCatalog}
+                  mb={3}
+                >
+                  Get Catalog Details
+                </Button>
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.getCatalogs} />
+                      <TestResult result={results.catalogDetails} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+              
+              <ServiceTestCard title="Catalog-Folder Relationships">
+                <VStack spacing={3} align="stretch" mb={3}>
+                  <HStack spacing={4}>
+                    <FormControl flex="1">
+                      <FormLabel>Folder</FormLabel>
+                      <Select
+                        value={selectedFolder}
+                        onChange={(e) => setSelectedFolder(e.target.value)}
+                        placeholder="Select folder"
+                      >
+                        {folderOptions.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    
+                    <FormControl flex="1">
+                      <FormLabel>Catalog</FormLabel>
+                      <Select
+                        value={selectedCatalog}
+                        onChange={(e) => setSelectedCatalog(e.target.value)}
+                        placeholder="Select catalog"
+                      >
+                        {catalogOptions.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </HStack>
+                  
+                  <HStack spacing={4}>
+                    <Button
+                      onClick={() => runTest('addCatalogToFolder', testAddCatalogToFolder)}
+                      isLoading={loading.addCatalogToFolder}
+                      colorScheme="blue"
+                      isDisabled={!selectedCatalog || !selectedFolder}
+                      flex="1"
+                    >
+                      Add to Folder
+                    </Button>
+                    
+                    <Button
+                      onClick={() => runTest('removeCatalogFromFolder', testRemoveCatalogFromFolder)}
+                      isLoading={loading.removeCatalogFromFolder}
+                      colorScheme="red"
+                      isDisabled={!selectedCatalog || !selectedFolder}
+                      flex="1"
+                    >
+                      Remove from Folder
+                    </Button>
+                  </HStack>
+                </VStack>
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.addCatalogToFolder} />
+                      <TestResult result={results.removeCatalogFromFolder} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+            </VStack>
+          </TabPanel>
+          
+          {/* ARTIFACT SERVICES PANEL */}
+          <TabPanel>
+            <VStack spacing={4} align="stretch">
+              <ServiceTestCard title="Create Artifact">
+                <VStack spacing={3} align="stretch" mb={3}>
+                  <FormControl>
+                    <FormLabel>Wallet</FormLabel>
+                    <Select
+                      value={selectedWallet}
+                      onChange={(e) => setSelectedWallet(e.target.value)}
+                      placeholder="Select wallet"
+                    >
+                      {walletOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  
+                  <FormControl>
+                    <FormLabel>Contract Address</FormLabel>
+                    <Input
+                      value={artifactData.contractAddress}
+                      onChange={(e) => setArtifactData({ ...artifactData, contractAddress: e.target.value })}
+                      placeholder="0x..."
+                    />
+                  </FormControl>
+                  
+                  <FormControl>
+                    <FormLabel>Token ID</FormLabel>
+                    <Input
+                      value={artifactData.tokenId}
+                      onChange={(e) => setArtifactData({ ...artifactData, tokenId: e.target.value })}
+                      placeholder="Token ID"
+                    />
+                  </FormControl>
+                  
+                  <FormControl>
+                    <FormLabel>Network</FormLabel>
+                    <Select
+                      value={artifactData.network}
+                      onChange={(e) => setArtifactData({ ...artifactData, network: e.target.value })}
+                    >
+                      {networkOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  
+                  <FormControl>
+                    <FormLabel>Metadata (JSON)</FormLabel>
+                    <Textarea
+                      value={artifactData.metadata}
+                      onChange={(e) => setArtifactData({ ...artifactData, metadata: e.target.value })}
+                      placeholder="{}"
+                      rows={4}
+                      fontFamily="monospace"
+                    />
+                  </FormControl>
+                  
+                  <Button
+                    onClick={() => runTest('addArtifact', testAddArtifact)}
+                    isLoading={loading.addArtifact}
+                    colorScheme="blue"
+                    isDisabled={!selectedWallet || !artifactData.contractAddress || !artifactData.tokenId}
+                  >
+                    Add Artifact
+                  </Button>
+                </VStack>
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.addArtifact} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+              
+              <ServiceTestCard title="Fetch Artifacts">
+                <FormControl mb={3}>
+                  <FormLabel>Wallet</FormLabel>
+                  <Select
+                    value={selectedWallet}
+                    onChange={(e) => setSelectedWallet(e.target.value)}
+                    placeholder="Select wallet"
+                  >
+                    {walletOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+                
+                <Button
+                  onClick={() => runTest('getArtifacts', testGetArtifacts)}
+                  isLoading={loading.getArtifacts}
+                  colorScheme="blue"
+                  isDisabled={!selectedWallet}
+                  mb={3}
+                >
+                  Get Wallet Artifacts
+                </Button>
+                
+                <Accordion allowToggle>
+                  <AccordionItem>
+                    <AccordionButton>
+                      <Box flex="1" textAlign="left">
+                        View Test Results
+                      </Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <TestResult result={results.getArtifacts} />
+                    </AccordionPanel>
+                  </AccordionItem>
+                </Accordion>
+              </ServiceTestCard>
+            </VStack>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </StyledContainer>
   );
 };
