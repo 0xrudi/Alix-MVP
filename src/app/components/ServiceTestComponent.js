@@ -1,5 +1,5 @@
 // src/app/components/ServiceTestComponent.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Heading,
@@ -10,13 +10,7 @@ import {
   AlertIcon,
   AlertTitle,
   AlertDescription,
-  Divider,
   HStack,
-  Accordion,
-  AccordionItem,
-  AccordionButton,
-  AccordionPanel,
-  AccordionIcon,
   Code,
   Badge,
   Spinner,
@@ -24,17 +18,14 @@ import {
   FormControl,
   FormLabel,
   Input,
-  Checkbox,
-  Stack
 } from '@chakra-ui/react';
 import { useServices } from '../../services/service-provider';
 import { logger } from '../../utils/logger';
 import { useCustomToast } from '../../utils/toastUtils';
 import { useSelector } from 'react-redux';
-import { useSupabaseSync } from '../hooks/useSupabaseSync';
-import { useFolderService } from '../hooks/useFolderService';
-import { useArtifactService } from '../hooks/useArtifactService';
+import { StyledContainer } from '../styles/commonStyles';
 
+// ServiceTestCard component for consistent styling
 const ServiceTestCard = ({ title, children }) => (
   <Box
     bg="white"
@@ -53,26 +44,31 @@ const ServiceTestCard = ({ title, children }) => (
 );
 
 const ServiceTestComponent = () => {
-  const { user, userService, walletService, catalogService, folderService, artifactService } = useServices();
+  // Get services from the service provider (but only once)
+  const services = useServices();
+  
+  // Destructure necessary services
+  const { user, userService, walletService, catalogService, folderService } = services;
+  
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const wallets = useSelector((state) => state.wallets.list);
-  const supabaseSync = useSupabaseSync();
-  const folderServiceHook = useFolderService();
-  const artifactServiceHook = useArtifactService();
   
-  // State for various operations
+  // Local state for test operations
   const [testResults, setTestResults] = useState({});
   const [selectedWallet, setSelectedWallet] = useState('');
   const [isLoading, setIsLoading] = useState({});
   const [newFolder, setNewFolder] = useState({ name: '', description: '' });
+  const [lastSynced, setLastSynced] = useState(null);
   
+  // Set initial selected wallet when wallets data is loaded
   useEffect(() => {
     if (wallets.length > 0 && !selectedWallet) {
       setSelectedWallet(wallets[0].id);
     }
   }, [wallets, selectedWallet]);
   
-  const runTest = async (testName, testFn) => {
+  // Generic test runner function
+  const runTest = useCallback(async (testName, testFn) => {
     setIsLoading((prev) => ({ ...prev, [testName]: true }));
     setTestResults((prev) => ({ ...prev, [testName]: null }));
     
@@ -93,29 +89,22 @@ const ServiceTestComponent = () => {
     } finally {
       setIsLoading((prev) => ({ ...prev, [testName]: false }));
     }
-  };
+  }, [showSuccessToast, showErrorToast]);
   
-  // Test 1: Get User Profile
-  const testGetUserProfile = async () => {
+  // Test 1: Get User Profile - memoized to prevent recreation on each render
+  const testGetUserProfile = useCallback(async () => {
     if (!user) throw new Error('No user is authenticated');
     const profile = await userService.getProfile(user.id);
     return profile;
-  };
+  }, [user, userService]);
   
-  // Test 2: Sync App Data
-  const testSyncAppData = async () => {
-    await supabaseSync.refreshAppData();
-    return {
-      lastSynced: supabaseSync.lastSynced,
-      syncStatus: supabaseSync.syncStatus,
-    };
-  };
-  
-  // Test 3: Create Folder
-  const testCreateFolder = async () => {
+  // Test 2: Create Folder - memoized to prevent recreation on each render
+  const testCreateFolder = useCallback(async () => {
     if (!newFolder.name) throw new Error('Folder name is required');
+    if (!user) throw new Error('No user is authenticated');
     
-    const folderId = await folderServiceHook.createNewFolder(
+    const folder = await folderService.createFolder(
+      user.id,
       newFolder.name,
       newFolder.description
     );
@@ -123,22 +112,33 @@ const ServiceTestComponent = () => {
     // Clear the form
     setNewFolder({ name: '', description: '' });
     
-    return { folderId };
-  };
+    return folder;
+  }, [newFolder, user, folderService]);
   
-  // Test 4: Sync Wallet Artifacts
-  const testSyncWalletArtifacts = async () => {
+  // Test 3: Get Wallet Info - memoized to prevent recreation on each render
+  const testGetWalletInfo = useCallback(async () => {
     if (!selectedWallet) throw new Error('No wallet selected');
     
-    const addedCount = await artifactServiceHook.syncWallet(selectedWallet);
-    return { addedCount, walletId: selectedWallet };
-  };
+    const wallets = await walletService.getUserWallets(user.id);
+    const selectedWalletInfo = wallets.find(w => w.id === selectedWallet);
+    
+    if (!selectedWalletInfo) {
+      throw new Error('Selected wallet not found');
+    }
+    
+    return selectedWalletInfo;
+  }, [selectedWallet, user, walletService]);
   
-  // Test 5: Fetch Spam Artifacts
-  const testFetchSpamArtifacts = async () => {
-    await artifactServiceHook.fetchSpam();
-    return { spamCount: artifactServiceHook.spamNFTs.length };
-  };
+  // Test 4: List Catalogs - memoized to prevent recreation on each render
+  const testListCatalogs = useCallback(async () => {
+    if (!user) throw new Error('No user is authenticated');
+    
+    const catalogs = await catalogService.getUserCatalogs(user.id);
+    return {
+      count: catalogs.length,
+      catalogs: catalogs.map(c => ({ id: c.id, name: c.name }))
+    };
+  }, [user, catalogService]);
   
   // Render test result
   const renderTestResult = (testName) => {
@@ -173,7 +173,7 @@ const ServiceTestComponent = () => {
   };
   
   return (
-    <Box>
+    <StyledContainer>
       <Heading size="xl" mb={6} fontFamily="Space Grotesk" color="var(--rich-black)">
         Service Integration Tests
       </Heading>
@@ -202,41 +202,6 @@ const ServiceTestComponent = () => {
             Get User Profile
           </Button>
           {renderTestResult('userProfile')}
-        </ServiceTestCard>
-        
-        {/* Sync App Data Test */}
-        <ServiceTestCard title="Sync App Data">
-          <HStack mb={3}>
-            <Badge
-              colorScheme={supabaseSync.isInitializing ? 'orange' : 'green'}
-              p={2}
-              borderRadius="full"
-            >
-              {supabaseSync.isInitializing ? (
-                <HStack>
-                  <Spinner size="xs" />
-                  <Text>Initializing</Text>
-                </HStack>
-              ) : (
-                'Ready'
-              )}
-            </Badge>
-            {supabaseSync.lastSynced && (
-              <Text fontSize="sm" color="gray.500">
-                Last synced: {new Date(supabaseSync.lastSynced).toLocaleString()}
-              </Text>
-            )}
-          </HStack>
-          
-          <Button
-            onClick={() => runTest('syncAppData', testSyncAppData)}
-            isLoading={isLoading.syncAppData}
-            colorScheme="blue"
-            mb={3}
-          >
-            Sync All App Data
-          </Button>
-          {renderTestResult('syncAppData')}
         </ServiceTestCard>
         
         {/* Create Folder Test */}
@@ -272,8 +237,8 @@ const ServiceTestComponent = () => {
           {renderTestResult('createFolder')}
         </ServiceTestCard>
         
-        {/* Sync Wallet Artifacts Test */}
-        <ServiceTestCard title="Sync Wallet Artifacts">
+        {/* Wallet Info Test */}
+        <ServiceTestCard title="Wallet Information">
           <VStack spacing={3} align="stretch" mb={3}>
             <FormControl>
               <FormLabel>Select Wallet</FormLabel>
@@ -291,31 +256,31 @@ const ServiceTestComponent = () => {
             </FormControl>
             
             <Button
-              onClick={() => runTest('syncWalletArtifacts', testSyncWalletArtifacts)}
-              isLoading={isLoading.syncWalletArtifacts}
+              onClick={() => runTest('getWalletInfo', testGetWalletInfo)}
+              isLoading={isLoading.getWalletInfo}
               colorScheme="blue"
               isDisabled={!selectedWallet}
             >
-              Sync Wallet Artifacts
+              Get Wallet Info
             </Button>
           </VStack>
-          {renderTestResult('syncWalletArtifacts')}
+          {renderTestResult('getWalletInfo')}
         </ServiceTestCard>
         
-        {/* Fetch Spam Artifacts Test */}
-        <ServiceTestCard title="Spam Artifacts">
+        {/* List Catalogs Test */}
+        <ServiceTestCard title="List Catalogs">
           <Button
-            onClick={() => runTest('fetchSpamArtifacts', testFetchSpamArtifacts)}
-            isLoading={isLoading.fetchSpamArtifacts}
+            onClick={() => runTest('listCatalogs', testListCatalogs)}
+            isLoading={isLoading.listCatalogs}
             colorScheme="blue"
             mb={3}
           >
-            Fetch Spam Artifacts
+            List User Catalogs
           </Button>
-          {renderTestResult('fetchSpamArtifacts')}
+          {renderTestResult('listCatalogs')}
         </ServiceTestCard>
       </VStack>
-    </Box>
+    </StyledContainer>
   );
 };
 
