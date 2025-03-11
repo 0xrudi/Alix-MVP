@@ -12,13 +12,13 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { FaPlus, FaTimes } from 'react-icons/fa';
-import { addWallet, removeWallet, updateWallet } from '../redux/slices/walletSlice';
-import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
-import { resolveENS, resolveUnstoppableDomain, isValidAddress, networks } from '../../utils/web3Utils';
-import { logger } from '../../utils/logger';
-import { useErrorHandler } from '../../utils/errorUtils';
+import { addWallet, removeWallet, updateWallet } from '../../redux/slices/walletSlice';
+import { fetchWalletNFTs } from '../../redux/thunks/walletThunks';
+import { resolveENS, resolveUnstoppableDomain, isValidAddress, networks } from '../../../utils/web3Utils';
+import { logger } from '../../../utils/logger';
+import { useErrorHandler } from '../../../utils/errorUtils';
 import WalletList from './WalletList';
-import { useServices } from '../../services/service-provider';
+import { useServices } from '../../../services/service-provider';
 
 const WalletManager = () => {
   const dispatch = useDispatch();

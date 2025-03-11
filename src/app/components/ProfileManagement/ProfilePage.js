@@ -18,15 +18,15 @@ import {
   Text,
   Spinner
 } from "@chakra-ui/react";
-import UserProfile from './ProfileManagement/UserProfile';
-import WalletManager from './ProfileManagement/WalletManager';
-import { useAppContext } from '../../context/app/AppContext';
-import { useCustomToast } from '../../utils/toastUtils';
-import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
-import { useCustomColorMode } from '../hooks/useColorMode';
-import { selectTotalNFTs, selectTotalSpamNFTs } from '../redux/slices/nftSlice';
+import UserProfile from './UserProfile';
+import WalletManager from './WalletManager';
+import { useAppContext } from '../../../context/app/AppContext';
+import { useCustomToast } from '../../../utils/toastUtils';
+import { StyledButton, StyledCard, StyledContainer } from '../../styles/commonStyles';
+import { useCustomColorMode } from '../../hooks/useColorMode';
+import { selectTotalNFTs, selectTotalSpamNFTs } from '../../redux/slices/nftSlice';
 import { FaSave } from 'react-icons/fa';
-import { useServices } from '../../services/service-provider';
+import { useServices } from '../../../services/service-provider';
 
 const ProfileStats = () => {
   const totalArtifacts = useSelector(selectTotalNFTs);

@@ -31,10 +31,10 @@ import {
   FaSave,
   FaTimes
 } from 'react-icons/fa';
-import { removeWallet, updateWallet } from '../redux/slices/walletSlice';
-import { useCustomToast } from '../../utils/toastUtils';
-import { useServices } from '../../services/service-provider';
-import { logger } from '../../utils/logger';
+import { removeWallet, updateWallet } from '../../redux/slices/walletSlice';
+import { useCustomToast } from '../../../utils/toastUtils';
+import { useServices } from '../../../services/service-provider';
+import { logger } from '../../../utils/logger';
 
 // Helper function to truncate addresses
 const truncateAddress = (address) => {
