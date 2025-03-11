@@ -31,6 +31,9 @@ export const useFolderService = () => {
   const folders = useSelector(selectAllFolders);
   const { loading, error, lastUpdated } = useSelector(selectFolderLoadingState);
   
+  // Get the entire state to use for our selectors
+  const foldersState = useSelector(state => state);
+  
   // Track if initial fetch has been performed
   const [initialFetchDone, setInitialFetchDone] = useState(false);
   
@@ -140,20 +143,31 @@ export const useFolderService = () => {
     }
   }, [dispatch]);
   
+  // Memoized selectors that use the state captured at component render time
+  // These replace the useSelector calls inside callbacks which were causing the hooks error
+  
   // Get a folder by ID
   const getFolder = useCallback((folderId) => {
-    return useSelector(state => selectFolderById(state, folderId));
-  }, []);
+    return foldersState.folders?.folders?.[folderId] || null;
+  }, [foldersState]);
   
   // Get catalogs in a folder
   const getCatalogsInFolder = useCallback((folderId) => {
-    return useSelector(state => selectCatalogsInFolder(state, folderId));
-  }, []);
+    return foldersState.folders?.relationships?.[folderId] || [];
+  }, [foldersState]);
   
   // Get folders containing a catalog
   const getFoldersForCatalog = useCallback((catalogId) => {
-    return useSelector(state => selectFoldersForCatalog(state, catalogId));
-  }, []);
+    if (!foldersState.folders?.relationships) return [];
+    
+    const folderIds = Object.entries(foldersState.folders.relationships)
+      .filter(([_, catalogs]) => Array.isArray(catalogs) && catalogs.includes(catalogId))
+      .map(([folderId]) => folderId);
+      
+    return folderIds
+      .map(id => foldersState.folders.folders[id])
+      .filter(Boolean);
+  }, [foldersState]);
   
   return {
     // Data

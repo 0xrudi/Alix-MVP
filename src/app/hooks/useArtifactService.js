@@ -16,6 +16,7 @@ import { selectSpamNFTs } from '../redux/slices/nftSlice';
 import { logger } from '../../utils/logger';
 import { useServices } from '../../services/service-provider';
 
+
 /**
  * Custom hook for artifact management with Supabase integration
  */
@@ -23,6 +24,9 @@ export const useArtifactService = () => {
   const dispatch = useDispatch();
   const { user } = useServices();
   const spamNFTs = useSelector(selectSpamNFTs);
+  
+  // For the getArtifactId function, we need to memoize the selector
+  const artifactsState = useSelector(state => state);
   
   // State to track loading/error
   const [loading, setLoading] = useState(false);
@@ -185,13 +189,21 @@ export const useArtifactService = () => {
     }
   }, [dispatch]);
   
-  // Get Supabase artifact ID for an NFT
+  // Get Supabase artifact ID for an NFT - using memoization instead of selector in callback
   const getArtifactId = useCallback((nft) => {
-    return useSelector(state => {
-      const artifact = selectArtifactByNFT(state, nft);
-      return artifact ? artifact.id : null;
-    });
-  }, []);
+    if (!nft || !artifactsState) return null;
+    
+    // Find the artifact by NFT properties (token ID, contract address, etc.)
+    // This implementation depends on your specific selectArtifactByNFT logic
+    // For example:
+    const walletArtifacts = artifactsState.artifacts?.byWallet?.[nft.walletId] || {};
+    const artifact = Object.values(walletArtifacts).find(a => 
+      a.tokenId === nft.id?.tokenId && 
+      a.contractAddress === nft.contract?.address
+    );
+    
+    return artifact ? artifact.id : null;
+  }, [artifactsState]);
   
   return {
     // State
