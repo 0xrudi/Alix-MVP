@@ -1,5 +1,5 @@
 // src/app/components/ServiceTestComponent.js
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Box,
   Heading,
@@ -30,6 +30,7 @@ import {
   TabPanel,
   useToast,
   Textarea,
+  Center,
 } from '@chakra-ui/react';
 import { useServices } from '../../services/service-provider';
 import { logger } from '../../utils/logger';
@@ -91,13 +92,19 @@ const ServiceTestComponent = () => {
   const { user, userService, walletService, catalogService, folderService, artifactService } = services;
   
   // Redux selectors
-  const wallets = useSelector((state) => state.wallets.list);
-  const catalogs = useSelector((state) => state.catalogs.items);
-  const folders = useSelector((state) => state.folders.folders);
+  const reduxWallets = useSelector((state) => state.wallets.list);
+  const reduxCatalogs = useSelector((state) => state.catalogs.items);
+  const reduxFolders = useSelector((state) => state.folders.folders);
   
   // State for test operations grouped by service type
   const [results, setResults] = useState({});
   const [loading, setLoading] = useState({});
+  const [loadingInitial, setLoadingInitial] = useState(false);
+  
+  // Local state for dropdown options
+  const [walletOptions, setWalletOptions] = useState([]);
+  const [catalogOptions, setCatalogOptions] = useState([]);
+  const [folderOptions, setFolderOptions] = useState([]);
   
   // Form state for different services
   const [selectedWallet, setSelectedWallet] = useState('');
@@ -115,28 +122,6 @@ const ServiceTestComponent = () => {
   // Toast for notifications
   const toast = useToast();
   
-  // Create memoized lists for dropdowns
-  const walletOptions = useMemo(() => {
-    return wallets.map(wallet => ({
-      value: wallet.id,
-      label: wallet.nickname || `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
-    }));
-  }, [wallets]);
-  
-  const catalogOptions = useMemo(() => {
-    return Object.values(catalogs || {}).map(catalog => ({
-      value: catalog.id,
-      label: catalog.name
-    }));
-  }, [catalogs]);
-  
-  const folderOptions = useMemo(() => {
-    return Object.values(folders || {}).map(folder => ({
-      value: folder.id,
-      label: folder.name
-    }));
-  }, [folders]);
-  
   const networkOptions = [
     { value: 'eth', label: 'Ethereum' },
     { value: 'polygon', label: 'Polygon' },
@@ -144,7 +129,61 @@ const ServiceTestComponent = () => {
     { value: 'solana', label: 'Solana' }
   ];
   
-  // Generic test runner function
+  // Function to reload data from Supabase directly
+  const refreshComponentData = useCallback(async () => {
+    try {
+      if (user) {
+        logger.log('Refreshing component data from Supabase');
+        
+        // Reload wallets, folders and catalogs from Supabase
+        const [freshWallets, freshFolders, freshCatalogs] = await Promise.all([
+          walletService.getUserWallets(user.id),
+          folderService.getUserFolders(user.id),
+          catalogService.getUserCatalogs(user.id)
+        ]);
+        
+        // Update the local component state
+        setWalletOptions(freshWallets.map(wallet => ({
+          value: wallet.id,
+          label: wallet.nickname || `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
+        })));
+        
+        setFolderOptions(freshFolders.map(folder => ({
+          value: folder.id,
+          label: folder.name
+        })));
+        
+        setCatalogOptions(freshCatalogs.map(catalog => ({
+          value: catalog.id,
+          label: catalog.name
+        })));
+        
+        // If there are options but no selection, auto-select the first one
+        if (freshWallets.length && !selectedWallet) {
+          setSelectedWallet(freshWallets[0].id);
+        }
+        
+        if (freshFolders.length && !selectedFolder) {
+          setSelectedFolder(freshFolders[0].id);
+        }
+        
+        if (freshCatalogs.length && !selectedCatalog) {
+          setSelectedCatalog(freshCatalogs[0].id);
+        }
+      }
+    } catch (error) {
+      logger.error('Error refreshing component data:', error);
+      toast({
+        title: 'Refresh Error',
+        description: error.message || 'Failed to refresh data from Supabase',
+        status: 'error',
+        duration: 3000,
+        isClosable: true
+      });
+    }
+  }, [user, walletService, folderService, catalogService, selectedWallet, selectedFolder, selectedCatalog, toast]);
+  
+  // Enhanced test runner function that refreshes data after success
   const runTest = useCallback(async (testName, testFn) => {
     setLoading(prev => ({ ...prev, [testName]: true }));
     setResults(prev => ({ ...prev, [testName]: null }));
@@ -155,6 +194,9 @@ const ServiceTestComponent = () => {
         ...prev,
         [testName]: { success: true, data: result }
       }));
+      
+      // Refresh data after successful operation
+      await refreshComponentData();
       
       toast({
         title: 'Success',
@@ -180,8 +222,52 @@ const ServiceTestComponent = () => {
     } finally {
       setLoading(prev => ({ ...prev, [testName]: false }));
     }
-  }, [toast]);
-
+  }, [toast, refreshComponentData]);
+  
+  // Initialize component data when it mounts
+  useEffect(() => {
+    if (user) {
+      const initializeComponentData = async () => {
+        try {
+          setLoadingInitial(true);
+          await refreshComponentData();
+        } catch (error) {
+          logger.error('Error initializing component data:', error);
+          toast({
+            title: 'Initialization Error',
+            description: 'Failed to load initial data',
+            status: 'error',
+            duration: 5000,
+            isClosable: true
+          });
+        } finally {
+          setLoadingInitial(false);
+        }
+      };
+      
+      initializeComponentData();
+    }
+  }, [user, refreshComponentData, toast]);
+  
+  // Sync Redux data with component state when Redux state changes
+  useEffect(() => {
+    // Only update from Redux if we're not still initializing from Supabase
+    if (!loadingInitial && reduxWallets.length) {
+      setWalletOptions(prevOptions => {
+        const newOptions = reduxWallets.map(wallet => ({
+          value: wallet.id,
+          label: wallet.nickname || `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
+        }));
+        
+        // Only update if different to avoid render cycles
+        if (JSON.stringify(prevOptions) !== JSON.stringify(newOptions)) {
+          return newOptions;
+        }
+        return prevOptions;
+      });
+    }
+  }, [reduxWallets, loadingInitial]);
+  
   // ==== USER SERVICE TESTS ====
   
   const testGetProfile = useCallback(async () => {
@@ -315,15 +401,23 @@ const ServiceTestComponent = () => {
       throw new Error('Invalid metadata JSON: ' + error.message);
     }
     
-    // Add artifact to the database
+    // Get the wallet details to ensure we have the correct data
+    const walletDetails = await walletService.getUserWallets(user.id)
+      .then(wallets => wallets.find(w => w.id === selectedWallet));
+      
+    if (!walletDetails) {
+      throw new Error('Wallet not found in Supabase');
+    }
+    
+    // Add artifact to the database with verified wallet
     return await artifactService.addArtifact(
-      selectedWallet,
+      walletDetails.id, // Use the verified wallet ID
       tokenId,
       contractAddress,
       network,
       metadata
     );
-  }, [artifactService, selectedWallet, artifactData]);
+  }, [artifactService, selectedWallet, artifactData, walletService, user]);
   
   const testGetArtifacts = useCallback(async () => {
     if (!selectedWallet) throw new Error('No wallet selected');
@@ -334,6 +428,22 @@ const ServiceTestComponent = () => {
       artifacts: artifacts.slice(0, 5) // Only return first 5 to keep response small
     };
   }, [artifactService, selectedWallet]);
+  
+  // Show loading state while initializing data
+  if (loadingInitial) {
+    return (
+      <StyledContainer>
+        <Center h="300px">
+          <VStack spacing={4}>
+            <Spinner size="xl" color="var(--warm-brown)" />
+            <Text color="var(--ink-grey)" fontFamily="Fraunces">
+              Loading service data...
+            </Text>
+          </VStack>
+        </Center>
+      </StyledContainer>
+    );
+  }
   
   // Render the component
   return (
@@ -358,6 +468,17 @@ const ServiceTestComponent = () => {
           </HStack>
         </Alert>
       )}
+      
+      <HStack spacing={4} mb={6}>
+        <Button 
+          onClick={refreshComponentData} 
+          colorScheme="blue" 
+          variant="outline"
+          isDisabled={!user}
+        >
+          Refresh Data from Supabase
+        </Button>
+      </HStack>
       
       <Tabs colorScheme="blue" variant="enclosed" mb={4}>
         <TabList>
