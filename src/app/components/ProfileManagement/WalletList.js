@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import {
   Box,
@@ -19,6 +19,13 @@ import {
   useBreakpointValue,
   Input,
   useToast,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogContent,
+  AlertDialogOverlay,
+  Button,
 } from "@chakra-ui/react";
 import { 
   FaEdit, 
@@ -32,6 +39,7 @@ import {
   FaTimes
 } from 'react-icons/fa';
 import { removeWallet, updateWallet } from '../../redux/slices/walletSlice';
+import { clearWalletNFTs } from '../../redux/slices/nftSlice';
 import { useCustomToast } from '../../../utils/toastUtils';
 import { useServices } from '../../../services/service-provider';
 import { logger } from '../../../utils/logger';
@@ -42,6 +50,11 @@ const truncateAddress = (address) => {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 };
 
+// Create a unique ID for wallets to prevent duplicates
+const getWalletUniqueId = (wallet) => {
+  return wallet.id || `${wallet.address.toLowerCase()}-${wallet.type}`;
+};
+
 const WalletCard = ({ wallet, supabaseEnabled }) => {
   const dispatch = useDispatch();
   const { showSuccessToast, showErrorToast } = useCustomToast();
@@ -49,7 +62,9 @@ const WalletCard = ({ wallet, supabaseEnabled }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedNickname, setEditedNickname] = useState(wallet.nickname || '');
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const { walletService } = useServices();
+  const cancelRef = React.useRef();
 
   const isMobile = useBreakpointValue({ base: true, md: false });
 
@@ -61,12 +76,19 @@ const WalletCard = ({ wallet, supabaseEnabled }) => {
         logger.log('Deleted wallet from Supabase:', { id: wallet.id });
       }
       
+      // Clear NFTs for this wallet from Redux
+      dispatch(clearWalletNFTs({ walletId: wallet.id }));
+      
       // Delete from Redux
       dispatch(removeWallet(wallet.id));
       showSuccessToast("Wallet Removed", "The wallet has been successfully removed from your list.");
+      
+      // Close dialog
+      setIsDeleteDialogOpen(false);
     } catch (error) {
       showErrorToast("Error", `Failed to remove wallet: ${error.message}`);
       logger.error('Error removing wallet:', error);
+      setIsDeleteDialogOpen(false);
     }
   };
 
@@ -194,7 +216,7 @@ const WalletCard = ({ wallet, supabaseEnabled }) => {
                 icon={<FaTrash />}
                 variant="ghost"
                 size="sm"
-                onClick={handleDeleteWallet}
+                onClick={() => setIsDeleteDialogOpen(true)}
                 color="var(--ink-grey)"
                 _hover={{ color: "red.500" }}
               />
@@ -233,12 +255,58 @@ const WalletCard = ({ wallet, supabaseEnabled }) => {
           </Wrap>
         </Box>
       </Collapse>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        isOpen={isDeleteDialogOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={() => setIsDeleteDialogOpen(false)}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Delete Wallet
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              Are you sure you want to remove this wallet? This action cannot be undone.
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={() => setIsDeleteDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button colorScheme="red" onClick={handleDeleteWallet} ml={3}>
+                Delete
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
     </Box>
   );
 };
 
 const WalletList = ({ wallets, supabaseEnabled = false }) => {
-  if (!wallets.length) {
+  // Deduplicate wallets by using address as a key
+  const [uniqueWallets, setUniqueWallets] = useState([]);
+  
+  useEffect(() => {
+    // Create a Map with wallet address as key to deduplicate
+    const walletsMap = new Map();
+    
+    wallets.forEach(wallet => {
+      const uniqueId = getWalletUniqueId(wallet);
+      if (!walletsMap.has(uniqueId)) {
+        walletsMap.set(uniqueId, wallet);
+      }
+    });
+    
+    // Convert map back to array
+    setUniqueWallets(Array.from(walletsMap.values()));
+  }, [wallets]);
+
+  if (!uniqueWallets.length) {
     return (
       <Text
         fontFamily="Fraunces"
@@ -269,9 +337,9 @@ const WalletList = ({ wallets, supabaseEnabled = false }) => {
       </Text>
       
       <VStack spacing={3} align="stretch">
-        {wallets.map((wallet) => (
+        {uniqueWallets.map((wallet) => (
           <WalletCard 
-            key={wallet.id} 
+            key={getWalletUniqueId(wallet)} 
             wallet={wallet} 
             supabaseEnabled={supabaseEnabled}
           />
