@@ -285,35 +285,76 @@ const CatalogViewPage = ({
   };
 
   const filteredNFTs = useMemo(() => {
-    if (!catalogNFTs.length) return [];
+    if (!catalog?.nftIds) return [];
     
-    let filtered = [...catalogNFTs];
-    
+    // First, get all NFTs from the wallet's collection that match our catalog's NFT IDs
+    let matchedNFTs = catalog.nftIds.map(nftId => {
+      // Try to find the NFT in either ERC721 or ERC1155 collections
+      const matchingNFT = nfts[nftId.walletId]?.[nftId.network]?.['ERC721']?.find(nft => 
+        nft.id?.tokenId === nftId.tokenId && 
+        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
+      ) || nfts[nftId.walletId]?.[nftId.network]?.['ERC1155']?.find(nft => 
+        nft.id?.tokenId === nftId.tokenId && 
+        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
+      );
+  
+      if (matchingNFT) {
+        // Process the NFT data to ensure all required properties are available
+        const processedNFT = {
+          ...matchingNFT,
+          walletId: nftId.walletId,
+          network: nftId.network,
+          displayTitle: matchingNFT.title || matchingNFT.name || `Token ID: ${matchingNFT.id?.tokenId}`,
+          collectionName: matchingNFT.contract?.name || "Unknown Collection"
+        };
+  
+        // Process NFT attributes - extract from metadata if needed
+        if (!processedNFT.attributes && processedNFT.metadata) {
+          try {
+            // If metadata is a string, parse it
+            if (typeof processedNFT.metadata === 'string') {
+              const parsedMetadata = JSON.parse(processedNFT.metadata);
+              processedNFT.attributes = parsedMetadata.attributes || [];
+            } else if (typeof processedNFT.metadata === 'object') {
+              // If metadata is already an object, extract attributes
+              processedNFT.attributes = processedNFT.metadata.attributes || [];
+            }
+          } catch (error) {
+            console.error('Error processing NFT metadata:', error);
+            processedNFT.attributes = [];
+          }
+        }
+  
+        return processedNFT;
+      }
+      return null;
+    }).filter(Boolean);
+  
     // Apply search filter
     if (searchTerm) {
-      filtered = filtered.filter(nft => 
-        (nft.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (nft.id?.tokenId || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (nft.contract?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+      matchedNFTs = matchedNFTs.filter(nft => 
+        nft.displayTitle?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        nft.id?.tokenId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        nft.collectionName?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
-    
+  
     // Apply active filters
     if (Object.keys(activeFilters).length > 0) {
-      filtered = filtered.filter(nft => {
+      matchedNFTs = matchedNFTs.filter(nft => {
         return Object.entries(activeFilters).every(([category, values]) => {
-          if (values.length === 0) return true;
-          
           switch (category) {
             case 'wallet':
-              const walletName = nft.walletNickname || getWalletNickname(nft.walletId);
-              return values.includes(walletName);
+              return values.some(value => 
+                nft.walletId === value || 
+                nft.walletNickname === value
+              );
             case 'contract':
-              return values.includes(nft.contract?.name);
+              return values.includes(nft.collectionName);
             case 'network':
               return values.includes(nft.network);
             case 'mediaType':
-              const mediaType = getMediaType(nft);
+              const mediaType = nft.metadata?.mimeType?.split('/')[0] || 'image';
               return values.includes(mediaType);
             default:
               return true;
@@ -321,22 +362,20 @@ const CatalogViewPage = ({
         });
       });
     }
-
+  
     // Apply sorting
     if (activeSort) {
-      filtered.sort((a, b) => {
+      matchedNFTs.sort((a, b) => {
         let comparison = 0;
         switch (activeSort.field) {
           case 'name':
-            comparison = (a.title || '').localeCompare(b.title || '');
+            comparison = (a.displayTitle || '').localeCompare(b.displayTitle || '');
             break;
           case 'wallet':
-            const aWalletName = a.walletNickname || getWalletNickname(a.walletId);
-            const bWalletName = b.walletNickname || getWalletNickname(b.walletId);
-            comparison = aWalletName.localeCompare(bWalletName);
+            comparison = (a.walletId || '').localeCompare(b.walletId || '');
             break;
           case 'contract':
-            comparison = (a.contract?.name || '').localeCompare(b.contract?.name || '');
+            comparison = (a.collectionName || '').localeCompare(b.collectionName || '');
             break;
           case 'network':
             comparison = (a.network || '').localeCompare(b.network || '');
@@ -347,9 +386,10 @@ const CatalogViewPage = ({
         return activeSort.ascending ? comparison : -comparison;
       });
     }
-
-    return filtered;
-  }, [catalogNFTs, searchTerm, activeFilters, activeSort, getWalletNickname]);
+  
+    return matchedNFTs;
+  }, [catalog?.nftIds, nfts, searchTerm, activeFilters, activeSort]);
+  
 
   const handleNFTClick = (nft) => {
     navigate('/app/artifact', { state: { nft } });

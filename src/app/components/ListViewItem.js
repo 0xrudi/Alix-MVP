@@ -8,6 +8,8 @@ import {
   Skeleton,
   Divider,
   HStack,
+  Badge,
+  VStack,
 } from "@chakra-ui/react";
 import { FaTrash, FaExclamationTriangle, FaEllipsisH } from 'react-icons/fa';
 import { motion } from 'framer-motion';
@@ -27,6 +29,41 @@ const ListViewItem = ({
 }) => {
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Process NFT data to ensure attributes are available
+  const processedNft = React.useMemo(() => {
+    if (!nft) return {};
+    
+    let attributes = nft.attributes;
+    
+    // If attributes aren't directly available, try to extract them from metadata
+    if (!attributes && nft.metadata) {
+      // If metadata is a string, try to parse it
+      if (typeof nft.metadata === 'string') {
+        try {
+          const parsedMetadata = JSON.parse(nft.metadata);
+          attributes = parsedMetadata.attributes || [];
+        } catch (e) {
+          console.error('Error parsing NFT metadata:', e);
+          attributes = [];
+        }
+      } else if (typeof nft.metadata === 'object') {
+        // If metadata is already an object, extract attributes
+        attributes = nft.metadata.attributes || [];
+      }
+    }
+    
+    return {
+      ...nft,
+      attributes: attributes || [],
+      // Ensure proper title display
+      displayTitle: nft.title || nft.name || `Token ID: ${nft.id?.tokenId || 'Unknown'}`,
+      // Ensure proper collection name display
+      collectionName: nft.contract?.name || nft.collection?.name || "Unknown Collection",
+      // Network info
+      networkDisplay: nft.network || 'unknown'
+    };
+  }, [nft]);
 
   useEffect(() => {
     let mounted = true;
@@ -69,6 +106,53 @@ const ListViewItem = ({
     }
   };
 
+  // Render attributes as badges
+  const renderAttributeBadges = () => {
+    if (!processedNft.attributes || processedNft.attributes.length === 0) {
+      return null;
+    }
+
+    // Limit to displaying max 3 attributes to avoid overcrowding
+    const visibleAttributes = processedNft.attributes.slice(0, 3);
+    
+    return (
+      <Flex gap={1} flexWrap="wrap" mt={1}>
+        {visibleAttributes.map((attr, index) => (
+          <Tooltip 
+            key={index} 
+            label={`${attr.trait_type || 'Trait'}: ${attr.value}`}
+            placement="top"
+          >
+            <Badge 
+              fontSize="xs" 
+              colorScheme="blue" 
+              variant="subtle"
+              textOverflow="ellipsis"
+              overflow="hidden"
+              maxW="80px"
+            >
+              {attr.value}
+            </Badge>
+          </Tooltip>
+        ))}
+        {processedNft.attributes.length > 3 && (
+          <Tooltip 
+            label={`${processedNft.attributes.length - 3} more attributes`} 
+            placement="top"
+          >
+            <Badge 
+              fontSize="xs" 
+              colorScheme="gray" 
+              variant="subtle"
+            >
+              +{processedNft.attributes.length - 3}
+            </Badge>
+          </Tooltip>
+        )}
+      </Flex>
+    );
+  };
+
   return (
     <Box>
       <MotionFlex
@@ -97,7 +181,7 @@ const ListViewItem = ({
         >
           <Image 
             src={imageUrl}
-            alt={nft.title || 'NFT'} 
+            alt={processedNft.displayTitle || 'NFT'} 
             width={{ base: "50px", sm: "60px" }}
             height={{ base: "50px", sm: "60px" }}
             objectFit="cover"
@@ -114,10 +198,10 @@ const ListViewItem = ({
             color="var(--rich-black)"
             noOfLines={1}
           >
-            {nft.title || `Token ID: ${nft.id?.tokenId || 'Unknown'}`}
+            {processedNft.displayTitle}
           </Text>
           
-          {/* Subtitle - could be collection name or other metadata */}
+          {/* Collection name */}
           <Text
             fontSize={{ base: "xs", sm: "sm" }}
             color="var(--ink-grey)"
@@ -125,8 +209,18 @@ const ListViewItem = ({
             fontWeight="light"
             noOfLines={1}
           >
-            {nft.contract?.name || nft.network || 'Unknown collection'}
+            {processedNft.collectionName}
           </Text>
+
+          {/* Network badge */}
+          <HStack spacing={2} mt={1}>
+            <Badge size="sm" colorScheme="gray">
+              {processedNft.networkDisplay}
+            </Badge>
+            
+            {/* Render attribute badges */}
+            {renderAttributeBadges()}
+          </HStack>
         </Box>
 
         {/* Action buttons */}
