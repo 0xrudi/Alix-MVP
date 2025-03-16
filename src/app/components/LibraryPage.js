@@ -29,7 +29,8 @@ import {
 } from '../redux/slices/catalogSlice';
 import { 
   selectTotalNFTs, 
-  updateNFT 
+  updateNFT,
+  updateTotalNFTs
 } from '../redux/slices/nftSlice';
 import { 
   selectAllFolders, 
@@ -40,6 +41,7 @@ import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
 import { networks } from '../../utils/web3Utils';
 import { logger } from '../../utils/logger';
 import { cardSizes } from './constants/sizes';
+import { supabase } from '../../utils/supabase';
 
 // Components
 import NFTCard from './NFTCard';
@@ -87,7 +89,7 @@ const LibraryPage = () => {
   const automatedCatalogs = useSelector(selectAutomatedCatalogs);
 
   // Custom Hooks
-  const { showSuccessToast, showInfoToast } = useCustomToast();
+  const { showSuccessToast, showInfoToast, showErrorToast } = useCustomToast();
   const { handleError } = useErrorHandler();
   const { buttonSize, showFullText } = useResponsive();
 
@@ -109,6 +111,7 @@ const LibraryPage = () => {
   const [isEditFolderModalOpen, setIsEditFolderModalOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState(null);
   const [viewMode, setViewMode] = useState('list');
+  const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(true);
 
   // Initialize tab from URL if present
   useEffect(() => {
@@ -118,52 +121,162 @@ const LibraryPage = () => {
     if (tab === 'catalogs') setActiveTab(1);
   }, [location.search]);
 
-  // Initialize all NFTs
+  // Fetch artifacts from Supabase when component mounts
   useEffect(() => {
-    const allNFTs = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
-      Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
-        const combined = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
-        return combined.map(nft => ({
-          ...nft,
-          walletId,
-          network
+    fetchArtifactsFromSupabase();
+  }, []);
+
+  // Function to fetch artifacts from Supabase
+  const fetchArtifactsFromSupabase = async () => {
+    setIsLoadingArtifacts(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        logger.warn('No authenticated user found when fetching artifacts');
+        setIsLoadingArtifacts(false);
+        return;
+      }
+
+      logger.log('Fetching artifacts for user:', user.id);
+
+      // Fetch all wallets for the current user
+      const { data: userWallets, error: walletError } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (walletError) {
+        throw walletError;
+      }
+
+      logger.log('User wallets:', userWallets);
+      
+      if (!userWallets || userWallets.length === 0) {
+        logger.info('No wallets found for user');
+        setFilteredNFTs([]);
+        setIsLoadingArtifacts(false);
+        return;
+      }
+
+      // For each wallet, fetch its artifacts
+      const artifactPromises = userWallets.map(async (wallet) => {
+        const { data: artifacts, error: artifactsError } = await supabase
+          .from('artifacts')
+          .select('*')
+          .eq('wallet_id', wallet.id);
+
+        if (artifactsError) {
+          logger.error('Error fetching artifacts for wallet:', {
+            walletId: wallet.id,
+            error: artifactsError
+          });
+          return [];
+        }
+        
+        logger.log(`Found ${artifacts.length} artifacts for wallet:`, wallet.id);
+        
+        // Attach wallet info to each artifact
+        return artifacts.map(artifact => ({
+          ...artifact,
+          walletId: wallet.id,
+          walletAddress: wallet.address,
+          walletNickname: wallet.nickname || truncateAddress(wallet.address)
         }));
-      })
-    );
-    setFilteredNFTs(allNFTs);
-  }, [nfts]);
+      });
+
+      const artifactsByWallet = await Promise.all(artifactPromises);
+      const allArtifacts = artifactsByWallet.flat();
+      
+      logger.log(`Total artifacts across all wallets: ${allArtifacts.length}`);
+      
+      // Convert Supabase artifacts to the format expected by your components
+      const processedArtifacts = allArtifacts.map(convertSupabaseArtifactToNFT);
+      
+      // Update state with the fetched artifacts
+      setFilteredNFTs(processedArtifacts);
+      
+      // Update total NFT count in Redux
+      dispatch(updateTotalNFTs(processedArtifacts.length));
+      
+      if (processedArtifacts.length > 0) {
+        showSuccessToast(
+          "Artifacts Loaded",
+          `Successfully loaded ${processedArtifacts.length} artifacts from your library`
+        );
+      }
+
+    } catch (error) {
+      handleError(error, 'fetching artifacts from Supabase');
+      showErrorToast(
+        "Error Loading Artifacts",
+        "Failed to load your artifacts. Please try again."
+      );
+    } finally {
+      setIsLoadingArtifacts(false);
+    }
+  };
+
+  // Helper function to convert Supabase artifact format to your app's NFT format
+  const convertSupabaseArtifactToNFT = (artifact) => {
+    try {
+      // Parse metadata if it's a string
+      let metadata = artifact.metadata;
+      if (typeof metadata === 'string') {
+        try {
+          metadata = JSON.parse(metadata);
+        } catch (e) {
+          logger.warn('Failed to parse metadata as JSON:', e);
+          metadata = {};
+        }
+      }
+
+      return {
+        id: { 
+          tokenId: artifact.token_id 
+        },
+        contract: {
+          address: artifact.contract_address,
+          name: metadata?.collection?.name || metadata?.contract_name || 'Unknown Collection'
+        },
+        title: artifact.title || metadata?.name || `Token ID: ${artifact.token_id}`,
+        description: artifact.description || metadata?.description || '',
+        metadata: metadata || {},
+        isSpam: artifact.is_spam || false,
+        media: [{
+          gateway: artifact.media_url || metadata?.image || 'https://via.placeholder.com/400?text=No+Image'
+        }],
+        walletId: artifact.walletId,
+        network: artifact.network,
+        walletNickname: artifact.walletNickname
+      };
+    } catch (error) {
+      logger.error('Error converting artifact:', {
+        error: error.message,
+        artifact
+      });
+      
+      // Return a simplified version if conversion fails
+      return {
+        id: { tokenId: artifact.token_id || 'unknown' },
+        contract: { address: artifact.contract_address || 'unknown', name: 'Unknown' },
+        title: artifact.title || `Token ID: ${artifact.token_id || 'unknown'}`,
+        isSpam: false,
+        walletId: artifact.walletId,
+        network: artifact.network || 'unknown'
+      };
+    }
+  };
 
   // Utility functions for system catalogs
   const getSpamCount = useCallback(() => {
-    return Object.values(nfts).reduce((total, walletNFTs) =>
-      total + Object.values(walletNFTs).reduce((walletTotal, networkNFTs) =>
-        walletTotal + 
-        (networkNFTs.ERC721?.filter(nft => nft.isSpam)?.length || 0) +
-        (networkNFTs.ERC1155?.filter(nft => nft.isSpam)?.length || 0)
-      , 0)
-    , 0);
-  }, [nfts]);
+    return filteredNFTs.filter(nft => nft.isSpam).length;
+  }, [filteredNFTs]);
 
   // Function to get NFTs that are marked as spam
   const getSpamNFTs = useCallback(() => {
-    const spamNFTs = [];
-    
-    Object.entries(nfts).forEach(([walletId, walletNFTs]) => {
-      Object.entries(walletNFTs).forEach(([network, networkNFTs]) => {
-        const spamERC721 = (networkNFTs.ERC721 || [])
-          .filter(nft => nft.isSpam)
-          .map(nft => ({ ...nft, walletId, network }));
-          
-        const spamERC1155 = (networkNFTs.ERC1155 || [])
-          .filter(nft => nft.isSpam)
-          .map(nft => ({ ...nft, walletId, network }));
-          
-        spamNFTs.push(...spamERC721, ...spamERC1155);
-      });
-    });
-    
-    return spamNFTs;
-  }, [nfts]);
+    return filteredNFTs.filter(nft => nft.isSpam);
+  }, [filteredNFTs]);
 
   // Function to get unorganized NFTs
   const getUnorganizedNFTs = useCallback(() => {
@@ -186,38 +299,17 @@ const LibraryPage = () => {
       });
   
       // Find NFTs that aren't in any catalog and aren't spam
-      const unorganizedNFTs = [];
-      
-      Object.entries(nfts).forEach(([walletId, walletNfts]) => {
-        Object.entries(walletNfts || {}).forEach(([network, networkNfts]) => {
-          if (!networkNfts) return;
-          
-          const allWalletNFTs = [
-            ...(networkNfts.ERC721 || []), 
-            ...(networkNfts.ERC1155 || [])
-          ];
-          
-          allWalletNFTs.forEach(nft => {
-            if (!nft || !nft.id || !nft.contract) return;
-            
-            const nftKey = `${nft.id.tokenId}-${nft.contract.address}-${network}`;
-            if (!nft.isSpam && !catalogedNFTs.has(nftKey)) {
-              unorganizedNFTs.push({
-                ...nft,
-                network,
-                walletId
-              });
-            }
-          });
-        });
+      return filteredNFTs.filter(nft => {
+        if (nft.isSpam) return false;
+        
+        const nftKey = `${nft.id.tokenId}-${nft.contract.address}-${nft.network}`;
+        return !catalogedNFTs.has(nftKey);
       });
-  
-      return unorganizedNFTs;
     } catch (error) {
       console.error('Error in getUnorganizedNFTs:', error);
       return [];
     }
-  }, [nfts, catalogItems, systemCatalogs]);
+  }, [filteredNFTs, catalogItems, systemCatalogs]);
 
   // Unassigned catalogs calculation
   const unassignedCatalogs = useMemo(() => {
@@ -295,34 +387,17 @@ const LibraryPage = () => {
   // Handle search in the NFT grid
   const handleSearch = (value) => {
     setSearchTerm(value);
-    // Convert nested nfts object structure into flat array before filtering
+    
     if (!value.trim()) {
-      const allNFTs = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
-        Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
-          const combined = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
-          return combined.map(nft => ({
-            ...nft,
-            walletId,
-            network
-          }));
-        })
-      );
-      setFilteredNFTs(allNFTs);
+      // Reset to show all NFTs
+      setFilteredNFTs(prevNFTs => [...prevNFTs]);
     } else {
-      const filtered = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
-        Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
-          const combined = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
-          return combined
-            .filter(nft => 
-              nft.title?.toLowerCase().includes(value.toLowerCase()) ||
-              nft.contract?.name?.toLowerCase().includes(value.toLowerCase())
-            )
-            .map(nft => ({
-              ...nft,
-              walletId,
-              network
-            }));
-        })
+      // Filter NFTs by search term
+      const searchLower = value.toLowerCase();
+      const filtered = filteredNFTs.filter(nft => 
+        (nft.title || '').toLowerCase().includes(searchLower) ||
+        (nft.contract?.name || '').toLowerCase().includes(searchLower) ||
+        (nft.id?.tokenId || '').toString().toLowerCase().includes(searchLower)
       );
       setFilteredNFTs(filtered);
     }
@@ -405,23 +480,85 @@ const LibraryPage = () => {
   }, []);
 
   // Handle toggling spam status for NFTs
-  const handleSpamToggle = useCallback((nft) => {
+  const handleSpamToggle = useCallback(async (nft) => {
+    // First update the UI state
+    const newSpamValue = !nft.isSpam;
+    const updatedNFT = { ...nft, isSpam: newSpamValue };
+    
+    // Update in Redux
     dispatch(updateNFT({ 
       walletId: nft.walletId, 
-      nft: { ...nft, isSpam: !nft.isSpam } 
+      nft: updatedNFT
     }));
+
+    // Update filtered NFTs state
+    setFilteredNFTs(prev => 
+      prev.map(item => 
+        item.id.tokenId === nft.id.tokenId && 
+        item.contract.address === nft.contract.address
+          ? updatedNFT
+          : item
+      )
+    );
   
     showSuccessToast(
       nft.isSpam ? "NFT Unmarked" : "NFT Marked as Spam",
       nft.isSpam ? "The NFT has been removed from your spam folder." : "The NFT has been moved to your spam folder."
     );
-  }, [dispatch, showSuccessToast]);
+
+    // Then persist to Supabase
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        showErrorToast("Authentication Error", "Failed to update artifact spam status");
+        return;
+      }
+
+      const { error } = await supabase
+        .from('artifacts')
+        .update({ is_spam: newSpamValue })
+        .match({ 
+          wallet_id: nft.walletId,
+          token_id: nft.id.tokenId,
+          contract_address: nft.contract.address
+        });
+
+      if (error) {
+        logger.error('Error updating artifact spam status in Supabase:', error);
+        showErrorToast("Update Error", "Failed to update artifact status in database");
+      }
+    } catch (error) {
+      logger.error('Error updating spam status:', error);
+    }
+  }, [dispatch, showSuccessToast, showErrorToast]);
 
   // Handle marking selected NFTs as spam
   const handleMarkSelectedAsSpam = useCallback(() => {
-    selectedNFTs.forEach(nft => handleSpamToggle(nft));
-    setSelectedNFTs([]);
-  }, [handleSpamToggle, selectedNFTs]);
+    // Display toast first as visual feedback
+    showInfoToast(
+      "Processing...",
+      `Marking ${selectedNFTs.length} artifacts as spam`
+    );
+
+    // Process in batches to avoid overwhelming Supabase
+    const processInBatches = async () => {
+      const batchSize = 10;
+      const batches = [];
+      
+      for (let i = 0; i < selectedNFTs.length; i += batchSize) {
+        batches.push(selectedNFTs.slice(i, i + batchSize));
+      }
+
+      for (const batch of batches) {
+        await Promise.all(batch.map(nft => handleSpamToggle(nft)));
+      }
+      
+      setSelectedNFTs([]);
+      setIsSelectMode(false);
+    };
+
+    processInBatches();
+  }, [handleSpamToggle, selectedNFTs, showInfoToast]);
 
   // Handle removing NFT from selection
   const handleRemoveFromSelection = useCallback((nft) => {
@@ -473,31 +610,36 @@ const LibraryPage = () => {
 
   // Handle filtering NFTs
   const handleFilterChange = useCallback((filters) => {
-    const filteredNFTs = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
-      Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
-        const allNFTs = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
-        return allNFTs.filter(nft => {
-          return Object.entries(filters).every(([category, values]) => {
-            switch (category) {
-              case 'wallet':
-                const walletName = getWalletNickname(nft.walletId);
-                return values.includes(walletName);
-              case 'contract':
-                return values.includes(nft.contract?.name);
-              case 'network':
-                return values.includes(nft.network);
-              case 'mediaType':
-                const mediaType = getMediaType(nft);
-                return values.includes(mediaType);
-              default:
-                return true;
-            }
-          });
-        });
-      })
-    );
-    setFilteredNFTs(filteredNFTs);
-  }, [nfts, getWalletNickname]);
+    // If no filters are active, reset to show all NFTs
+    if (Object.keys(filters).length === 0) {
+      fetchArtifactsFromSupabase();
+      return;
+    }
+
+    // Filter the NFTs based on the active filters
+    const filtered = filteredNFTs.filter(nft => {
+      return Object.entries(filters).every(([category, values]) => {
+        if (!values.length) return true; // Skip empty filter categories
+        
+        switch (category) {
+          case 'wallet':
+            const walletName = nft.walletNickname || getWalletNickname(nft.walletId);
+            return values.includes(walletName);
+          case 'contract':
+            return values.includes(nft.contract?.name);
+          case 'network':
+            return values.includes(nft.network);
+          case 'mediaType':
+            const mediaType = getMediaType(nft);
+            return values.includes(mediaType);
+          default:
+            return true;
+        }
+      });
+    });
+
+    setFilteredNFTs(filtered);
+  }, [filteredNFTs, getWalletNickname, fetchArtifactsFromSupabase]);
 
   // Handle sorting NFTs
   const handleSortChange = useCallback(({ field, ascending }) => {
@@ -509,7 +651,9 @@ const LibraryPage = () => {
             compareResult = (a.title || '').localeCompare(b.title || '');
             break;
           case 'wallet':
-            compareResult = getWalletNickname(a.walletId).localeCompare(getWalletNickname(b.walletId));
+            const aWalletName = a.walletNickname || getWalletNickname(a.walletId);
+            const bWalletName = b.walletNickname || getWalletNickname(b.walletId);
+            compareResult = aWalletName.localeCompare(bWalletName);
             break;
           case 'contract':
             compareResult = (a.contract?.name || '').localeCompare(b.contract?.name || '');
@@ -530,8 +674,10 @@ const LibraryPage = () => {
   const filteredAndSortedNFTs = useMemo(() => 
     filteredNFTs.filter(nft => 
       !nft.isSpam && (
-        nft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        nft.contract?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+        !searchTerm ||
+        (nft.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (nft.contract?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (nft.id?.tokenId || '').toString().toLowerCase().includes(searchTerm.toLowerCase())
       )
     ),
     [filteredNFTs, searchTerm]
@@ -542,36 +688,21 @@ const LibraryPage = () => {
     setIsRefreshing(true);
     setRefreshProgress(0);
     
-    let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
-    let completedFetches = 0;
-  
-    for (const wallet of wallets) {
-      try {
-        const result = await dispatch(fetchWalletNFTs({
-          walletId: wallet.id,
-          address: wallet.address,
-          networks: wallet.networks
-        })).unwrap();
-  
-        if (result.includesNewNFTs) {
-          showSuccessToast(
-            "New NFTs Found", 
-            `Found new or updated NFTs for ${wallet.nickname || wallet.address}`
-          );
-        }
-        
-        completedFetches++;
-        setRefreshProgress((completedFetches / totalFetches) * 100);
-      } catch (error) {
-        handleError(error, `refreshing NFTs for ${wallet.address}`);
-      }
+    try {
+      await fetchArtifactsFromSupabase();
+      showSuccessToast(
+        "Refresh Complete", 
+        "Your NFT collection has been updated."
+      );
+    } catch (error) {
+      handleError(error, 'refreshing NFTs');
+      showErrorToast(
+        "Refresh Failed",
+        "There was an error refreshing your NFTs. Please try again."
+      );
+    } finally {
+      setIsRefreshing(false);
     }
-  
-    setIsRefreshing(false);
-    showSuccessToast(
-      "Refresh Complete", 
-      "Your NFT collection has been updated."
-    );
   };
   
   // Handle folder deletion
@@ -732,11 +863,7 @@ const LibraryPage = () => {
               <VStack spacing={4} align="stretch">
                 <LibraryControls
                   wallets={wallets}
-                  contracts={[...new Set(Object.values(nfts).flatMap(wallet => 
-                    Object.values(wallet).flatMap(network => 
-                      [...network.ERC721, ...network.ERC1155].map(nft => nft.contract?.name)
-                    )
-                  ))]}
+                  contracts={[...new Set(filteredNFTs.map(nft => nft.contract?.name).filter(Boolean))]}
                   networks={networks.map(n => n.label)}
                   mediaTypes={['Image', 'Video', 'Audio', '3D']}
                   onFilterChange={handleFilterChange}
@@ -749,20 +876,51 @@ const LibraryPage = () => {
                   searchTerm={searchTerm}
                   onSearchChange={handleSearch}
                 />
-                <Text fontSize="sm" color="gray.500">
-                  Showing {filteredAndSortedNFTs.length} of {totalNFTs} NFTs
-                </Text>
-                <NFTGrid
-                  nfts={filteredAndSortedNFTs}
-                  selectedNFTs={selectedNFTs}
-                  onNFTSelect={handleNFTSelect}
-                  onMarkAsSpam={handleSpamToggle}
-                  isSpamFolder={false}
-                  isSelectMode={isSelectMode}
-                  onNFTClick={handleNFTClick}
-                  viewMode={viewMode}
-                  showControls={false}
-                />
+                
+                {isLoadingArtifacts ? (
+                  <Box textAlign="center" py={8}>
+                    <Text color="var(--ink-grey)">Loading your artifacts...</Text>
+                    <Progress mt={4} size="xs" isIndeterminate colorScheme="blue" />
+                  </Box>
+                ) : (
+                  <>
+                    <Text fontSize="sm" color="gray.500">
+                      Showing {filteredAndSortedNFTs.length} of {filteredNFTs.length} NFTs
+                    </Text>
+                    
+                    {filteredAndSortedNFTs.length === 0 ? (
+                      <Box textAlign="center" py={12}>
+                        <Text fontFamily="Fraunces" fontSize="lg" color="var(--ink-grey)">
+                          {searchTerm ? 
+                            `No artifacts matching "${searchTerm}"` : 
+                            "No artifacts found in your library"
+                          }
+                        </Text>
+                        {!searchTerm && (
+                          <Button 
+                            mt={4} 
+                            colorScheme="blue"
+                            onClick={() => navigate('/app/profile?tab=1')}
+                          >
+                            Add a Wallet
+                          </Button>
+                        )}
+                      </Box>
+                    ) : (
+                      <NFTGrid
+                        nfts={filteredAndSortedNFTs}
+                        selectedNFTs={selectedNFTs}
+                        onNFTSelect={handleNFTSelect}
+                        onMarkAsSpam={handleSpamToggle}
+                        isSpamFolder={false}
+                        isSelectMode={isSelectMode}
+                        onNFTClick={handleNFTClick}
+                        viewMode={viewMode}
+                        showControls={false}
+                      />
+                    )}
+                  </>
+                )}
               </VStack>
             </TabPanel>
             

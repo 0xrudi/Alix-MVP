@@ -1,5 +1,5 @@
-import { supabase } from '../../app/utils/supabase';
-import { logger } from '../../app/utils/logger';
+import { supabase } from '../../utils/supabase';
+import { logger } from '../../utils/logger';
 
 export const userService = {
   async getProfile(userId) {

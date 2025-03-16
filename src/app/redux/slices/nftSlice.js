@@ -239,6 +239,13 @@ const nftSlice = createSlice({
       delete state.balances[walletId];
     },
   },
+
+  updateTotalNFTs: (state, action) => {
+    // This action will directly set the total count from Supabase data
+    state.totalCount = action.payload;
+    logger.log('Updated total NFT count:', action.payload);
+  },
+
 });
 
 // Selectors
@@ -367,7 +374,8 @@ export const {
   clearWalletNFTs,
   addNFTs,
   updateNFT,
-  removeNFT
+  removeNFT,
+  updateTotalNFTs
 } = nftSlice.actions;
 
 export default nftSlice.reducer;
