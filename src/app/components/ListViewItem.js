@@ -1,4 +1,3 @@
-// src/app/components/ListViewItem.js
 import React, { useState, useEffect } from 'react';
 import { 
   Flex, 
@@ -9,7 +8,6 @@ import {
   Skeleton,
   Divider,
   HStack,
-  Badge,
 } from "@chakra-ui/react";
 import { FaTrash, FaExclamationTriangle, FaEllipsisH } from 'react-icons/fa';
 import { motion } from 'framer-motion';
@@ -119,7 +117,7 @@ const ListViewItem = ({
             {nft.title || `Token ID: ${nft.id?.tokenId || 'Unknown'}`}
           </Text>
           
-          {/* Collection name */}
+          {/* Subtitle - could be collection name or other metadata */}
           <Text
             fontSize={{ base: "xs", sm: "sm" }}
             color="var(--ink-grey)"
@@ -127,15 +125,8 @@ const ListViewItem = ({
             fontWeight="light"
             noOfLines={1}
           >
-            {nft.contract?.name || nft.network || "Unknown collection"}
+            {nft.contract?.name || nft.network || 'Unknown collection'}
           </Text>
-
-          {/* Network badge - only showing network information, no attributes */}
-          <HStack spacing={2} mt={1}>
-            <Badge size="sm" colorScheme="gray">
-              {nft.network || 'unknown'}
-            </Badge>
-          </HStack>
         </Box>
 
         {/* Action buttons */}
