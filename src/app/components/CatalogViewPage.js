@@ -416,61 +416,6 @@ const CatalogViewPage = ({
     setIsSelectMode(false);
   };
 
-  const handleRemoveFromCatalog = async (catalogId, nftsToRemove) => {
-  const catalog = catalogs.find(c => c.id === catalogId);
-  if (!catalog) return;
-
-  try {
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('No authenticated user');
-
-    // Get artifact IDs to remove
-    const artifactIdsToRemove = [];
-    for (const nft of nftsToRemove) {
-      // Find artifact record in Supabase by token_id and contract_address
-      const { data, error } = await supabase
-        .from('artifacts')
-        .select('id')
-        .eq('token_id', nft.id.tokenId)
-        .eq('contract_address', nft.contract.address)
-        .eq('wallet_id', nft.walletId)
-        .single();
-        
-      if (error) {
-        logger.error('Error finding artifact:', error);
-        continue;
-      }
-      
-      if (data?.id) {
-        artifactIdsToRemove.push(data.id);
-      }
-    }
-    
-    // Remove relationships from catalog_artifacts table
-    if (artifactIdsToRemove.length > 0) {
-      const { error } = await supabase
-        .from('catalog_artifacts')
-        .delete()
-        .eq('catalog_id', catalogId)
-        .in('artifact_id', artifactIdsToRemove);
-        
-      if (error) throw error;
-    }
-
-    showSuccessToast(
-      "NFTs Removed",
-      `${nftsToRemove.length} NFT(s) removed from ${catalog.name}`
-    );
-  } catch (error) {
-    logger.error('Error removing NFTs from catalog:', error);
-    showErrorToast(
-      "Update Failed",
-      "Failed to remove NFTs from catalog. Please try again."
-    );
-  }
-}
-
   // Get list of wallets and networks for filters
   const availableWallets = useMemo(() => {
     const walletSet = new Set();
