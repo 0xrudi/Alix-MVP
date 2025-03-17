@@ -1,3 +1,4 @@
+// src/app/components/NFTCard.js
 import React, { useState, useEffect } from 'react';
 import { 
   Box, 
@@ -10,7 +11,6 @@ import {
   Skeleton,
   IconButton,
   Flex,
-  Tooltip,
 } from "@chakra-ui/react";
 import { 
   FaTrash, 
@@ -40,47 +40,12 @@ const NFTCard = ({
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Process NFT data to ensure attributes are available
-  const processedNft = React.useMemo(() => {
-    if (!nft) return {};
-    
-    let attributes = nft.attributes;
-    
-    // If attributes aren't directly available, try to extract them from metadata
-    if (!attributes && nft.metadata) {
-      // If metadata is a string, try to parse it
-      if (typeof nft.metadata === 'string') {
-        try {
-          const parsedMetadata = JSON.parse(nft.metadata);
-          attributes = parsedMetadata.attributes || [];
-        } catch (e) {
-          console.error('Error parsing NFT metadata:', e);
-          attributes = [];
-        }
-      } else if (typeof nft.metadata === 'object') {
-        // If metadata is already an object, extract attributes
-        attributes = nft.metadata.attributes || [];
-      }
-    }
-    
-    return {
-      ...nft,
-      attributes: attributes || [],
-      // Ensure proper title display
-      displayTitle: nft.title || nft.name || `Token ID: ${nft.id?.tokenId || 'Unknown'}`,
-      // Ensure proper collection name display
-      collectionName: nft.contract?.name || nft.collection?.name || "Unknown Collection",
-      // Network info
-      networkDisplay: nft.network || 'unknown'
-    };
-  }, [nft]);
-
   // Keep track of all data needed for sorting
   const sortableData = {
-    name: processedNft.displayTitle,
-    contractName: processedNft.collectionName,
-    walletId: processedNft.walletId,
-    network: processedNft.networkDisplay
+    name: nft.title || `Token ID: ${nft.id?.tokenId}`,
+    contractName: nft.contract?.name,
+    walletId: nft.walletId,
+    network: nft.network
   };
 
   const shouldShowSpamButton = () => {
@@ -152,53 +117,6 @@ const NFTCard = ({
     return () => { mounted = false; };
   }, [nft]);
 
-  // Display attributes if available
-  const renderAttributeBadges = () => {
-    if (!processedNft.attributes || processedNft.attributes.length === 0) {
-      return null;
-    }
-
-    // Limit to displaying max 3 attributes to avoid overcrowding
-    const visibleAttributes = processedNft.attributes.slice(0, 2);
-    
-    return (
-      <Flex mt={1} flexWrap="wrap" gap={1}>
-        {visibleAttributes.map((attr, index) => (
-          <Tooltip 
-            key={index} 
-            label={`${attr.trait_type || 'Trait'}: ${attr.value}`}
-            placement="top"
-          >
-            <Badge 
-              fontSize="xx-small" 
-              colorScheme="blue" 
-              variant="subtle"
-              textOverflow="ellipsis"
-              overflow="hidden"
-              maxW="60px"
-            >
-              {attr.value}
-            </Badge>
-          </Tooltip>
-        ))}
-        {processedNft.attributes.length > 2 && (
-          <Tooltip 
-            label={`${processedNft.attributes.length - 2} more attributes`} 
-            placement="top"
-          >
-            <Badge 
-              fontSize="xx-small" 
-              colorScheme="gray" 
-              variant="subtle"
-            >
-              +{processedNft.attributes.length - 2}
-            </Badge>
-          </Tooltip>
-        )}
-      </Flex>
-    );
-  };
-
   return (
     <MotionBox
       as="article"
@@ -247,13 +165,13 @@ const NFTCard = ({
         )}
 
         {/* Upper right corner badge for spam or ERC-1155 */}
-        {(processedNft.isSpam || isERC1155(processedNft)) && (
+        {(nft.isSpam || isERC1155(nft)) && (
           <Badge
             position="absolute"
             top={2}
             right={2}
             zIndex={5}
-            bg={processedNft.isSpam ? "red.500" : "var(--warm-brown)"}
+            bg={nft.isSpam ? "red.500" : "var(--warm-brown)"}
             color="white"
             fontSize="xs"
             px={2}
@@ -261,25 +179,9 @@ const NFTCard = ({
             borderRadius="full"
             boxShadow="0 2px 4px rgba(0, 0, 0, 0.1)"
           >
-            {processedNft.isSpam ? "Spam" : `×${parseInt(processedNft.balance) || 1}`}
+            {nft.isSpam ? "Spam" : `×${parseInt(nft.balance) || 1}`}
           </Badge>
         )}
-
-        {/* Network Badge */}
-        <Badge
-          position="absolute"
-          bottom={2}
-          right={2}
-          zIndex={5}
-          bg="rgba(0, 0, 0, 0.5)"
-          color="white"
-          fontSize="xs"
-          px={2}
-          py={0.5}
-          borderRadius="full"
-        >
-          {processedNft.networkDisplay}
-        </Badge>
 
         {/* Image Section with fixed aspect ratio */}
         <AspectRatio ratio={1} width="100%">
@@ -369,10 +271,10 @@ const NFTCard = ({
             lineHeight="1.2"
             mb={1}
           >
-            {processedNft.displayTitle}
+            {sortableData.name}
           </Text>
           
-          {/* Collection Name */}
+          {/* Optional Subtitle */}
           <Text
             fontSize="xs"
             color="var(--ink-grey)"
@@ -380,11 +282,8 @@ const NFTCard = ({
             fontWeight="light"
             noOfLines={1}
           >
-            {processedNft.collectionName}
+            {nft.contract?.name || nft.network || "Unknown collection"}
           </Text>
-
-          {/* Trait/Attribute Badges */}
-          {renderAttributeBadges()}
         </VStack>
       </Box>
     </MotionBox>
