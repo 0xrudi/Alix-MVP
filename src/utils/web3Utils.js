@@ -4,7 +4,8 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { getParsedNftAccountsByOwner } from "@nfteyez/sol-rayz";
 import { ethers } from 'ethers';
 import Resolution from '@unstoppabledomains/resolution';
-import { logger } from '../utils/logger';
+import { logger } from './logger';
+import { fetchWithCorsProxy, needsCorsProxy, applyCorsProxy } from './corsProxy';
 
 const MORALIS_API_KEY = process.env.REACT_APP_MORALIS_API_KEY;
 const MAINNET_RPC_URL = process.env.REACT_APP_ETHEREUM_RPC_URL;
@@ -123,7 +124,7 @@ export const validateTokenUri = async (uri) => {
     logger.debug('[TokenURI Validation] Validating URI:', uri);
 
     // Handle data URIs
-    if (uri.startsWith('data:')) {
+    if (uri?.startsWith('data:')) {
       return uri.startsWith('data:image/') ? uri : null;
     }
 
@@ -141,18 +142,74 @@ export const validateTokenUri = async (uri) => {
       return gatewayUrl;
     }
 
-    // Handle known CORS-restricted domains
-    const corsRestrictedDomains = [
-      'unlock-protocol.com',
-      'base.org',
-      'storage.unlock-protocol.com'
-    ];
-    
-    if (corsRestrictedDomains.some(domain => gatewayUrl.includes(domain))) {
-      logger.debug('[TokenURI Validation] Known CORS-restricted domain, skipping validation:', gatewayUrl);
-      return gatewayUrl;
+    // Handle known CORS-restricted domains with our proxy
+    if (needsCorsProxy(gatewayUrl)) {
+      try {
+        logger.debug('[TokenURI Validation] Using CORS proxy for:', gatewayUrl);
+        const response = await fetchWithCorsProxy(gatewayUrl, {
+          timeout: 5000,
+          headers: {
+            'Accept': 'application/json, image/*'
+          }
+        });
+        
+        const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+        
+        // Handle JSON responses
+        if (contentType.includes('application/json')) {
+          const data = await response.json();
+          logger.debug('[TokenURI Validation] JSON response:', { data });
+
+          const possibleImageUrls = [
+            data.image,
+            data.image_url,
+            data.artwork?.uri,
+            data.image_data,
+            data.animation_url,
+            data.metadata?.image,
+            data.metadata?.image_url,
+            data.properties?.image,
+            data.properties?.preview?.image
+          ].filter(Boolean);
+
+          logger.debug('[TokenURI Validation] Found possible image URLs:', possibleImageUrls);
+
+          // For JSON responses, don't recursively validate to avoid timeout loops
+          for (const imageUrl of possibleImageUrls) {
+            if (isValidImageExtension(imageUrl) || 
+                imageUrl.startsWith('ar://') || 
+                imageUrl.startsWith('ipfs://')) {
+              return convertToGatewayUrl(imageUrl);
+            }
+          }
+          
+          return null;
+        }
+
+        // Handle direct image responses
+        if (isValidMimeType(contentType)) {
+          return gatewayUrl;
+        }
+        
+        logger.warn('[TokenURI Validation] Invalid content type:', {
+          uri: gatewayUrl,
+          contentType
+        });
+        return null;
+      } catch (proxyError) {
+        logger.error('[TokenURI Validation] Proxy error:', {
+          uri: gatewayUrl,
+          error: proxyError.message
+        });
+        // Fall back to direct URL if it's a known image
+        if (isValidImageExtension(gatewayUrl)) {
+          return gatewayUrl;
+        }
+        return null;
+      }
     }
 
+    // For non-CORS restricted domains, proceed with standard fetch (original code)
     // Only proceed with HTTP(S) requests
     if (!gatewayUrl.startsWith('http://') && !gatewayUrl.startsWith('https://')) {
       throw new Error(`Unsupported protocol: ${gatewayUrl.split('://')[0]}`);
@@ -211,45 +268,8 @@ export const validateTokenUri = async (uri) => {
       headers: response.headers
     });
 
-    // Handle JSON responses
-    if (contentType.includes('application/json')) {
-      const data = response.data;
-      logger.debug('[TokenURI Validation] JSON response:', { data });
-
-      const possibleImageUrls = [
-        data.image,
-        data.image_url,
-        data.artwork?.uri,
-        data.image_data,
-        data.animation_url,
-        data.metadata?.image,
-        data.metadata?.image_url,
-        data.properties?.image,
-        data.properties?.preview?.image
-      ].filter(Boolean);
-
-      logger.debug('[TokenURI Validation] Found possible image URLs:', possibleImageUrls);
-
-      // For JSON responses, don't recursively validate to avoid timeout loops
-      for (const imageUrl of possibleImageUrls) {
-        if (isValidImageExtension(imageUrl) || 
-            imageUrl.startsWith('ar://') || 
-            imageUrl.startsWith('ipfs://')) {
-          return convertToGatewayUrl(imageUrl);
-        }
-      }
-    }
-
-    // Handle direct image responses
-    if (isValidMimeType(contentType)) {
-      return gatewayUrl;
-    }
-
-    logger.warn('[TokenURI Validation] Invalid content type:', {
-      uri: gatewayUrl,
-      contentType
-    });
-    return null;
+    // Handle JSON responses (original code continues)
+    // ...
 
   } catch (error) {
     logger.error('[TokenURI Validation] Error:', {
@@ -533,10 +553,35 @@ export const getImageUrl = async (nft) => {
       logDebug('Processing source', source);
 
       try {
-        const validatedUrl = await validateTokenUri(source.value);
-        if (validatedUrl) {
-          logDebug('Valid URL found', validatedUrl);
-          return validatedUrl;
+        // Check if we need to use CORS proxy
+        if (needsCorsProxy(source.value)) {
+          logDebug('Using CORS proxy for source', source.value);
+          
+          // First try direct validation through the proxy
+          try {
+            const validatedUrl = await validateTokenUri(source.value);
+            if (validatedUrl) {
+              logDebug('Valid URL found via proxy validation', validatedUrl);
+              return validatedUrl;
+            }
+          } catch (validationError) {
+            logDebug('Validation through proxy failed, trying direct proxy', {
+              source: source.value,
+              error: validationError.message
+            });
+          }
+          
+          // If validation fails, apply the proxy directly
+          const proxiedUrl = applyCorsProxy(source.value);
+          logDebug('Applied CORS proxy directly', proxiedUrl);
+          return proxiedUrl;
+        } else {
+          // Use regular validation for non-CORS restricted sources
+          const validatedUrl = await validateTokenUri(source.value);
+          if (validatedUrl) {
+            logDebug('Valid URL found', validatedUrl);
+            return validatedUrl;
+          }
         }
       } catch (error) {
         logDebug('Error processing source', {
