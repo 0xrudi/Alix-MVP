@@ -29,6 +29,39 @@ export const isERC1155 = (nft) => {
 };
 
 /**
+ * Extracts attributes from NFT metadata if needed
+ * This is a helper function that doesn't change the appearance
+ * @param {Object} nft - The NFT object
+ * @returns {Array} Array of attributes extracted from metadata
+ */
+export const extractNFTAttributes = (nft) => {
+  if (!nft) return [];
+  
+  // If attributes are already available, return them
+  if (nft.attributes && Array.isArray(nft.attributes)) {
+    return nft.attributes;
+  }
+  
+  // Try to extract attributes from metadata
+  if (nft.metadata) {
+    try {
+      // If metadata is a string, try to parse it
+      if (typeof nft.metadata === 'string') {
+        const parsedMetadata = JSON.parse(nft.metadata);
+        return parsedMetadata.attributes || [];
+      } else if (typeof nft.metadata === 'object') {
+        // If metadata is already an object, extract attributes
+        return nft.metadata.attributes || [];
+      }
+    } catch (error) {
+      logger.error('Error extracting NFT attributes from metadata:', error);
+    }
+  }
+  
+  return [];
+};
+
+/**
  * Process and standardize NFT data to ensure all required fields
  * @param {Object} nft - The raw NFT object
  * @returns {Object} Processed and standardized NFT object

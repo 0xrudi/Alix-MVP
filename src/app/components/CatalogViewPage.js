@@ -27,6 +27,7 @@ import ListViewItem from './ListViewItem';
 import LibraryControls from './LibraryControls';
 import { useCustomToast } from '../../utils/toastUtils';
 import { logger } from '../../utils/logger';
+import { extractNFTAttributes } from '../../utils/nftUtils';
 
 const MotionBox = motion(Box);
 
@@ -299,32 +300,15 @@ const CatalogViewPage = ({
       );
   
       if (matchingNFT) {
-        // Process the NFT data to ensure all required properties are available
+        // Create a copy with minimal additions
         const processedNFT = {
           ...matchingNFT,
           walletId: nftId.walletId,
           network: nftId.network,
-          displayTitle: matchingNFT.title || matchingNFT.name || `Token ID: ${matchingNFT.id?.tokenId}`,
-          collectionName: matchingNFT.contract?.name || "Unknown Collection"
+          // Extract attributes from metadata if needed
+          attributes: extractNFTAttributes(matchingNFT)
         };
-  
-        // Process NFT attributes - extract from metadata if needed
-        if (!processedNFT.attributes && processedNFT.metadata) {
-          try {
-            // If metadata is a string, parse it
-            if (typeof processedNFT.metadata === 'string') {
-              const parsedMetadata = JSON.parse(processedNFT.metadata);
-              processedNFT.attributes = parsedMetadata.attributes || [];
-            } else if (typeof processedNFT.metadata === 'object') {
-              // If metadata is already an object, extract attributes
-              processedNFT.attributes = processedNFT.metadata.attributes || [];
-            }
-          } catch (error) {
-            console.error('Error processing NFT metadata:', error);
-            processedNFT.attributes = [];
-          }
-        }
-  
+        
         return processedNFT;
       }
       return null;
@@ -333,9 +317,9 @@ const CatalogViewPage = ({
     // Apply search filter
     if (searchTerm) {
       matchedNFTs = matchedNFTs.filter(nft => 
-        nft.displayTitle?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        nft.id?.tokenId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        nft.collectionName?.toLowerCase().includes(searchTerm.toLowerCase())
+        (nft.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (nft.id?.tokenId || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (nft.contract?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
   
@@ -350,7 +334,7 @@ const CatalogViewPage = ({
                 nft.walletNickname === value
               );
             case 'contract':
-              return values.includes(nft.collectionName);
+              return values.includes(nft.contract?.name);
             case 'network':
               return values.includes(nft.network);
             case 'mediaType':
@@ -369,13 +353,13 @@ const CatalogViewPage = ({
         let comparison = 0;
         switch (activeSort.field) {
           case 'name':
-            comparison = (a.displayTitle || '').localeCompare(b.displayTitle || '');
+            comparison = (a.title || '').localeCompare(b.title || '');
             break;
           case 'wallet':
             comparison = (a.walletId || '').localeCompare(b.walletId || '');
             break;
           case 'contract':
-            comparison = (a.collectionName || '').localeCompare(b.collectionName || '');
+            comparison = (a.contract?.name || '').localeCompare(b.contract?.name || '');
             break;
           case 'network':
             comparison = (a.network || '').localeCompare(b.network || '');
