@@ -416,6 +416,61 @@ const CatalogViewPage = ({
     setIsSelectMode(false);
   };
 
+  const handleRemoveFromCatalog = async (catalogId, nftsToRemove) => {
+  const catalog = catalogs.find(c => c.id === catalogId);
+  if (!catalog) return;
+
+  try {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('No authenticated user');
+
+    // Get artifact IDs to remove
+    const artifactIdsToRemove = [];
+    for (const nft of nftsToRemove) {
+      // Find artifact record in Supabase by token_id and contract_address
+      const { data, error } = await supabase
+        .from('artifacts')
+        .select('id')
+        .eq('token_id', nft.id.tokenId)
+        .eq('contract_address', nft.contract.address)
+        .eq('wallet_id', nft.walletId)
+        .single();
+        
+      if (error) {
+        logger.error('Error finding artifact:', error);
+        continue;
+      }
+      
+      if (data?.id) {
+        artifactIdsToRemove.push(data.id);
+      }
+    }
+    
+    // Remove relationships from catalog_artifacts table
+    if (artifactIdsToRemove.length > 0) {
+      const { error } = await supabase
+        .from('catalog_artifacts')
+        .delete()
+        .eq('catalog_id', catalogId)
+        .in('artifact_id', artifactIdsToRemove);
+        
+      if (error) throw error;
+    }
+
+    showSuccessToast(
+      "NFTs Removed",
+      `${nftsToRemove.length} NFT(s) removed from ${catalog.name}`
+    );
+  } catch (error) {
+    logger.error('Error removing NFTs from catalog:', error);
+    showErrorToast(
+      "Update Failed",
+      "Failed to remove NFTs from catalog. Please try again."
+    );
+  }
+}
+
   // Get list of wallets and networks for filters
   const availableWallets = useMemo(() => {
     const walletSet = new Set();
@@ -449,24 +504,55 @@ const CatalogViewPage = ({
     
     // Additional Supabase update
     try {
-      const { error } = await supabase
+      // Find the artifact in Supabase
+      const { data: existingArtifact, error: findError } = await supabase
         .from('artifacts')
-        .update({ is_spam: !nft.isSpam })
-        .match({ 
-          wallet_id: nft.walletId,
-          token_id: nft.id.tokenId,
-          contract_address: nft.contract.address
-        });
-
-      if (error) {
-        logger.error('Error updating artifact spam status in Supabase:', error);
-        showErrorToast(
-          "Update Error",
-          "Failed to update artifact status in database"
-        );
+        .select('id')
+        .eq('token_id', nft.id.tokenId)
+        .eq('contract_address', nft.contract.address)
+        .eq('wallet_id', nft.walletId)
+        .maybeSingle();
+      
+      if (findError) {
+        logger.error('Error finding artifact:', findError);
+        return;
+      }
+      
+      if (existingArtifact) {
+        // Update existing artifact
+        const { error: updateError } = await supabase
+          .from('artifacts')
+          .update({ is_spam: !nft.isSpam })
+          .eq('id', existingArtifact.id);
+          
+        if (updateError) {
+          logger.error('Error updating spam status:', updateError);
+        }
+      } else {
+        // Insert new artifact with spam status
+        const { error: insertError } = await supabase
+          .from('artifacts')
+          .insert([{
+            token_id: nft.id.tokenId,
+            contract_address: nft.contract.address,
+            wallet_id: nft.walletId,
+            network: nft.network || 'unknown',
+            is_spam: !nft.isSpam,
+            title: nft.title || '',
+            description: nft.description || '',
+            metadata: nft.metadata || {}
+          }]);
+          
+        if (insertError) {
+          logger.error('Error creating artifact with spam status:', insertError);
+        }
       }
     } catch (error) {
       logger.error('Error in Supabase spam update:', error);
+      showErrorToast(
+        "Update Error",
+        "Failed to update artifact status in database"
+      );
     }
   };
 

@@ -22,6 +22,7 @@ import { selectAllCatalogs } from '../redux/slices/catalogSlice';
 import { useCustomToast } from '../../utils/toastUtils';
 import { logger } from '../../utils/logger';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
+import { supabase } from '../../utils/supabase';
 
 // Custom Floating Label Input Component
 const FloatingLabelInput = ({ value, onChange, placeholder, isRequired, showError, ...props }) => {
@@ -172,29 +173,87 @@ const EditFolderModal = ({ isOpen, onClose, folder }) => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       setShowError(true);
       return;
     }
-
+  
     try {
-      // Extract just the catalog IDs from the selected options
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+  
+      // Extract catalog IDs from the selected options
       const catalogIds = selectedCatalogs.map(option => option.value);
       
+      // Update Redux store first (optimistic update)
       dispatch(updateFolder({
         id: folder.id,
         name: name.trim(),
         description: description.trim(),
         catalogIds: catalogIds
       }));
-
-      logger.log('Folder updated:', {
+  
+      // Update folder in Supabase
+      const { error: folderError } = await supabase
+        .from('folders')
+        .update({ 
+          name: name.trim(),
+          description: description.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', folder.id);
+        
+      if (folderError) throw folderError;
+  
+      // Get current catalog relationships
+      const { data: currentRelations, error: relError } = await supabase
+        .from('catalog_folders')
+        .select('catalog_id')
+        .eq('folder_id', folder.id);
+        
+      if (relError) throw relError;
+      
+      const currentCatalogIds = currentRelations.map(rel => rel.catalog_id);
+      
+      // Remove catalogs that are no longer selected
+      const catalogsToRemove = currentCatalogIds.filter(id => !catalogIds.includes(id));
+      if (catalogsToRemove.length > 0) {
+        const { error: removeError } = await supabase
+          .from('catalog_folders')
+          .delete()
+          .eq('folder_id', folder.id)
+          .in('catalog_id', catalogsToRemove);
+          
+        if (removeError) {
+          logger.error('Error removing catalogs from folder:', removeError);
+        }
+      }
+      
+      // Add newly selected catalogs
+      const catalogsToAdd = catalogIds.filter(id => !currentCatalogIds.includes(id));
+      if (catalogsToAdd.length > 0) {
+        const insertData = catalogsToAdd.map(catalogId => ({
+          folder_id: folder.id,
+          catalog_id: catalogId
+        }));
+        
+        const { error: addError } = await supabase
+          .from('catalog_folders')
+          .insert(insertData);
+          
+        if (addError) {
+          logger.error('Error adding catalogs to folder:', addError);
+        }
+      }
+  
+      logger.log('Folder updated successfully:', {
         folderId: folder.id,
         name: name.trim(),
         catalogCount: catalogIds.length
       });
-
+  
       showSuccessToast(
         "Folder Updated",
         "The folder has been updated successfully."

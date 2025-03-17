@@ -21,6 +21,7 @@ import { addFolder, addCatalogToFolder } from '../redux/slices/folderSlice';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
 import { useCustomToast } from '../../utils/toastUtils';
 import { logger } from '../../utils/logger';
+import { supabase } from '../../utils/supabase';
 
 // Custom Floating Label Input Component
 const FloatingLabelInput = ({ value, onChange, placeholder, isRequired, showError, ...props }) => {
@@ -109,39 +110,78 @@ const NewFolderModal = ({ isOpen, onClose }) => {
       setShowError(true);
       return;
     }
-
+  
     try {
-      // First create the folder
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+  
+      // Generate a unique folder ID
       const newFolderId = `folder-${Date.now()}`;
+      
+      // Create folder in Redux first
       await dispatch(addFolder({
         id: newFolderId,
         name: name.trim(),
         description: description.trim()
       }));
-
-      // Then handle catalog assignments
+  
+      // Create folder in Supabase
+      const { error: folderError } = await supabase
+        .from('folders')
+        .insert([{
+          id: newFolderId,
+          user_id: user.id,
+          name: name.trim(),
+          description: description.trim(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }]);
+        
+      if (folderError) throw folderError;
+  
+      logger.log('Created folder:', {
+        folderId: newFolderId,
+        name: name.trim()
+      });
+  
+      // Handle catalog assignments
       if (selectedCatalogs.length > 0) {
-        // Add each selected catalog to the folder
+        const folderRelationships = selectedCatalogs.map(catalog => ({
+          folder_id: newFolderId,
+          catalog_id: catalog.value
+        }));
+        
+        // Add each selected catalog to the folder in Redux
         for (const catalog of selectedCatalogs) {
           await dispatch(addCatalogToFolder({
             folderId: newFolderId,
             catalogId: catalog.value
           }));
         }
+        
+        // Add relationships to Supabase
+        const { error: relationError } = await supabase
+          .from('catalog_folders')
+          .insert(folderRelationships);
+          
+        if (relationError) {
+          logger.error('Error creating folder-catalog relationships:', relationError);
+        }
       }
-
+  
       logger.log('Created folder with catalogs:', {
         folderId: newFolderId,
         name: name.trim(),
         catalogCount: selectedCatalogs.length,
         catalogs: selectedCatalogs.map(c => c.value)
       });
-
+  
       showSuccessToast(
         "Folder Created",
         `Created folder "${name.trim()}" with ${selectedCatalogs.length} catalogs`
       );
-
+  
       handleClose();
     } catch (error) {
       logger.error('Error creating folder:', error);

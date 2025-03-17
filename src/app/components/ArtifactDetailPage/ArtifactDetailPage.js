@@ -58,6 +58,7 @@ import { parseContent } from '../../../utils/contentUtils.js';
 import { useAppContext } from '../../../context/app/AppContext.js';
 import { updateNFT } from '../../redux/slices/nftSlice.js';
 import MediaTabPanel from './MediaTabPanel.js';
+import { supabase } from '../../../utils/supabase';
 
 
 const MetadataDisplay = ({ data, level = 0 }) => {
@@ -186,40 +187,158 @@ const ArtifactDetailPage = () => {
   // All existing handlers remain the same
   const handleAddToCatalog = () => setIsAddToCatalogOpen(true);
 
-  const handleConfirmAddToCatalog = () => {
+  const handleConfirmAddToCatalog = async () => {
     if (selectedCatalog) {
-      const updatedCatalogs = catalogs.map(catalog => 
-        catalog.id === selectedCatalog 
-          ? { ...catalog, nfts: [...catalog.nfts, nft] }
-          : catalog
-      );
-      updateCatalogs(updatedCatalogs);
+      try {
+        // Update Redux state (optimistic update)
+        const updatedCatalogs = catalogs.map(catalog => 
+          catalog.id === selectedCatalog 
+            ? { ...catalog, nfts: [...catalog.nfts, nft] }
+            : catalog
+        );
+        updateCatalogs(updatedCatalogs);
+        
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No authenticated user');
+        
+        // Check if artifact exists in Supabase
+        const { data: existingArtifact, error: findError } = await supabase
+          .from('artifacts')
+          .select('id')
+          .eq('token_id', nft.id.tokenId)
+          .eq('contract_address', nft.contract.address)
+          .eq('wallet_id', nft.walletId)
+          .maybeSingle();
+          
+        if (findError) throw findError;
+        
+        let artifactId;
+        
+        if (existingArtifact) {
+          artifactId = existingArtifact.id;
+        } else {
+          // Create new artifact record
+          const { data: newArtifact, error: insertError } = await supabase
+            .from('artifacts')
+            .insert([{
+              token_id: nft.id.tokenId,
+              contract_address: nft.contract.address,
+              wallet_id: nft.walletId,
+              network: nft.network || 'unknown',
+              is_spam: nft.isSpam || false,
+              title: nft.title || '',
+              description: nft.description || '',
+              metadata: nft.metadata || {}
+            }])
+            .select('id')
+            .single();
+            
+          if (insertError) throw insertError;
+          
+          artifactId = newArtifact.id;
+        }
+        
+        // Create catalog-artifact relationship
+        const { error: relError } = await supabase
+          .from('catalog_artifacts')
+          .insert([{
+            catalog_id: selectedCatalog,
+            artifact_id: artifactId
+          }]);
+          
+        if (relError) throw relError;
+        
+        toast({
+          title: "NFT Added to Catalog",
+          description: "The NFT has been added to the selected catalog.",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+        setIsAddToCatalogOpen(false);
+      } catch (error) {
+        console.error('Error adding NFT to catalog:', error);
+        toast({
+          title: "Error",
+          description: "Failed to add NFT to catalog. Please try again.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    }
+  };
+
+  const handleMarkAsSpam = async () => {
+    try {
+      // Update Redux state (optimistic update)
+      dispatch(updateNFT({
+        walletId: nft.walletId,
+        nft: { ...nft, isSpam: !nft.isSpam }
+      }));
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+      
+      // Find the artifact in Supabase
+      const { data: existingArtifact, error: findError } = await supabase
+        .from('artifacts')
+        .select('id')
+        .eq('token_id', nft.id.tokenId)
+        .eq('contract_address', nft.contract.address)
+        .eq('wallet_id', nft.walletId)
+        .maybeSingle();
+      
+      if (findError) throw findError;
+      
+      if (existingArtifact) {
+        // Update existing artifact
+        const { error: updateError } = await supabase
+          .from('artifacts')
+          .update({ is_spam: !nft.isSpam })
+          .eq('id', existingArtifact.id);
+          
+        if (updateError) throw updateError;
+      } else {
+        // Insert new artifact record with spam status
+        const { error: insertError } = await supabase
+          .from('artifacts')
+          .insert([{
+            token_id: nft.id.tokenId,
+            contract_address: nft.contract.address,
+            wallet_id: nft.walletId,
+            network: nft.network || 'unknown',
+            is_spam: !nft.isSpam,
+            title: nft.title || '',
+            description: nft.description || '',
+            metadata: nft.metadata || {}
+          }]);
+          
+        if (insertError) throw insertError;
+      }
+      
       toast({
-        title: "NFT Added to Catalog",
-        description: "The NFT has been added to the selected catalog.",
+        title: nft.isSpam ? "Removed from Spam" : "Marked as Spam",
+        description: nft.isSpam 
+          ? "The artifact has been removed from your spam folder."
+          : "The artifact has been moved to your spam folder.",
         status: "success",
         duration: 3000,
         isClosable: true,
       });
-      setIsAddToCatalogOpen(false);
+      navigate(-1);
+    } catch (error) {
+      console.error('Error toggling spam status:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update spam status. Please try again.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
     }
-  };
-
-  const handleMarkAsSpam = () => {
-    dispatch(updateNFT({
-      walletId: nft.walletId,
-      nft: { ...nft, isSpam: !nft.isSpam }
-    }));
-    toast({
-      title: nft.isSpam ? "Removed from Spam" : "Marked as Spam",
-      description: nft.isSpam 
-        ? "The artifact has been removed from your spam folder."
-        : "The artifact has been moved to your spam folder.",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
-    navigate(-1);
   };
 
   if (!nft) {

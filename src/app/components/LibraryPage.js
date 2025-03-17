@@ -363,43 +363,125 @@ const LibraryPage = () => {
   }, [systemCatalogs, getSpamCount, getUnorganizedNFTs]);
 
   // Handle removing NFTs from a catalog
-  const handleRemoveFromCatalog = (catalogId, nftsToRemove) => {
+  const handleRemoveFromCatalog = async (catalogId, nftsToRemove) => {
     const catalog = catalogs.find(c => c.id === catalogId);
     if (!catalog) return;
   
-    const updatedCatalog = {
-      ...catalog,
-      nftIds: catalog.nftIds.filter(nftId => 
-        !nftsToRemove.some(nft => 
-          nft.id.tokenId === nftId.tokenId && 
-          nft.contract.address === nftId.contractAddress
-        )
-      )
-    };
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
   
-    dispatch(updateCatalog(updatedCatalog));
-    showSuccessToast(
-      "NFTs Removed",
-      `${nftsToRemove.length} NFT(s) removed from ${catalog.name}`
-    );
+      // Update Redux store first (optimistic update)
+      const updatedCatalog = {
+        ...catalog,
+        nftIds: catalog.nftIds.filter(nftId => 
+          !nftsToRemove.some(nft => 
+            nft.id.tokenId === nftId.tokenId && 
+            nft.contract.address === nftId.contractAddress
+          )
+        )
+      };
+      
+      dispatch(updateCatalog(updatedCatalog));
+      
+      // Get artifact IDs to remove
+      const artifactIdsToRemove = [];
+      for (const nft of nftsToRemove) {
+        // Find artifact record in Supabase by token_id and contract_address
+        const { data, error } = await supabase
+          .from('artifacts')
+          .select('id')
+          .eq('token_id', nft.id.tokenId)
+          .eq('contract_address', nft.contract.address)
+          .eq('wallet_id', nft.walletId)
+          .single();
+          
+        if (error) {
+          logger.error('Error finding artifact:', error);
+          continue;
+        }
+        
+        if (data?.id) {
+          artifactIdsToRemove.push(data.id);
+        }
+      }
+      
+      // Remove relationships from catalog_artifacts table
+      if (artifactIdsToRemove.length > 0) {
+        const { error } = await supabase
+          .from('catalog_artifacts')
+          .delete()
+          .eq('catalog_id', catalogId)
+          .in('artifact_id', artifactIdsToRemove);
+          
+        if (error) throw error;
+      }
+  
+      showSuccessToast(
+        "NFTs Removed",
+        `${nftsToRemove.length} NFT(s) removed from ${catalog.name}`
+      );
+    } catch (error) {
+      logger.error('Error removing NFTs from catalog:', error);
+      showErrorToast(
+        "Update Failed",
+        "Failed to remove NFTs from catalog. Please try again."
+      );
+    }
   };
 
   // Handle search in the NFT grid
-  const handleSearch = (value) => {
+  const handleSearch = async (value) => {
     setSearchTerm(value);
     
-    if (!value.trim()) {
-      // Reset to show all NFTs
-      setFilteredNFTs(prevNFTs => [...prevNFTs]);
-    } else {
-      // Filter NFTs by search term
-      const searchLower = value.toLowerCase();
-      const filtered = filteredNFTs.filter(nft => 
-        (nft.title || '').toLowerCase().includes(searchLower) ||
-        (nft.contract?.name || '').toLowerCase().includes(searchLower) ||
-        (nft.id?.tokenId || '').toString().toLowerCase().includes(searchLower)
-      );
-      setFilteredNFTs(filtered);
+    try {
+      // Update local state for UI responsiveness
+      if (!value.trim()) {
+        const allNFTs = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
+          Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
+            const combined = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
+            return combined.map(nft => ({
+              ...nft,
+              walletId,
+              network
+            }));
+          })
+        );
+        setFilteredNFTs(allNFTs);
+      } else {
+        const filtered = Object.entries(nfts).flatMap(([walletId, walletNFTs]) =>
+          Object.entries(walletNFTs).flatMap(([network, networkNFTs]) => {
+            const combined = [...networkNFTs.ERC721, ...networkNFTs.ERC1155];
+            return combined
+              .filter(nft => 
+                nft.title?.toLowerCase().includes(value.toLowerCase()) ||
+                nft.contract?.name?.toLowerCase().includes(value.toLowerCase())
+              )
+              .map(nft => ({
+                ...nft,
+                walletId,
+                network
+              }));
+          })
+        );
+        setFilteredNFTs(filtered);
+      }
+      
+      // Log search in Supabase for analytics (optional)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && value.trim()) {
+        await supabase
+          .from('search_history')
+          .insert([{
+            user_id: user.id,
+            query: value,
+            timestamp: new Date().toISOString()
+          }]);
+      }
+    } catch (error) {
+      logger.error('Error during search:', error);
+      // No need to show toast for search errors
     }
   };
   
@@ -415,64 +497,162 @@ const LibraryPage = () => {
   }, []);
 
   // Add selected NFTs to an existing catalog
-  const handleAddToExistingCatalog = useCallback((catalogId) => {
-    const existingCatalog = catalogItems[catalogId];
-    if (!existingCatalog) return;
-  
-    // Ensure nftIds exists and is an array
-    const existingNftIds = existingCatalog.nftIds || [];
-  
-    // Create a set of existing NFT identifiers for faster lookup
-    const existingNftSet = new Set(
-      existingNftIds.map(nft => 
-        `${nft.tokenId}-${nft.contractAddress}-${nft.network}`
-      )
-    );
-  
-    // Filter out NFTs that are already in the catalog
-    const newNftIds = selectedNFTs
-      .filter(nft => !existingNftSet.has(
-        `${nft.id.tokenId}-${nft.contract.address}-${nft.network}`
-      ))
-      .map(nft => ({
-        tokenId: nft.id.tokenId,
-        contractAddress: nft.contract.address,
-        network: nft.network,
-        walletId: nft.walletId
+  const handleAddToExistingCatalog = async (catalogId) => {
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+      
+      const existingCatalog = catalogItems[catalogId];
+      if (!existingCatalog) return;
+    
+      // Ensure nftIds exists and is an array
+      const existingNftIds = existingCatalog.nftIds || [];
+    
+      // Create a set of existing NFT identifiers for faster lookup
+      const existingNftSet = new Set(
+        existingNftIds.map(nft => 
+          `${nft.tokenId}-${nft.contractAddress}-${nft.network}`
+        )
+      );
+    
+      // Filter out NFTs that are already in the catalog
+      const newNftIds = selectedNFTs
+        .filter(nft => !existingNftSet.has(
+          `${nft.id.tokenId}-${nft.contract.address}-${nft.network}`
+        ))
+        .map(nft => ({
+          tokenId: nft.id.tokenId,
+          contractAddress: nft.contract.address,
+          network: nft.network,
+          walletId: nft.walletId
+        }));
+    
+      if (newNftIds.length === 0) {
+        showInfoToast("No Changes", "These artifacts are already in the catalog");
+        return;
+      }
+    
+      // Update Redux first for UI responsiveness
+      dispatch(updateCatalog({
+        id: catalogId,
+        nftIds: [...existingNftIds, ...newNftIds]
       }));
-  
-    if (newNftIds.length === 0) {
-      showInfoToast("No Changes", "These artifacts are already in the catalog");
-      return;
+      
+      // Now update Supabase
+      // First, ensure artifacts exist in the artifacts table
+      for (const nft of selectedNFTs) {
+        // Check if the artifact already exists
+        const { data: existingArtifact, error: findError } = await supabase
+          .from('artifacts')
+          .select('id')
+          .eq('token_id', nft.id.tokenId)
+          .eq('contract_address', nft.contract.address)
+          .eq('wallet_id', nft.walletId)
+          .maybeSingle();
+          
+        if (findError) {
+          logger.error('Error finding artifact:', findError);
+          continue;
+        }
+        
+        let artifactId;
+        
+        if (existingArtifact) {
+          artifactId = existingArtifact.id;
+        } else {
+          // Create new artifact record
+          const { data: newArtifact, error: insertError } = await supabase
+            .from('artifacts')
+            .insert([{
+              token_id: nft.id.tokenId,
+              contract_address: nft.contract.address,
+              wallet_id: nft.walletId,
+              network: nft.network,
+              is_spam: nft.isSpam || false,
+              title: nft.title || '',
+              description: nft.description || '',
+              metadata: nft.metadata || {}
+            }])
+            .select('id')
+            .single();
+            
+          if (insertError) {
+            logger.error('Error creating artifact:', insertError);
+            continue;
+          }
+          
+          artifactId = newArtifact.id;
+        }
+        
+        // Add to catalog_artifacts junction table
+        const { error: relationError } = await supabase
+          .from('catalog_artifacts')
+          .insert([{
+            catalog_id: catalogId,
+            artifact_id: artifactId
+          }]);
+          
+        if (relationError) {
+          logger.error('Error creating catalog-artifact relationship:', relationError);
+        }
+      }
+    
+      setSelectedNFTs([]);
+      setIsSelectMode(false);
+      showSuccessToast(
+        "Added to Catalog",
+        `${newNftIds.length} artifacts added to ${existingCatalog.name}`
+      );
+      logger.log('Added NFTs to catalog:', { catalogId, count: newNftIds.length });
+    } catch (error) {
+      logger.error('Error adding to catalog:', error);
+      showErrorToast(
+        "Update Failed",
+        "Failed to add artifacts to catalog. Please try again."
+      );
     }
-  
-    dispatch(updateCatalog({
-      id: catalogId,
-      nftIds: [...existingNftIds, ...newNftIds]
-    }));
-  
-    setSelectedNFTs([]);
-    setIsSelectMode(false);
-    showSuccessToast(
-      "Added to Catalog",
-      `${newNftIds.length} artifacts added to ${existingCatalog.name}`
-    );
-    logger.log('Added NFTs to catalog:', { catalogId, count: newNftIds.length });
-  }, [catalogItems, selectedNFTs, dispatch, showSuccessToast, showInfoToast]);
+  };
 
   // Handle editing a catalog
-  const handleEditCatalog = useCallback((catalog) => {
-    logger.log('Editing catalog:', catalog);
-    setEditingCatalog(catalog);
-    setIsEditCatalogModalOpen(true);
-  }, []);
+  const handleEditCatalog = async (catalog) => {
+    try {
+      logger.log('Editing catalog:', catalog);
+      
+      // Open edit modal (Redux state)
+      setEditingCatalog(catalog);
+      setIsEditCatalogModalOpen(true);
+      
+      // No immediate Supabase call here - actual update happens in EditCatalogModal
+      // This function just opens the modal
+    } catch (error) {
+      logger.error('Error preparing catalog edit:', error);
+      showErrorToast(
+        "Error",
+        "Failed to prepare catalog for editing. Please try again."
+      );
+    }
+  };
   
   // Handle editing a folder
-  const handleEditFolder = useCallback((folder) => {
-    logger.log('Editing folder:', folder);
-    setEditingFolder(folder);
-    setIsEditFolderModalOpen(true);
-  }, []);
+  const handleEditFolder = async (folder) => {
+    try {
+      logger.log('Editing folder:', folder);
+      
+      // Open edit modal (Redux state)
+      setEditingFolder(folder);
+      setIsEditFolderModalOpen(true);
+      
+      // No immediate Supabase call here - actual update happens in EditFolderModal
+      // This function just opens the modal
+    } catch (error) {
+      logger.error('Error preparing folder edit:', error);
+      showErrorToast(
+        "Error",
+        "Failed to prepare folder for editing. Please try again."
+      );
+    }
+  };
   
   // Handle opening a catalog
   const handleOpenCatalog = useCallback((catalog) => {
@@ -480,85 +660,140 @@ const LibraryPage = () => {
   }, []);
 
   // Handle toggling spam status for NFTs
-  const handleSpamToggle = useCallback(async (nft) => {
-    // First update the UI state
-    const newSpamValue = !nft.isSpam;
-    const updatedNFT = { ...nft, isSpam: newSpamValue };
-    
-    // Update in Redux
-    dispatch(updateNFT({ 
-      walletId: nft.walletId, 
-      nft: updatedNFT
-    }));
-
-    // Update filtered NFTs state
-    setFilteredNFTs(prev => 
-      prev.map(item => 
-        item.id.tokenId === nft.id.tokenId && 
-        item.contract.address === nft.contract.address
-          ? updatedNFT
-          : item
-      )
-    );
-  
-    showSuccessToast(
-      nft.isSpam ? "NFT Unmarked" : "NFT Marked as Spam",
-      nft.isSpam ? "The NFT has been removed from your spam folder." : "The NFT has been moved to your spam folder."
-    );
-
-    // Then persist to Supabase
+  const handleSpamToggle = async (nft) => {
     try {
+      // Update Redux state first (optimistic update)
+      dispatch(updateNFT({ 
+        walletId: nft.walletId, 
+        nft: { ...nft, isSpam: !nft.isSpam } 
+      }));
+    
+      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        showErrorToast("Authentication Error", "Failed to update artifact spam status");
-        return;
-      }
-
-      const { error } = await supabase
+      if (!user) throw new Error('No authenticated user');
+      
+      // Find the artifact in Supabase
+      const { data, error: findError } = await supabase
         .from('artifacts')
-        .update({ is_spam: newSpamValue })
-        .match({ 
-          wallet_id: nft.walletId,
-          token_id: nft.id.tokenId,
-          contract_address: nft.contract.address
-        });
-
-      if (error) {
-        logger.error('Error updating artifact spam status in Supabase:', error);
-        showErrorToast("Update Error", "Failed to update artifact status in database");
+        .select('id')
+        .eq('token_id', nft.id.tokenId)
+        .eq('contract_address', nft.contract.address)
+        .eq('wallet_id', nft.walletId)
+        .maybeSingle();
+      
+      if (findError) throw findError;
+      
+      if (data?.id) {
+        // Update existing artifact
+        const { error: updateError } = await supabase
+          .from('artifacts')
+          .update({ is_spam: !nft.isSpam })
+          .eq('id', data.id);
+          
+        if (updateError) throw updateError;
+      } else {
+        // Insert new artifact record with spam status
+        const { error: insertError } = await supabase
+          .from('artifacts')
+          .insert([{
+            token_id: nft.id.tokenId,
+            contract_address: nft.contract.address,
+            wallet_id: nft.walletId,
+            network: nft.network,
+            is_spam: !nft.isSpam,
+            title: nft.title || '',
+            description: nft.description || '',
+            metadata: nft.metadata || {}
+          }]);
+          
+        if (insertError) throw insertError;
       }
+    
+      showSuccessToast(
+        nft.isSpam ? "Removed from Spam" : "Marked as Spam",
+        nft.isSpam 
+          ? "The artifact has been removed from your spam folder."
+          : "The artifact has been moved to your spam folder."
+      );
     } catch (error) {
-      logger.error('Error updating spam status:', error);
+      logger.error('Error toggling spam status:', error);
+      showErrorToast(
+        "Update Failed",
+        "Failed to update spam status. Please try again."
+      );
     }
-  }, [dispatch, showSuccessToast, showErrorToast]);
+  };
 
   // Handle marking selected NFTs as spam
-  const handleMarkSelectedAsSpam = useCallback(() => {
-    // Display toast first as visual feedback
-    showInfoToast(
-      "Processing...",
-      `Marking ${selectedNFTs.length} artifacts as spam`
-    );
-
-    // Process in batches to avoid overwhelming Supabase
-    const processInBatches = async () => {
-      const batchSize = 10;
-      const batches = [];
+  const handleMarkSelectedAsSpam = async () => {
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
       
-      for (let i = 0; i < selectedNFTs.length; i += batchSize) {
-        batches.push(selectedNFTs.slice(i, i + batchSize));
-      }
-
-      for (const batch of batches) {
-        await Promise.all(batch.map(nft => handleSpamToggle(nft)));
+      // Update Redux state first (optimistic update)
+      for (const nft of selectedNFTs) {
+        dispatch(updateNFT({ 
+          walletId: nft.walletId, 
+          nft: { ...nft, isSpam: true } 
+        }));
       }
       
+      // Update artifacts in Supabase in a batch
+      for (const nft of selectedNFTs) {
+        // Find existing artifact
+        const { data, error: findError } = await supabase
+          .from('artifacts')
+          .select('id')
+          .eq('token_id', nft.id.tokenId)
+          .eq('contract_address', nft.contract.address)
+          .eq('wallet_id', nft.walletId)
+          .maybeSingle();
+          
+        if (findError) {
+          logger.error('Error finding artifact:', findError);
+          continue;
+        }
+        
+        if (data?.id) {
+          // Update existing artifact
+          await supabase
+            .from('artifacts')
+            .update({ is_spam: true })
+            .eq('id', data.id);
+        } else {
+          // Insert new artifact record
+          await supabase
+            .from('artifacts')
+            .insert([{
+              token_id: nft.id.tokenId,
+              contract_address: nft.contract.address,
+              wallet_id: nft.walletId,
+              network: nft.network,
+              is_spam: true,
+              title: nft.title || '',
+              description: nft.description || '',
+              metadata: nft.metadata || {}
+            }]);
+        }
+      }
+      
+      showSuccessToast(
+        "Artifacts Marked as Spam",
+        `${selectedNFTs.length} artifact(s) marked as spam`
+      );
+      
+      // Clear selections
       setSelectedNFTs([]);
       setIsSelectMode(false);
-    };
-
-    processInBatches();
-  }, [handleSpamToggle, selectedNFTs, showInfoToast]);
+    } catch (error) {
+      logger.error('Error marking artifacts as spam:', error);
+      showErrorToast(
+        "Update Failed",
+        "Failed to mark artifacts as spam. Please try again."
+      );
+    }
+  };
 
   // Handle removing NFT from selection
   const handleRemoveFromSelection = useCallback((nft) => {
@@ -688,43 +923,148 @@ const LibraryPage = () => {
     setIsRefreshing(true);
     setRefreshProgress(0);
     
+    let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
+    let completedFetches = 0;
+  
     try {
-      await fetchArtifactsFromSupabase();
+      for (const wallet of wallets) {
+        try {
+          // Fetch NFTs using Redux thunk
+          const result = await dispatch(fetchWalletNFTs({
+            walletId: wallet.id,
+            address: wallet.address,
+            networks: wallet.networks
+          })).unwrap();
+    
+          if (result.includesNewNFTs) {
+            showSuccessToast(
+              "New NFTs Found", 
+              `Found new or updated NFTs for ${wallet.nickname || wallet.address}`
+            );
+          }
+          
+          completedFetches++;
+          setRefreshProgress((completedFetches / totalFetches) * 100);
+          
+          // Sync with Supabase
+          // The actual NFT data syncing should happen in fetchWalletNFTs thunk
+          // But we can update the wallet's last_refreshed timestamp here
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            await supabase
+              .from('wallets')
+              .update({ last_refreshed: new Date().toISOString() })
+              .eq('id', wallet.id);
+          }
+        } catch (error) {
+          handleError(error, `refreshing NFTs for ${wallet.address}`);
+        }
+      }
+    
+      setIsRefreshing(false);
       showSuccessToast(
         "Refresh Complete", 
         "Your NFT collection has been updated."
       );
     } catch (error) {
-      handleError(error, 'refreshing NFTs');
+      setIsRefreshing(false);
+      logger.error('Error refreshing NFTs:', error);
       showErrorToast(
         "Refresh Failed",
-        "There was an error refreshing your NFTs. Please try again."
+        "An error occurred while refreshing your NFTs. Please try again."
       );
-    } finally {
-      setIsRefreshing(false);
     }
   };
   
   // Handle folder deletion
-  const handleDeleteFolder = (folderId) => {
-    dispatch(removeFolder(folderId));
-    showInfoToast("Folder Deleted", "The folder has been deleted successfully.");
+  const handleDeleteFolder = async (folderId) => {
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+      
+      // Update Redux state first (optimistic update)
+      dispatch(removeFolder(folderId));
+      
+      // Delete folder-catalog relationships from Supabase
+      const { error: relError } = await supabase
+        .from('catalog_folders')
+        .delete()
+        .eq('folder_id', folderId);
+        
+      if (relError) throw relError;
+      
+      // Delete the folder itself
+      const { error } = await supabase
+        .from('folders')
+        .delete()
+        .eq('id', folderId);
+        
+      if (error) throw error;
+      
+      showInfoToast("Folder Deleted", "The folder has been deleted successfully.");
+    } catch (error) {
+      logger.error('Error deleting folder:', error);
+      showErrorToast(
+        "Deletion Failed",
+        "Failed to delete folder. Please try again."
+      );
+    }
   };
   
   // Handle catalog deletion
-  const handleDeleteCatalog = useCallback((catalogId) => {
-    if (Object.keys(folderRelationships).length > 0) {
-      Object.entries(folderRelationships).forEach(([folderId, catalogs]) => {
-        if (catalogs.includes(catalogId)) {
-          dispatch(removeCatalogFromFolder({ folderId, catalogId }));
-        }
-      });
+  const handleDeleteCatalog = async (catalogId) => {
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+      
+      // Update Redux state first (optimistic update)
+      if (Object.keys(folderRelationships).length > 0) {
+        Object.entries(folderRelationships).forEach(([folderId, catalogs]) => {
+          if (catalogs.includes(catalogId)) {
+            dispatch(removeCatalogFromFolder({ folderId, catalogId }));
+          }
+        });
+      }
+      
+      dispatch(removeCatalog(catalogId));
+      
+      // Delete from Supabase
+      // First, remove from catalog_folders junction table
+      const { error: relError } = await supabase
+        .from('catalog_folders')
+        .delete()
+        .eq('catalog_id', catalogId);
+        
+      if (relError) throw relError;
+      
+      // Then, remove from catalog_artifacts junction table
+      const { error: artifactRelError } = await supabase
+        .from('catalog_artifacts')
+        .delete()
+        .eq('catalog_id', catalogId);
+        
+      if (artifactRelError) throw artifactRelError;
+      
+      // Finally, delete the catalog itself
+      const { error } = await supabase
+        .from('catalogs')
+        .delete()
+        .eq('id', catalogId);
+        
+      if (error) throw error;
+      
+      showSuccessToast("Catalog Deleted", "The catalog has been successfully removed.");
+      logger.log('Catalog deleted:', { catalogId });
+    } catch (error) {
+      logger.error('Error deleting catalog:', error);
+      showErrorToast(
+        "Deletion Failed",
+        "Failed to delete catalog. Please try again."
+      );
     }
-  
-    dispatch(removeCatalog(catalogId));
-    showSuccessToast("Catalog Deleted", "The catalog has been successfully removed.");
-    logger.log('Catalog deleted:', { catalogId });
-  }, [dispatch, folderRelationships, showSuccessToast]);
+  };
   
   // Render folder view
   const renderFolderView = () => {
