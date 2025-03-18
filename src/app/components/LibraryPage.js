@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, useServices } from 'react';
 import {
   Box,
   VStack,
@@ -22,11 +22,15 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { 
   selectAllCatalogs, 
+  selectUserCatalogs,
   selectAutomatedCatalogs,
+  selectSystemCatalogs,
   removeCatalog,
   updateCatalog,
   updateSpamCatalog, 
   updateUnorganizedCatalog,
+  setCatalogs,
+  addCatalog,
 } from '../redux/slices/catalogSlice';
 import { 
   selectTotalNFTs, 
@@ -36,13 +40,16 @@ import {
 import { 
   selectAllFolders, 
   removeFolder,
-  removeCatalogFromFolder
+  removeCatalogFromFolder,
+  addFolder,
+  addCatalogToFolder
 } from '../redux/slices/folderSlice';
 import { fetchWalletNFTs } from '../redux/thunks/walletThunks';
 import { networks } from '../../utils/web3Utils';
 import { logger } from '../../utils/logger';
 import { cardSizes } from './constants/sizes';
 import { supabase } from '../../utils/supabase';
+
 
 // Components
 import NFTCard from './NFTCard';
@@ -93,6 +100,7 @@ const LibraryPage = () => {
   const { showSuccessToast, showInfoToast, showErrorToast } = useCustomToast();
   const { handleError } = useErrorHandler();
   const { buttonSize, showFullText } = useResponsive();
+  const { user } = useServices();
 
   // Local State
   const [selectedNFTs, setSelectedNFTs] = useState([]);
