@@ -511,6 +511,7 @@ const normalizeBaseAddress = (address) => {
   }
 };
 
+
 export const getImageUrl = async (nft) => {
   const logDebug = (source, url) => {
     logger.debug(`[NFT: ${nft.title || nft.id?.tokenId}] Image Resolution:`, {
@@ -525,11 +526,11 @@ export const getImageUrl = async (nft) => {
   const isAudioNFT = 
     nft.metadata?.mimeType === 'audio/mpeg' ||
     nft.metadata?.animation_url?.includes('audio') ||
-    nft.attributes?.some(attr => 
+    (nft.attributes && Array.isArray(nft.attributes) && nft.attributes.some(attr => 
       attr.trait_type?.toLowerCase().includes('audio') ||
       attr.trait_type?.toLowerCase().includes('song') ||
       attr.trait_type?.toLowerCase().includes('music')
-    );
+    ));
 
   if (isAudioNFT) {
     logDebug('Audio NFT detected', null);
@@ -538,61 +539,85 @@ export const getImageUrl = async (nft) => {
 
   // Gather all possible image sources
   const possibleSources = [
-    { key: 'artwork.uri', value: nft.metadata?.artwork?.uri },
     { key: 'metadata.image', value: nft.metadata?.image },
-    { key: 'metadata.image_url', value: nft.metadata?.image_url },
     { key: 'media.gateway', value: nft.media?.[0]?.gateway },
+    { key: 'metadata.image_url', value: nft.metadata?.image_url },
+    { key: 'artwork.uri', value: nft.metadata?.artwork?.uri },
     { key: 'tokenUri', value: nft.tokenUri },
     { key: 'external_url', value: nft.metadata?.external_url }
-  ];
+  ].filter(source => !!source.value);
 
   logDebug('Possible image sources', possibleSources);
 
+  // First, check for simple image URLs that don't need validation
   for (const source of possibleSources) {
-    if (source.value) {
-      logDebug('Processing source', source);
-
-      try {
-        // Check if we need to use CORS proxy
-        if (needsCorsProxy(source.value)) {
-          logDebug('Using CORS proxy for source', source.value);
-          
-          // First try direct validation through the proxy
-          try {
-            const validatedUrl = await validateTokenUri(source.value);
-            if (validatedUrl) {
-              logDebug('Valid URL found via proxy validation', validatedUrl);
-              return validatedUrl;
-            }
-          } catch (validationError) {
-            logDebug('Validation through proxy failed, trying direct proxy', {
-              source: source.value,
-              error: validationError.message
-            });
-          }
-          
-          // If validation fails, apply the proxy directly
-          const proxiedUrl = applyCorsProxy(source.value);
-          logDebug('Applied CORS proxy directly', proxiedUrl);
-          return proxiedUrl;
-        } else {
-          // Use regular validation for non-CORS restricted sources
-          const validatedUrl = await validateTokenUri(source.value);
-          if (validatedUrl) {
-            logDebug('Valid URL found', validatedUrl);
-            return validatedUrl;
-          }
-        }
-      } catch (error) {
-        logDebug('Error processing source', {
-          source: source.value,
-          error: error.message
-        });
+    const url = source.value;
+    
+    // Direct use cases that are safe and don't need proxying/validation
+    if (typeof url === 'string') {
+      // Case 1: Data URLs can be used directly
+      if (url.startsWith('data:image/')) {
+        logDebug('Found data URL image', url);
+        return url;
+      }
+      
+      // Case 2: URLs with common image extensions
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif'];
+      if (imageExtensions.some(ext => url.toLowerCase().endsWith(ext))) {
+        logDebug('Found direct image URL with known extension', url);
+        return url;
       }
     }
   }
 
-  logDebug('No valid image URL found', null);
+  // For other cases, try our improved approach with less CORS issues
+  for (const source of possibleSources) {
+    if (!source.value) continue;
+    
+    logDebug('Processing source', source);
+    const url = source.value;
+    
+    try {
+      // Handle IPFS URLs
+      if (typeof url === 'string' && (url.startsWith('ipfs://') || url.includes('/ipfs/'))) {
+        let ipfsUrl = url;
+        
+        // Convert ipfs:// to HTTP URL
+        if (url.startsWith('ipfs://')) {
+          const hash = url.replace('ipfs://', '');
+          ipfsUrl = `https://ipfs.io/ipfs/${hash}`;
+        }
+        
+        logDebug('Converted IPFS URL', ipfsUrl);
+        return ipfsUrl;
+      }
+
+      // Handle Arweave URLs directly
+      if (typeof url === 'string' && (url.startsWith('ar://') || url.includes('arweave.net'))) {
+        let arweaveUrl = url;
+        
+        // Convert ar:// to HTTP URL
+        if (url.startsWith('ar://')) {
+          const hash = url.replace('ar://', '');
+          arweaveUrl = `https://arweave.net/${hash}`;
+        }
+        
+        logDebug('Using Arweave URL directly', arweaveUrl);
+        return arweaveUrl;
+      }
+
+      // For all other URLs, return as-is
+      return url;
+    } catch (error) {
+      logDebug('Error processing source', {
+        source: source.value,
+        error: error.message
+      });
+    }
+  }
+
+  // Fallback to placeholder if no valid URL found
+  logDebug('No valid image URL found, using placeholder', null);
   return 'https://via.placeholder.com/400?text=No+Image';
 };
 
