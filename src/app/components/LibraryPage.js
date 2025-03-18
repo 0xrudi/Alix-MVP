@@ -49,6 +49,7 @@ import { networks } from '../../utils/web3Utils';
 import { logger } from '../../utils/logger';
 import { cardSizes } from './constants/sizes';
 import { supabase } from '../../utils/supabase';
+import { useServices } from '../../services/service-provider';
 
 
 // Components
