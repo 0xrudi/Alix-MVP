@@ -14,6 +14,7 @@ import {
   Icon,
   Flex,
   Progress,
+  Spinner,
   HStack,
 } from "@chakra-ui/react";
 import { FaBook, FaSync, FaFolderPlus } from 'react-icons/fa';
@@ -112,6 +113,8 @@ const LibraryPage = () => {
   const [editingFolder, setEditingFolder] = useState(null);
   const [viewMode, setViewMode] = useState('list');
   const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(true);
+  const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
+  const [isLoadingFolders, setIsLoadingFolders] = useState(true);
 
   // Initialize tab from URL if present
   useEffect(() => {
@@ -121,10 +124,14 @@ const LibraryPage = () => {
     if (tab === 'catalogs') setActiveTab(1);
   }, [location.search]);
 
-  // Fetch artifacts from Supabase when component mounts
-  useEffect(() => {
+// Fetch artifacts, catalogs, and folders when component mounts
+useEffect(() => {
+  if (user) {
     fetchArtifactsFromSupabase();
-  }, []);
+    fetchCatalogsFromSupabase();
+    fetchFoldersFromSupabase();
+  }
+}, [user]);
 
   // Function to fetch artifacts from Supabase
   const fetchArtifactsFromSupabase = async () => {
@@ -214,6 +221,200 @@ const LibraryPage = () => {
       );
     } finally {
       setIsLoadingArtifacts(false);
+    }
+  };
+  
+  // Function to fetch catalogs from Supabase
+  const fetchCatalogsFromSupabase = async () => {
+    setIsLoadingCatalogs(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        logger.warn('No authenticated user found when fetching catalogs');
+        setIsLoadingCatalogs(false);
+        return;
+      }
+
+      logger.log('Fetching catalogs for user:', user.id);
+
+      // Fetch all catalogs for the current user
+      const { data: userCatalogs, error: catalogsError } = await supabase
+        .from('catalogs')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (catalogsError) {
+        throw catalogsError;
+      }
+
+      logger.log('User catalogs:', userCatalogs);
+      
+      if (!userCatalogs || userCatalogs.length === 0) {
+        logger.info('No catalogs found for user');
+        dispatch(setCatalogs([]));
+        setIsLoadingCatalogs(false);
+        return;
+      }
+
+      // Update Redux store with fetched catalogs
+      dispatch(setCatalogs(userCatalogs));
+
+      // For each catalog, fetch its artifacts
+      const catalogArtifactPromises = userCatalogs.map(async (catalog) => {
+        // Skip system catalogs as they're handled differently
+        if (catalog.is_system) return;
+
+        try {
+          // Get catalog-artifact relationships
+          const { data: relationships, error: relError } = await supabase
+            .from('catalog_artifacts')
+            .select('artifact_id')
+            .eq('catalog_id', catalog.id);
+
+          if (relError) {
+            logger.error('Error fetching catalog relationships:', relError);
+            return;
+          }
+
+          if (!relationships || relationships.length === 0) {
+            // No artifacts in this catalog
+            return;
+          }
+
+          // Get the artifacts
+          const artifactIds = relationships.map(rel => rel.artifact_id);
+          const { data: artifacts, error: artsError } = await supabase
+            .from('artifacts')
+            .select('*, wallets!inner(id, address, nickname)')
+            .in('id', artifactIds);
+
+          if (artsError) {
+            logger.error('Error fetching artifacts for catalog:', artsError);
+            return;
+          }
+
+          // Convert artifacts to nftIds format for Redux
+          const nftIds = artifacts.map(artifact => ({
+            tokenId: artifact.token_id,
+            contractAddress: artifact.contract_address,
+            network: artifact.network,
+            walletId: artifact.wallet_id
+          }));
+
+          // Update the catalog in Redux with artifact IDs
+          dispatch(updateCatalog({
+            id: catalog.id,
+            nftIds
+          }));
+
+        } catch (error) {
+          logger.error(`Error processing catalog ${catalog.id}:`, error);
+        }
+      });
+
+      await Promise.all(catalogArtifactPromises);
+
+      logger.log('Catalogs loaded successfully');
+
+    } catch (error) {
+      handleError(error, 'fetching catalogs from Supabase');
+      showErrorToast(
+        "Error Loading Catalogs",
+        "Failed to load your catalogs. Please try again."
+      );
+    } finally {
+      setIsLoadingCatalogs(false);
+    }
+  };
+
+  // Function to fetch folders from Supabase
+  const fetchFoldersFromSupabase = async () => {
+    setIsLoadingFolders(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        logger.warn('No authenticated user found when fetching folders');
+        setIsLoadingFolders(false);
+        return;
+      }
+
+      logger.log('Fetching folders for user:', user.id);
+
+      // Fetch all folders for the current user
+      const { data: userFolders, error: foldersError } = await supabase
+        .from('folders')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (foldersError) {
+        throw foldersError;
+      }
+
+      logger.log('User folders:', userFolders);
+      
+      if (!userFolders || userFolders.length === 0) {
+        logger.info('No folders found for user');
+        setIsLoadingFolders(false);
+        return;
+      }
+
+      // Add folders to Redux store
+      userFolders.forEach(folder => {
+        dispatch(addFolder({
+          id: folder.id,
+          name: folder.name,
+          description: folder.description || '',
+          createdAt: folder.created_at,
+          updatedAt: folder.updated_at
+        }));
+      });
+
+      // For each folder, fetch its catalog relationships
+      const folderCatalogPromises = userFolders.map(async (folder) => {
+        try {
+          // Get catalog-folder relationships
+          const { data: relationships, error: relError } = await supabase
+            .from('catalog_folders')
+            .select('catalog_id')
+            .eq('folder_id', folder.id);
+
+          if (relError) {
+            logger.error('Error fetching folder relationships:', relError);
+            return;
+          }
+
+          if (!relationships || relationships.length === 0) {
+            // No catalogs in this folder
+            return;
+          }
+
+          // Add each catalog to the folder in Redux
+          relationships.forEach(rel => {
+            dispatch(addCatalogToFolder({
+              folderId: folder.id,
+              catalogId: rel.catalog_id
+            }));
+          });
+
+        } catch (error) {
+          logger.error(`Error processing folder ${folder.id}:`, error);
+        }
+      });
+
+      await Promise.all(folderCatalogPromises);
+
+      logger.log('Folders loaded successfully');
+
+    } catch (error) {
+      handleError(error, 'fetching folders from Supabase');
+      showErrorToast(
+        "Error Loading Folders",
+        "Failed to load your folders. Please try again."
+      );
+    } finally {
+      setIsLoadingFolders(false);
     }
   };
 
@@ -974,6 +1175,10 @@ const LibraryPage = () => {
         "An error occurred while refreshing your NFTs. Please try again."
       );
     }
+    // Refresh all data from Supabase
+    fetchArtifactsFromSupabase();
+    fetchCatalogsFromSupabase();
+    fetchFoldersFromSupabase();
   };
   
   // Handle folder deletion
@@ -1267,82 +1472,91 @@ const LibraryPage = () => {
             {/* Catalogs Tab */}
             <TabPanel>  
               <VStack spacing={6} align="stretch">
-                {/* Folders Section */}
-                {folders.length > 0 && (
-                  <Box>
-                    <Heading as="h3" size="md" mb={4}>
-                      Folders
-                    </Heading>
-                    <SimpleGrid 
-                      columns={cardSizes[cardSize].columns}
-                      spacing={2}
-                      width="100%"
-                    >
-                      {folders.map((folder) => (
-                        <FolderCard
-                          key={`folder-${folder.id}`}
-                          folder={folder}
-                          onView={() => setViewingFolder(folder)}
-                          onEdit={() => handleEditFolder(folder)}
-                          onDelete={() => handleDeleteFolder(folder.id)}
-                          cardSize="md"
-                        />
-                      ))}
-                    </SimpleGrid>
+                {isLoadingFolders || isLoadingCatalogs ? (
+                  <Box textAlign="center" py={8}>
+                    <Spinner size="xl" color="var(--warm-brown)" />
+                    <Text mt={4} color="var(--ink-grey)">Loading folders and catalogs...</Text>
                   </Box>
+                ) : (
+                  <>
+                    {/* Folders Section */}
+                    {folders.length > 0 && (
+                      <Box>
+                        <Heading as="h3" size="md" mb={4}>
+                          Folders
+                        </Heading>
+                        <SimpleGrid 
+                          columns={cardSizes[cardSize].columns}
+                          spacing={2}
+                          width="100%"
+                        >
+                          {folders.map((folder) => (
+                            <FolderCard
+                              key={`folder-${folder.id}`}
+                              folder={folder}
+                              onView={() => setViewingFolder(folder)}
+                              onEdit={() => handleEditFolder(folder)}
+                              onDelete={() => handleDeleteFolder(folder.id)}
+                              cardSize="md"
+                            />
+                          ))}
+                        </SimpleGrid>
+                      </Box>
+                    )}
+
+                    {/* Automated Catalogs Section */}
+                    <Box>
+                      <Heading as="h3" size="md" mb={4}>
+                        Automated Catalogs
+                      </Heading>
+                      <SimpleGrid 
+                        columns={cardSizes[cardSize].columns}
+                        spacing={2}
+                        width="100%"
+                      >
+                        {automatedCatalogsWithCounts.map((catalog) => (
+                          <CatalogCard
+                            key={catalog.id}
+                            catalog={{
+                              ...catalog,
+                              nftCount: catalog.count
+                            }}
+                            onView={() => handleOpenCatalog(catalog)}
+                            cardSize="md"
+                            isSystem={true}
+                          />
+                        ))}
+                      </SimpleGrid>
+                    </Box>
+
+                    {/* Unassigned Catalogs Section */}
+                    <Box>
+                      <Heading as="h3" size="md" mb={4}>
+                        Unassigned Catalogs ({unassignedCatalogs?.length || 0})
+                      </Heading>
+                      {unassignedCatalogs?.length > 0 ? (
+                        <SimpleGrid 
+                          columns={cardSizes[cardSize].columns}
+                          spacing={2}
+                          width="100%"
+                        >
+                          {unassignedCatalogs.map((catalog) => (
+                            <CatalogCard
+                              key={catalog.id}
+                              catalog={catalog}
+                              onView={() => handleOpenCatalog(catalog)}
+                              onEdit={() => handleEditCatalog(catalog)}
+                              onDelete={() => handleDeleteCatalog(catalog.id)}
+                              cardSize="md"
+                            />
+                          ))}
+                        </SimpleGrid>
+                      ) : (
+                        <Text color="gray.500">No unassigned catalogs</Text>
+                      )}
+                    </Box>
+                  </>
                 )}
-
-                {/* Automated Catalogs Section */}
-                <Box>
-                  <Heading as="h3" size="md" mb={4}>
-                    Automated Catalogs
-                  </Heading>
-                  <SimpleGrid 
-                    columns={cardSizes[cardSize].columns}
-                    spacing={2}
-                    width="100%"
-                  >
-                    {automatedCatalogsWithCounts.map((catalog) => (
-                      <CatalogCard
-                        key={catalog.id}
-                        catalog={{
-                          ...catalog,
-                          nftCount: catalog.count
-                        }}
-                        onView={() => handleOpenCatalog(catalog)}
-                        cardSize="md"
-                        isSystem={true}
-                      />
-                    ))}
-                  </SimpleGrid>
-                </Box>
-
-                {/* Unassigned Catalogs Section */}
-                <Box>
-                  <Heading as="h3" size="md" mb={4}>
-                    Unassigned Catalogs ({unassignedCatalogs?.length || 0})
-                  </Heading>
-                  {unassignedCatalogs?.length > 0 ? (
-                    <SimpleGrid 
-                      columns={cardSizes[cardSize].columns}
-                      spacing={2}
-                      width="100%"
-                    >
-                      {unassignedCatalogs.map((catalog) => (
-                        <CatalogCard
-                          key={catalog.id}
-                          catalog={catalog}
-                          onView={() => handleOpenCatalog(catalog)}
-                          onEdit={() => handleEditCatalog(catalog)}
-                          onDelete={() => handleDeleteCatalog(catalog.id)}
-                          cardSize="md"
-                        />
-                      ))}
-                    </SimpleGrid>
-                  ) : (
-                    <Text color="gray.500">No unassigned catalogs</Text>
-                  )}
-                </Box>
               </VStack>
             </TabPanel>
           </TabPanels>
