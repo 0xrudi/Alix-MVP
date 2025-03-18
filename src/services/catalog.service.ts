@@ -10,6 +10,7 @@ type Artifact = Database['public']['Tables']['artifacts']['Row'];
 export class CatalogService extends BaseService {
   /**
    * Create a new catalog with improved error handling
+   * Let Supabase generate the UUID
    */
   async createCatalog(userId: string, name: string, description?: string): Promise<Catalog> {
     try {
@@ -29,20 +30,18 @@ export class CatalogService extends BaseService {
         return existingCatalogs[0];
       }
       
-      // Generate a UUID for the catalog to prevent ID conflicts
-      const catalogId = `catalog-${Date.now()}`;
-      
+      // Insert catalog and let Supabase generate the UUID
       const { data, error } = await this.supabase
         .from('catalogs')
-        .insert([{
-          id: catalogId,
+        .insert({
+          // No id field - Supabase will generate UUID
           user_id: userId,
           name,
-          description,
+          description: description || null,
           is_system: false,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        }])
+        })
         .select()
         .single();
 
@@ -55,6 +54,19 @@ export class CatalogService extends BaseService {
           details: error.details,
           message: error.message
         });
+        
+        // If the error is due to RLS policies or permissions
+        if (error.code === '42501' || error.message.includes('permission')) {
+          logger.error('Permission error creating catalog:', { userId, name, error });
+          throw new Error('You do not have permission to create catalogs');
+        }
+        
+        // If it's a duplicate key error
+        if (error.code === '23505') {
+          logger.error('Duplicate catalog error:', { userId, name, error });
+          throw new Error('A catalog with this name already exists');
+        }
+        
         throw error;
       }
       
@@ -63,22 +75,8 @@ export class CatalogService extends BaseService {
       logger.log('Catalog created:', { name, userId, id: data.id });
       return data;
     } catch (error) {
-      logger.error('Error in createCatalog:', error);
-      
-      // Create a mock response for client-side operation if database fails
-      // This helps the app continue to function even if there's a database issue
-      const mockCatalog: Catalog = {
-        id: `catalog-${Date.now()}`,
-        user_id: userId,
-        name,
-        description: description || null,
-        is_system: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      logger.warn('Returning mock catalog due to database error:', mockCatalog);
-      return mockCatalog;
+      this.handleError(error, 'createCatalog');
+      throw error; // Re-throw after logging
     }
   }
 
@@ -106,98 +104,115 @@ export class CatalogService extends BaseService {
     }
   }
 
-
-  /**
-   * Update catalog
-   */
-  async updateCatalog(catalogId: string, updates: Partial<Catalog>): Promise<Catalog> {
-    try {
-      const { data, error } = await this.supabase
-        .from('catalogs')
-        .update(updates)
-        .eq('id', catalogId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error('Catalog not found');
-
-      logger.log('Catalog updated:', { catalogId, updates });
-      return data;
-    } catch (error) {
-      this.handleError(error, 'updateCatalog');
-    }
-  }
-
-  /**
-   * Delete catalog
-   */
-  async deleteCatalog(catalogId: string): Promise<void> {
-    try {
-      const { error } = await this.supabase
-        .from('catalogs')
-        .delete()
-        .eq('id', catalogId);
-
-      if (error) throw error;
-      logger.log('Catalog deleted:', { catalogId });
-    } catch (error) {
-      this.handleError(error, 'deleteCatalog');
-    }
-  }
-
   /**
    * Add artifact to catalog with improved error handling
+   * Let Supabase generate UUID for the artifact if needed
    */
-  async addArtifactToCatalog(catalogId: string, artifactId: string): Promise<void> {
+  async addArtifactToCatalog(catalogId: string, 
+                            artifactData: {
+                              token_id: string,
+                              contract_address: string,
+                              wallet_id: string,
+                              network?: string,
+                              title?: string,
+                              description?: string,
+                              media_url?: string,
+                              metadata?: any,
+                              is_spam?: boolean
+                            }): Promise<string | null> {
     try {
-      // First check if the relationship already exists
-      const { data: existing, error: checkError } = await this.supabase
+      // First check if the artifact already exists
+      const { data: existingArtifact, error: checkError } = await this.supabase
+        .from('artifacts')
+        .select('id')
+        .eq('token_id', artifactData.token_id)
+        .eq('contract_address', artifactData.contract_address)
+        .eq('wallet_id', artifactData.wallet_id)
+        .maybeSingle();
+        
+      if (checkError) {
+        logger.error('Error checking existing artifact:', checkError);
+      }
+      
+      let artifactId: string;
+      
+      if (existingArtifact) {
+        // Use existing artifact
+        artifactId = existingArtifact.id;
+        logger.debug('Using existing artifact:', { artifactId });
+      } else {
+        // Create new artifact and let Supabase generate UUID
+        const { data: newArtifact, error: createError } = await this.supabase
+          .from('artifacts')
+          .insert({
+            // No id field - Supabase will generate UUID
+            token_id: artifactData.token_id,
+            contract_address: artifactData.contract_address,
+            wallet_id: artifactData.wallet_id,
+            network: artifactData.network || 'unknown',
+            title: artifactData.title || null,
+            description: artifactData.description || null,
+            media_url: artifactData.media_url || null,
+            metadata: artifactData.metadata || {},
+            is_spam: artifactData.is_spam || false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+          
+        if (createError) {
+          logger.error('Error creating artifact:', createError);
+          throw createError;
+        }
+        
+        if (!newArtifact) {
+          throw new Error('Failed to create artifact - no data returned');
+        }
+        
+        artifactId = newArtifact.id;
+        logger.debug('Created new artifact:', { artifactId });
+      }
+      
+      // Check if the relationship already exists
+      const { data: existingRel, error: relCheckError } = await this.supabase
         .from('catalog_artifacts')
         .select('*')
         .eq('catalog_id', catalogId)
         .eq('artifact_id', artifactId)
         .maybeSingle();
         
-      if (checkError) {
-        logger.error('Error checking existing catalog-artifact relationship:', checkError);
+      if (relCheckError) {
+        logger.error('Error checking catalog-artifact relationship:', relCheckError);
       }
       
       // Skip if relationship already exists
-      if (existing) {
-        logger.debug('Artifact already exists in catalog, skipping:', { catalogId, artifactId });
-        return;
+      if (existingRel) {
+        logger.debug('Artifact already in catalog, skipping:', { catalogId, artifactId });
+        return artifactId;
       }
       
-      const { error } = await this.supabase
+      // Create relationship
+      const { error: relError } = await this.supabase
         .from('catalog_artifacts')
-        .insert([{
+        .insert({
           catalog_id: catalogId,
           artifact_id: artifactId,
           created_at: new Date().toISOString()
-        }]);
-
-      if (error) {
-        // Check for foreign key error which might indicate missing catalog or artifact
-        if (error.code === '23503') { // Foreign key violation
-          logger.error('Foreign key violation adding artifact to catalog:', { 
-            error, 
-            catalogId, 
-            artifactId,
-            message: 'Either the catalog or artifact does not exist'
-          });
-          throw new Error('Catalog or artifact not found');
-        }
+        });
         
-        throw error;
+      if (relError) {
+        logger.error('Error creating catalog-artifact relationship:', relError);
+        throw relError;
       }
       
       logger.log('Artifact added to catalog:', { catalogId, artifactId });
+      return artifactId;
     } catch (error) {
       this.handleError(error, 'addArtifactToCatalog');
+      return null;
     }
   }
-
 
   /**
    * Remove artifact from catalog
@@ -218,33 +233,46 @@ export class CatalogService extends BaseService {
   }
 
   /**
-   * Get artifacts in catalog
+   * Delete catalog with cascade handling
    */
-  async getCatalogArtifacts(catalogId: string): Promise<Artifact[]> {
+  async deleteCatalog(catalogId: string): Promise<void> {
     try {
-      const { data, error } = await this.supabase
+      // First delete catalog-artifact relationships
+      const { error: relError } = await this.supabase
         .from('catalog_artifacts')
-        .select('artifact_id')
+        .delete()
         .eq('catalog_id', catalogId);
-
-      if (error) throw error;
-      
-      if (!data || data.length === 0) {
-        return [];
+        
+      if (relError) {
+        logger.error('Error deleting catalog-artifact relationships:', relError);
+        // Continue with catalog deletion even if this fails
       }
       
-      // Fetch full artifact details for all artifact IDs
-      const artifactIds = data.map(item => item.artifact_id);
-      const { data: artifacts, error: artifactsError } = await this.supabase
-        .from('artifacts')
-        .select('*')
-        .in('id', artifactIds);
+      // Then delete catalog-folder relationships
+      const { error: folderRelError } = await this.supabase
+        .from('catalog_folders')
+        .delete()
+        .eq('catalog_id', catalogId);
         
-      if (artifactsError) throw artifactsError;
+      if (folderRelError) {
+        logger.error('Error deleting catalog-folder relationships:', folderRelError);
+        // Continue with catalog deletion even if this fails
+      }
+
+      // Finally delete the catalog itself
+      const { error } = await this.supabase
+        .from('catalogs')
+        .delete()
+        .eq('id', catalogId);
+
+      if (error) {
+        logger.error('Error deleting catalog:', error);
+        throw error;
+      }
       
-      return artifacts || [];
+      logger.log('Catalog deleted:', { catalogId });
     } catch (error) {
-      this.handleError(error, 'getCatalogArtifacts');
+      this.handleError(error, 'deleteCatalog');
     }
   }
 }

@@ -350,8 +350,6 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [folders]);
 
-// Updated handleCreateCatalog function for NewCatalogModal.js
-
   const handleCreateCatalog = async () => {
     if (!formState.catalogName.trim()) {
       handleFormUpdate({ showError: true });
@@ -364,8 +362,7 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
 
     try {
       handleFormUpdate({ isSubmitting: true });
-      const newCatalogId = `catalog-${Date.now()}`;
-
+      
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No authenticated user');
@@ -373,7 +370,42 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
       logger.log('Starting catalog creation process:', {
         catalogName: formState.catalogName,
         selectedFolders: formState.selectedFolders,
-        newCatalogId
+      });
+
+      // First create the catalog in Supabase and let it generate the UUID
+      const { data: newCatalog, error: catalogError } = await supabase
+        .from('catalogs')
+        .insert({
+          // Omit the id field - Supabase will generate UUID
+          user_id: user.id,
+          name: formState.catalogName.trim(),
+          description: "",
+          is_system: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select() // Get the created catalog with generated UUID
+        .single();
+      
+      if (catalogError) {
+        logger.error('Supabase catalog creation error:', {
+          error: catalogError,
+          message: catalogError.message,
+          details: catalogError.details
+        });
+        
+        showErrorToast(
+          "Error Creating Catalog",
+          "Failed to create catalog in database. Please try again."
+        );
+        return;
+      }
+      
+      // Catalog created successfully, use the Supabase-generated UUID
+      const newCatalogId = newCatalog.id;
+      logger.log('Catalog created successfully in Supabase:', {
+        catalogId: newCatalogId,
+        name: formState.catalogName.trim()
       });
 
       // Prepare NFT IDs for the catalog
@@ -384,66 +416,100 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
         walletId: artifact.walletId
       }));
 
-      // Create catalog in Redux first (optimistic update)
+      // Now update Redux with the correct UUID from Supabase
       dispatch(addCatalog({
         id: newCatalogId,
         name: formState.catalogName.trim(),
         nftIds: nftIds
       }));
 
-      // Attempt to create catalog in Supabase
-      let supabaseSuccess = true;
-      try {
-        const { error: catalogError } = await supabase
-          .from('catalogs')
-          .insert([{
-            id: newCatalogId,
-            user_id: user.id,
-            name: formState.catalogName.trim(),
-            description: "",
-            is_system: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }]);
+      // Process artifacts
+      let artifactSuccessCount = 0;
+      if (formState.artifacts.length > 0) {
+        // Process artifacts in batches
+        const BATCH_SIZE = 5;
+        
+        for (let i = 0; i < formState.artifacts.length; i += BATCH_SIZE) {
+          const batch = formState.artifacts.slice(i, i + BATCH_SIZE);
           
-        if (catalogError) {
-          // Log detailed error information but continue with processing
-          logger.error('Supabase catalog creation error:', {
-            error: catalogError,
-            status: catalogError.status,
-            message: catalogError.message,
-            details: catalogError.details
-          });
-          supabaseSuccess = false;
+          for (const artifact of batch) {
+            try {
+              // Check if the artifact already exists
+              const { data: existingArtifact } = await supabase
+                .from('artifacts')
+                .select('id')
+                .eq('token_id', artifact.id.tokenId)
+                .eq('contract_address', artifact.contract.address)
+                .eq('wallet_id', artifact.walletId)
+                .maybeSingle();
+              
+              let artifactId;
+              
+              if (existingArtifact) {
+                artifactId = existingArtifact.id;
+              } else {
+                // For new artifacts, let Supabase generate the UUID
+                let mediaUrl = null;
+                if (artifact.metadata?.image) {
+                  mediaUrl = artifact.metadata.image;
+                } else if (artifact.media?.[0]?.gateway) {
+                  mediaUrl = artifact.media[0].gateway;
+                }
+                
+                const { data: newArtifact, error: insertError } = await supabase
+                  .from('artifacts')
+                  .insert({
+                    // Omit the id field - Supabase will generate UUID
+                    token_id: artifact.id.tokenId,
+                    contract_address: artifact.contract.address,
+                    wallet_id: artifact.walletId,
+                    network: artifact.network || 'unknown',
+                    is_spam: artifact.isSpam || false,
+                    title: artifact.title || '',
+                    description: artifact.description || '',
+                    media_url: mediaUrl,
+                    metadata: typeof artifact.metadata === 'object' ? artifact.metadata : {}
+                  })
+                  .select('id')
+                  .single();
+                  
+                if (insertError) {
+                  logger.error('Error creating artifact:', insertError);
+                  continue;
+                }
+                
+                artifactId = newArtifact.id;
+              }
+              
+              // Create catalog-artifact relationship
+              const { error: relError } = await supabase
+                .from('catalog_artifacts')
+                .insert({
+                  catalog_id: newCatalogId,
+                  artifact_id: artifactId
+                });
+                
+              if (relError) {
+                logger.error('Error creating catalog-artifact relationship:', relError);
+                continue;
+              }
+              
+              artifactSuccessCount++;
+            } catch (artifactError) {
+              logger.error('Error processing artifact for catalog:', artifactError);
+            }
+          }
+          
+          // Small delay between batches
+          if (i + BATCH_SIZE < formState.artifacts.length) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
         }
-      } catch (supabaseError) {
-        logger.error('Supabase operation failed:', supabaseError);
-        supabaseSuccess = false;
       }
-
-      if (!supabaseSuccess) {
-        showErrorToast(
-          "Database Warning",
-          "Catalog created locally but database sync may have failed. Your changes may not persist after reload."
-        );
-      } else {
-        logger.log('Catalog created successfully in Supabase:', {
-          catalogId: newCatalogId,
-          name: formState.catalogName.trim()
-        });
-      }
-
-      // Add artifacts to catalog with improved error handling
-      const artifactSuccessCount = await processArtifacts(formState.artifacts, newCatalogId, user.id);
 
       // Handle folder assignments
       let folderSuccessCount = 0;
       if (formState.selectedFolders.length > 0) {
-        logger.log('Starting folder assignments:', {
-          folderCount: formState.selectedFolders.length,
-          folders: formState.selectedFolders
-        });
-
         for (const folderInfo of formState.selectedFolders) {
           try {
             // Add to Redux
@@ -452,24 +518,21 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
               catalogId: newCatalogId
             }));
             
-            // Add to Supabase - only if previous Supabase operations were successful
-            if (supabaseSuccess) {
-              const { error: folderError } = await supabase
-                .from('catalog_folders')
-                .insert([{
-                  folder_id: folderInfo.id,
-                  catalog_id: newCatalogId
-                }]);
-                
-              if (folderError) {
-                logger.error('Error assigning catalog to folder:', folderError);
-              } else {
-                folderSuccessCount++;
-              }
+            // Add to Supabase
+            const { error: folderError } = await supabase
+              .from('catalog_folders')
+              .insert({
+                folder_id: folderInfo.id,
+                catalog_id: newCatalogId
+              });
+              
+            if (folderError) {
+              logger.error('Error assigning catalog to folder:', folderError);
+            } else {
+              folderSuccessCount++;
             }
           } catch (folderError) {
             logger.error(`Error adding catalog to folder ${folderInfo.id}:`, folderError);
-            // Continue with next folder
           }
         }
       }
@@ -478,13 +541,12 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
         catalogId: newCatalogId,
         name: formState.catalogName,
         artifactsAdded: artifactSuccessCount,
-        folderAssignments: folderSuccessCount,
-        databaseSyncSuccess: supabaseSuccess
+        folderAssignments: folderSuccessCount
       });
 
       showSuccessToast(
         "Catalog Created",
-        `Created catalog "${formState.catalogName.trim()}" with ${formState.artifacts.length} artifacts`
+        `Created catalog "${formState.catalogName.trim()}" with ${artifactSuccessCount} artifacts`
       );
       
       onClose();
