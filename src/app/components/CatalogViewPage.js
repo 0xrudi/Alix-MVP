@@ -15,9 +15,11 @@ import {
   HStack,
   Progress,
   Skeleton,
-  useToast
+  Alert,
+  AlertIcon,
+  useDisclosure
 } from "@chakra-ui/react";
-import { FaChevronLeft } from 'react-icons/fa';
+import { FaChevronLeft, FaSync } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import { supabase } from '../../utils/supabase';
@@ -36,6 +38,9 @@ const VIEW_MODES = {
   GRID: 'grid'
 };
 
+// Maximum number of artifacts to fetch in a single batch
+const BATCH_SIZE = 15;
+
 const CatalogViewPage = ({ 
   catalog, 
   onBack, 
@@ -50,8 +55,11 @@ const CatalogViewPage = ({
   const [selectedNFTs, setSelectedNFTs] = useState([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [catalogNFTs, setCatalogNFTs] = useState([]);
-  const { showSuccessToast, showErrorToast } = useCustomToast();
+  const [error, setError] = useState(null);
+  const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast();
 
   // State for filtering and sorting
   const [activeFilters, setActiveFilters] = useState({});
@@ -65,15 +73,45 @@ const CatalogViewPage = ({
     lg: 4,
     xl: 5
   };
+
+  // Helper function to process NFTs in batches to avoid resource exhaustion
+  const processBatches = async (items, processFn) => {
+    const results = [];
+    const totalBatches = Math.ceil(items.length / BATCH_SIZE);
+    
+    for (let i = 0; i < totalBatches; i++) {
+      const startIdx = i * BATCH_SIZE;
+      const endIdx = Math.min(startIdx + BATCH_SIZE, items.length);
+      const batch = items.slice(startIdx, endIdx);
+      
+      // Process current batch
+      const batchResults = await Promise.all(batch.map(processFn));
+      results.push(...batchResults);
+      
+      // Update progress
+      const progress = Math.round(((i + 1) / totalBatches) * 100);
+      setLoadingProgress(progress);
+      
+      // Small delay between batches to prevent overloading
+      if (i < totalBatches - 1) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+    
+    return results;
+  };
   
   const fetchNFTsFromSupabase = useCallback(async () => {
     if (!catalog?.nftIds || catalog.nftIds.length === 0) {
       setCatalogNFTs([]);
       setIsLoading(false);
+      setError(null);
       return;
     }
 
     setIsLoading(true);
+    setLoadingProgress(0);
+    setError(null);
     
     try {
       logger.log('Fetching NFTs for catalog:', catalog.id);
@@ -86,41 +124,52 @@ const CatalogViewPage = ({
         return;
       }
       
-      // For user catalogs, we need to fetch the NFTs from Supabase
-      const nftPromises = catalog.nftIds.map(async (nftId) => {
+      // For user catalogs, process in batches
+      // Map nftIds to deduplicate by unique combination of properties
+      const uniqueNftIds = Array.from(
+        new Map(
+          catalog.nftIds.map(nft => [
+            `${nft.tokenId}-${nft.contractAddress}-${nft.walletId}`, 
+            nft
+          ])
+        ).values()
+      );
+      
+      logger.log(`Fetching ${uniqueNftIds.length} NFTs in batches of ${BATCH_SIZE}`);
+      
+      // Process NFTs in batches to avoid overwhelming the client
+      const resolvedNFTs = await processBatches(uniqueNftIds, async (nftId) => {
         try {
-          // Query Supabase for this NFT
+          // Try to find it in Redux store first as it's faster
+          const nftFromStore = findNFTInReduxStore(nftId);
+          if (nftFromStore) {
+            return nftFromStore;
+          }
+          
+          // For missing NFTs, fetch from Supabase individually
           const { data: artifacts, error } = await supabase
             .from('artifacts')
             .select('*')
             .eq('wallet_id', nftId.walletId)
             .eq('token_id', nftId.tokenId)
-            .eq('contract_address', nftId.contractAddress);
+            .eq('contract_address', nftId.contractAddress)
+            .limit(1); // Limit to 1 to avoid fetching duplicates
             
           if (error) {
             logger.error('Error fetching artifact from Supabase:', {
               error,
               nftId
             });
-            return null;
+            return createPlaceholderNFT(nftId);
           }
           
           if (!artifacts || artifacts.length === 0) {
             logger.warn('Artifact not found in Supabase:', nftId);
-            
-            // Try to find it in Redux store as fallback
-            const nftFromStore = findNFTInReduxStore(nftId);
-            if (nftFromStore) {
-              return nftFromStore;
-            }
-            
-            // Return a placeholder if not found
             return createPlaceholderNFT(nftId);
           }
           
           // Convert the first matching artifact to NFT format
-          const artifact = artifacts[0];
-          return convertArtifactToNFT(artifact, nftId.walletId);
+          return convertArtifactToNFT(artifacts[0], nftId.walletId);
         } catch (error) {
           logger.error('Error processing NFT:', {
             error: error.message,
@@ -130,22 +179,27 @@ const CatalogViewPage = ({
         }
       });
       
-      // Wait for all promises to resolve
-      const resolvedNFTs = await Promise.all(nftPromises);
-      
       // Filter out null values and set state
-      setCatalogNFTs(resolvedNFTs.filter(Boolean));
+      const validNFTs = resolvedNFTs.filter(Boolean);
+      setCatalogNFTs(validNFTs);
+      
+      if (validNFTs.length === 0 && uniqueNftIds.length > 0) {
+        setError("No artifacts could be loaded for this catalog.");
+      }
+      
     } catch (error) {
       logger.error('Error fetching NFTs for catalog:', {
         error: error.message,
         catalogId: catalog.id
       });
+      setError("Failed to load catalog artifacts. Please try refreshing.");
       showErrorToast(
         "Error Loading Catalog",
         "There was a problem loading the artifacts in this catalog."
       );
     } finally {
       setIsLoading(false);
+      setLoadingProgress(100);
     }
   }, [catalog, showErrorToast]);
 
@@ -156,37 +210,37 @@ const CatalogViewPage = ({
 
   // Helper function to find an NFT in the Redux store
   const findNFTInReduxStore = (nftId) => {
-    for (const walletId in nfts) {
-      if (walletId !== nftId.walletId) continue;
+    if (!nftId || !nftId.walletId || !nfts[nftId.walletId]) return null;
+
+    for (const network in nfts[nftId.walletId]) {
+      // Check in ERC721 collection
+      const erc721Match = nfts[nftId.walletId][network].ERC721?.find(nft => 
+        nft.id?.tokenId === nftId.tokenId && 
+        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
+      );
       
-      for (const network in nfts[walletId]) {
-        // Check in ERC721 collection
-        const erc721Match = nfts[walletId][network].ERC721?.find(nft => 
-          nft.id?.tokenId === nftId.tokenId && 
-          nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
-        );
-        
-        if (erc721Match) {
-          return {
-            ...erc721Match,
-            walletId,
-            network
-          };
-        }
-        
-        // Check in ERC1155 collection
-        const erc1155Match = nfts[walletId][network].ERC1155?.find(nft => 
-          nft.id?.tokenId === nftId.tokenId && 
-          nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
-        );
-        
-        if (erc1155Match) {
-          return {
-            ...erc1155Match,
-            walletId,
-            network
-          };
-        }
+      if (erc721Match) {
+        return {
+          ...erc721Match,
+          walletId: nftId.walletId,
+          network,
+          walletNickname: getWalletNickname(nftId.walletId)
+        };
+      }
+      
+      // Check in ERC1155 collection
+      const erc1155Match = nfts[nftId.walletId][network].ERC1155?.find(nft => 
+        nft.id?.tokenId === nftId.tokenId && 
+        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
+      );
+      
+      if (erc1155Match) {
+        return {
+          ...erc1155Match,
+          walletId: nftId.walletId,
+          network,
+          walletNickname: getWalletNickname(nftId.walletId)
+        };
       }
     }
     
@@ -204,7 +258,7 @@ const CatalogViewPage = ({
       title: `Token ID: ${nftId.tokenId}`,
       description: 'NFT details unavailable',
       walletId: nftId.walletId,
-      network: nftId.network,
+      network: nftId.network || 'unknown',
       isPlaceholder: true,
       media: [{
         gateway: 'https://via.placeholder.com/400?text=Not+Found'
@@ -260,7 +314,7 @@ const CatalogViewPage = ({
         id: { tokenId: artifact.token_id || 'unknown' },
         contract: { address: artifact.contract_address || 'unknown', name: 'Unknown' },
         title: artifact.title || `Token ID: ${artifact.token_id || 'unknown'}`,
-        isSpam: false,
+        isSpam: artifact.is_spam || false,
         walletId: walletId,
         network: artifact.network || 'unknown'
       };
@@ -286,37 +340,13 @@ const CatalogViewPage = ({
   };
 
   const filteredNFTs = useMemo(() => {
-    if (!catalog?.nftIds) return [];
+    if (!catalogNFTs.length) return [];
     
-    // First, get all NFTs from the wallet's collection that match our catalog's NFT IDs
-    let matchedNFTs = catalog.nftIds.map(nftId => {
-      // Try to find the NFT in either ERC721 or ERC1155 collections
-      const matchingNFT = nfts[nftId.walletId]?.[nftId.network]?.['ERC721']?.find(nft => 
-        nft.id?.tokenId === nftId.tokenId && 
-        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
-      ) || nfts[nftId.walletId]?.[nftId.network]?.['ERC1155']?.find(nft => 
-        nft.id?.tokenId === nftId.tokenId && 
-        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
-      );
-  
-      if (matchingNFT) {
-        // Create a copy with minimal additions
-        const processedNFT = {
-          ...matchingNFT,
-          walletId: nftId.walletId,
-          network: nftId.network,
-          // Extract attributes from metadata if needed
-          attributes: extractNFTAttributes(matchingNFT)
-        };
-        
-        return processedNFT;
-      }
-      return null;
-    }).filter(Boolean);
-  
     // Apply search filter
+    let result = [...catalogNFTs];
+    
     if (searchTerm) {
-      matchedNFTs = matchedNFTs.filter(nft => 
+      result = result.filter(nft => 
         (nft.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (nft.id?.tokenId || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
         (nft.contract?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -325,8 +355,10 @@ const CatalogViewPage = ({
   
     // Apply active filters
     if (Object.keys(activeFilters).length > 0) {
-      matchedNFTs = matchedNFTs.filter(nft => {
+      result = result.filter(nft => {
         return Object.entries(activeFilters).every(([category, values]) => {
+          if (!values.length) return true; // Skip empty filter categories
+          
           switch (category) {
             case 'wallet':
               return values.some(value => 
@@ -338,7 +370,7 @@ const CatalogViewPage = ({
             case 'network':
               return values.includes(nft.network);
             case 'mediaType':
-              const mediaType = nft.metadata?.mimeType?.split('/')[0] || 'image';
+              const mediaType = getMediaType(nft);
               return values.includes(mediaType);
             default:
               return true;
@@ -349,14 +381,14 @@ const CatalogViewPage = ({
   
     // Apply sorting
     if (activeSort) {
-      matchedNFTs.sort((a, b) => {
+      result.sort((a, b) => {
         let comparison = 0;
         switch (activeSort.field) {
           case 'name':
             comparison = (a.title || '').localeCompare(b.title || '');
             break;
           case 'wallet':
-            comparison = (a.walletId || '').localeCompare(b.walletId || '');
+            comparison = (a.walletNickname || '').localeCompare(b.walletNickname || '');
             break;
           case 'contract':
             comparison = (a.contract?.name || '').localeCompare(b.contract?.name || '');
@@ -371,8 +403,8 @@ const CatalogViewPage = ({
       });
     }
   
-    return matchedNFTs;
-  }, [catalog?.nftIds, nfts, searchTerm, activeFilters, activeSort]);
+    return result;
+  }, [catalogNFTs, searchTerm, activeFilters, activeSort]);
   
 
   const handleNFTClick = (nft) => {
@@ -414,6 +446,25 @@ const CatalogViewPage = ({
     onRemoveNFTs(selectedNFTs);
     setSelectedNFTs([]);
     setIsSelectMode(false);
+  };
+
+  const handleRefresh = () => {
+    if (isRefreshing || isLoading) return;
+    
+    setIsRefreshing(true);
+    fetchNFTsFromSupabase()
+      .then(() => {
+        showSuccessToast(
+          "Refresh Complete",
+          "Catalog artifacts have been refreshed."
+        );
+      })
+      .catch((error) => {
+        logger.error('Error refreshing catalog:', error);
+      })
+      .finally(() => {
+        setIsRefreshing(false);
+      });
   };
 
   // Get list of wallets and networks for filters
@@ -472,6 +523,7 @@ const CatalogViewPage = ({
           
         if (updateError) {
           logger.error('Error updating spam status:', updateError);
+          throw updateError;
         }
       } else {
         // Insert new artifact with spam status
@@ -490,8 +542,28 @@ const CatalogViewPage = ({
           
         if (insertError) {
           logger.error('Error creating artifact with spam status:', insertError);
+          throw insertError;
         }
       }
+      
+      // Update local state to reflect the change
+      setCatalogNFTs(prev => 
+        prev.map(item => 
+          item.id?.tokenId === nft.id?.tokenId && 
+          item.contract?.address === nft.contract?.address && 
+          item.walletId === nft.walletId
+            ? { ...item, isSpam: !nft.isSpam }
+            : item
+        )
+      );
+      
+      showInfoToast(
+        nft.isSpam ? "Removed from Spam" : "Marked as Spam",
+        nft.isSpam 
+          ? "The artifact has been removed from your spam folder"
+          : "The artifact has been marked as spam"
+      );
+      
     } catch (error) {
       logger.error('Error in Supabase spam update:', error);
       showErrorToast(
@@ -529,27 +601,42 @@ const CatalogViewPage = ({
           Back to Library
         </Button>
 
-        <Box>
-          <Heading 
-            as="h1" 
-            fontSize={{ base: "2xl", md: "3xl" }}
-            fontFamily="Space Grotesk"
-            color="var(--rich-black)"
-            mb={3}
-          >
-            {catalog.name}
-          </Heading>
-          {catalog.description && (
-            <Text 
-              fontSize="lg"
-              fontFamily="Fraunces"
-              color="var(--ink-grey)"
-              mb={4}
+        <HStack justify="space-between" align="flex-start">
+          <Box>
+            <Heading 
+              as="h1" 
+              fontSize={{ base: "2xl", md: "3xl" }}
+              fontFamily="Space Grotesk"
+              color="var(--rich-black)"
+              mb={3}
             >
-              {catalog.description}
-            </Text>
-          )}
-        </Box>
+              {catalog.name}
+            </Heading>
+            {catalog.description && (
+              <Text 
+                fontSize="lg"
+                fontFamily="Fraunces"
+                color="var(--ink-grey)"
+                mb={4}
+              >
+                {catalog.description}
+              </Text>
+            )}
+          </Box>
+          
+          <Button
+            leftIcon={<FaSync />}
+            isLoading={isRefreshing || isLoading}
+            loadingText="Refreshing"
+            onClick={handleRefresh}
+            size="sm"
+            aria-label="Refresh catalog"
+            colorScheme="blue"
+            variant="outline"
+          >
+            Refresh
+          </Button>
+        </HStack>
 
         {/* Collection Details */}
         <Accordion allowToggle>
@@ -575,7 +662,7 @@ const CatalogViewPage = ({
               <VStack align="stretch" spacing={2}>
                 <HStack justify="space-between">
                   <Text fontFamily="Inter" color="var(--ink-grey)">Items</Text>
-                  <Text fontFamily="Fraunces">{filteredNFTs.length} artifacts</Text>
+                  <Text fontFamily="Fraunces">{catalogNFTs.length} artifacts</Text>
                 </HStack>
                 <HStack justify="space-between">
                   <Text fontFamily="Inter" color="var(--ink-grey)">Created</Text>
@@ -625,26 +712,62 @@ const CatalogViewPage = ({
         )}
       </VStack>
 
+      {/* Error Alert */}
+      {error && (
+        <Alert status="error" mb={4} borderRadius="md">
+          <AlertIcon />
+          <Text fontSize="sm" fontFamily="Inter">{error}</Text>
+          <Button 
+            size="sm" 
+            ml="auto" 
+            onClick={handleRefresh}
+            isLoading={isRefreshing}
+          >
+            Retry
+          </Button>
+        </Alert>
+      )}
+
+      {/* Loading Progress */}
+      {(isLoading || isRefreshing) && (
+        <Box mb={6}>
+          <Progress 
+            value={loadingProgress} 
+            size="xs" 
+            colorScheme="blue" 
+            isAnimated
+            hasStripe
+            borderRadius="full"
+          />
+          <Text 
+            fontSize="xs" 
+            color="var(--ink-grey)" 
+            textAlign="center" 
+            mt={1}
+            fontFamily="Inter"
+          >
+            {isRefreshing ? "Refreshing catalog..." : "Loading artifacts..."} {loadingProgress}%
+          </Text>
+        </Box>
+      )}
+
       {/* Content Section */}
       <Box>
         {isLoading ? (
-          <Box>
-            <Progress size="xs" isIndeterminate colorScheme="blue" mb={6} />
-            <SimpleGrid columns={gridColumns} spacing={4}>
-              {Array(8).fill(0).map((_, i) => (
-                <Skeleton 
-                  key={i}
-                  height="280px"
-                  borderRadius="md"
-                />
-              ))}
-            </SimpleGrid>
-          </Box>
+          <SimpleGrid columns={gridColumns} spacing={4}>
+            {Array(8).fill(0).map((_, i) => (
+              <Skeleton 
+                key={i}
+                height="280px"
+                borderRadius="md"
+              />
+            ))}
+          </SimpleGrid>
         ) : viewMode === VIEW_MODES.LIST ? (
           <VStack spacing={2} align="stretch">
-            {filteredNFTs.map((nft) => (
+            {filteredNFTs.map((nft, index) => (
               <ListViewItem
-                key={`${nft.contract?.address}-${nft.id?.tokenId}`}
+                key={`${nft.contract?.address}-${nft.id?.tokenId}-${index}`}
                 nft={nft}
                 isSelected={selectedNFTs.some(selected => 
                   selected.id?.tokenId === nft.id?.tokenId &&
@@ -655,6 +778,7 @@ const CatalogViewPage = ({
                 isSpamFolder={catalog.id === 'spam'}
                 onClick={() => handleNFTClick(nft)}
                 isSelectMode={isSelectMode}
+                isLastItem={index === filteredNFTs.length - 1}
               />
             ))}
           </VStack>
@@ -663,9 +787,9 @@ const CatalogViewPage = ({
             columns={gridColumns}
             spacing={4}
           >
-            {filteredNFTs.map((nft) => (
+            {filteredNFTs.map((nft, index) => (
               <NFTCard
-                key={`${nft.contract?.address}-${nft.id?.tokenId}`}
+                key={`${nft.contract?.address}-${nft.id?.tokenId}-${index}`}
                 nft={nft}
                 isSelected={selectedNFTs.some(selected => 
                   selected.id?.tokenId === nft.id?.tokenId &&
@@ -676,13 +800,13 @@ const CatalogViewPage = ({
                 isSpamFolder={catalog.id === 'spam'}
                 isSelectMode={isSelectMode}
                 onClick={isSelectMode ? () => handleNFTSelect(nft) : () => handleNFTClick(nft)}
-                viewMode={VIEW_MODES.GRID}
+                catalogType={catalog.id === 'spam' ? 'spam' : 'user'}
               />
             ))}
           </SimpleGrid>
         )}
 
-        {!isLoading && filteredNFTs.length === 0 && (
+        {!isLoading && !isRefreshing && filteredNFTs.length === 0 && (
           <Box 
             textAlign="center" 
             py={12}
@@ -697,6 +821,18 @@ const CatalogViewPage = ({
                 : "No artifacts found in this catalog"
               }
             </Text>
+            {(!searchTerm && !error) && (
+              <Button
+                mt={4}
+                size="sm"
+                onClick={handleRefresh}
+                leftIcon={<FaSync />}
+                colorScheme="blue"
+                variant="outline"
+              >
+                Refresh Catalog
+              </Button>
+            )}
           </Box>
         )}
       </Box>
