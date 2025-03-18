@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   VStack,
@@ -17,7 +17,7 @@ import {
   Skeleton,
   Alert,
   AlertIcon,
-  useDisclosure
+  useToast
 } from "@chakra-ui/react";
 import { FaChevronLeft, FaSync } from 'react-icons/fa';
 import { motion } from 'framer-motion';
@@ -38,8 +38,22 @@ const VIEW_MODES = {
   GRID: 'grid'
 };
 
-// Maximum number of artifacts to fetch in a single batch
-const BATCH_SIZE = 15;
+// Circuit breaker to avoid infinite loops
+const MAX_FETCH_ATTEMPTS = 3;
+const FETCH_LOCKOUT_TIME = 10000; // 10 seconds
+
+// Simple IPFS URL transformer
+const transformIpfsUrl = (url) => {
+  if (!url) return '';
+  
+  // Handle ipfs:// protocol
+  if (url.startsWith('ipfs://')) {
+    const cid = url.replace('ipfs://', '');
+    return `https://ipfs.io/ipfs/${cid}`;
+  }
+  
+  return url;
+};
 
 const CatalogViewPage = ({ 
   catalog, 
@@ -61,6 +75,13 @@ const CatalogViewPage = ({
   const [error, setError] = useState(null);
   const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast();
 
+  // Circuit breaker state
+  const fetchAttempts = useRef(0);
+  const lastFetchTime = useRef(0);
+  const isMounted = useRef(true);
+  const processingBatch = useRef(false);
+  const catalogIdRef = useRef(catalog?.id);
+  
   // State for filtering and sorting
   const [activeFilters, setActiveFilters] = useState({});
   const [activeSort, setActiveSort] = useState({ field: 'name', ascending: true });
@@ -74,41 +95,49 @@ const CatalogViewPage = ({
     xl: 5
   };
 
-  // Helper function to process NFTs in batches to avoid resource exhaustion
-  const processBatches = async (items, processFn) => {
-    const results = [];
-    const totalBatches = Math.ceil(items.length / BATCH_SIZE);
-    
-    for (let i = 0; i < totalBatches; i++) {
-      const startIdx = i * BATCH_SIZE;
-      const endIdx = Math.min(startIdx + BATCH_SIZE, items.length);
-      const batch = items.slice(startIdx, endIdx);
-      
-      // Process current batch
-      const batchResults = await Promise.all(batch.map(processFn));
-      results.push(...batchResults);
-      
-      // Update progress
-      const progress = Math.round(((i + 1) / totalBatches) * 100);
-      setLoadingProgress(progress);
-      
-      // Small delay between batches to prevent overloading
-      if (i < totalBatches - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
+  // Effect to prevent fetch loops on unmount
+  useEffect(() => {
+    isMounted.current = true;
+    // Reset circuit breaker when catalog changes
+    if (catalog?.id !== catalogIdRef.current) {
+      catalogIdRef.current = catalog?.id;
+      fetchAttempts.current = 0;
+      lastFetchTime.current = 0;
+    }
+    return () => {
+      isMounted.current = false;
+    };
+  }, [catalog?.id]);
+  
+  const fetchNFTsFromSupabase = useCallback(async (forceRefresh = false) => {
+    // Check if we're in a circuit breaker lockout period
+    const now = Date.now();
+    if (!forceRefresh && fetchAttempts.current >= MAX_FETCH_ATTEMPTS && 
+        now - lastFetchTime.current < FETCH_LOCKOUT_TIME) {
+      logger.warn('Circuit breaker active: Too many fetch attempts in short period');
+      setError("Too many data fetch attempts. Please try again in a few seconds.");
+      setIsLoading(false);
+      return;
     }
     
-    return results;
-  };
-  
-  const fetchNFTsFromSupabase = useCallback(async () => {
+    // Don't run if we're already processing a batch or component is unmounted
+    if (processingBatch.current || !isMounted.current) {
+      return;
+    }
+    
+    // Update circuit breaker state
+    lastFetchTime.current = now;
+    fetchAttempts.current += 1;
+    
     if (!catalog?.nftIds || catalog.nftIds.length === 0) {
       setCatalogNFTs([]);
       setIsLoading(false);
       setError(null);
+      processingBatch.current = false;
       return;
     }
 
+    processingBatch.current = true;
     setIsLoading(true);
     setLoadingProgress(0);
     setError(null);
@@ -119,13 +148,15 @@ const CatalogViewPage = ({
       // For system catalogs (spam, unorganized), we already have the NFT objects
       if (catalog.isSystem) {
         logger.log('System catalog, using provided NFT objects');
-        setCatalogNFTs(catalog.nftIds);
-        setIsLoading(false);
+        if (isMounted.current) {
+          setCatalogNFTs(catalog.nftIds);
+          setIsLoading(false);
+        }
+        processingBatch.current = false;
         return;
       }
       
-      // For user catalogs, process in batches
-      // Map nftIds to deduplicate by unique combination of properties
+      // Get unique nftIds to avoid duplicates
       const uniqueNftIds = Array.from(
         new Map(
           catalog.nftIds.map(nft => [
@@ -135,81 +166,95 @@ const CatalogViewPage = ({
         ).values()
       );
       
-      logger.log(`Fetching ${uniqueNftIds.length} NFTs in batches of ${BATCH_SIZE}`);
-      
-      // Process NFTs in batches to avoid overwhelming the client
-      const resolvedNFTs = await processBatches(uniqueNftIds, async (nftId) => {
-        try {
-          // Try to find it in Redux store first as it's faster
-          const nftFromStore = findNFTInReduxStore(nftId);
-          if (nftFromStore) {
-            return nftFromStore;
-          }
-          
-          // For missing NFTs, fetch from Supabase individually
-          const { data: artifacts, error } = await supabase
-            .from('artifacts')
-            .select('*')
-            .eq('wallet_id', nftId.walletId)
-            .eq('token_id', nftId.tokenId)
-            .eq('contract_address', nftId.contractAddress)
-            .limit(1); // Limit to 1 to avoid fetching duplicates
-            
-          if (error) {
-            logger.error('Error fetching artifact from Supabase:', {
-              error,
-              nftId
-            });
-            return createPlaceholderNFT(nftId);
-          }
-          
-          if (!artifacts || artifacts.length === 0) {
-            logger.warn('Artifact not found in Supabase:', nftId);
-            return createPlaceholderNFT(nftId);
-          }
-          
-          // Convert the first matching artifact to NFT format
-          return convertArtifactToNFT(artifacts[0], nftId.walletId);
-        } catch (error) {
-          logger.error('Error processing NFT:', {
-            error: error.message,
-            nftId
-          });
-          return createPlaceholderNFT(nftId);
-        }
+      // First fill with data from Redux store - this is fast
+      const initialNFTs = uniqueNftIds.map(nftId => {
+        // Try to find in Redux store
+        const reduxNFT = findNFTInReduxStore(nftId);
+        return reduxNFT || createPlaceholderNFT(nftId);
       });
       
-      // Filter out null values and set state
-      const validNFTs = resolvedNFTs.filter(Boolean);
-      setCatalogNFTs(validNFTs);
+      if (isMounted.current) {
+        setCatalogNFTs(initialNFTs);
+        setLoadingProgress(50);
+      }
+
+      // If we have placeholders, try to fetch them from Supabase
+      const missingNFTs = initialNFTs.filter(nft => nft.isPlaceholder);
       
-      if (validNFTs.length === 0 && uniqueNftIds.length > 0) {
-        setError("No artifacts could be loaded for this catalog.");
+      if (missingNFTs.length > 0 && isMounted.current) {
+        try {
+          // Create a list of promises
+          const promises = missingNFTs.map(async (nft) => {
+            try {
+              const { data: artifacts, error } = await supabase
+                .from('artifacts')
+                .select('*')
+                .eq('wallet_id', nft.walletId)
+                .eq('token_id', nft.id.tokenId)
+                .eq('contract_address', nft.contract.address)
+                .limit(1);
+                
+              if (error) throw error;
+              
+              if (artifacts && artifacts.length > 0) {
+                return convertArtifactToNFT(artifacts[0], nft.walletId);
+              }
+              
+              return nft; // Keep placeholder if not found
+            } catch (error) {
+              logger.error('Error fetching NFT details:', error);
+              return nft; // Keep placeholder if error
+            }
+          });
+          
+          // Execute all promises in parallel
+          const fetchedNFTs = await Promise.all(promises);
+          
+          // Only update state if component is still mounted
+          if (isMounted.current) {
+            // Replace placeholders with actual data
+            setCatalogNFTs(prevNFTs => {
+              return prevNFTs.map(prevNFT => {
+                const updatedNFT = fetchedNFTs.find(fetchedNFT => 
+                  fetchedNFT.id.tokenId === prevNFT.id.tokenId && 
+                  fetchedNFT.contract.address === prevNFT.contract.address &&
+                  fetchedNFT.walletId === prevNFT.walletId
+                );
+                
+                return updatedNFT || prevNFT;
+              });
+            });
+          }
+        } catch (error) {
+          if (isMounted.current) {
+            logger.error('Error fetching missing NFTs:', error);
+            setError("Some artifacts could not be loaded completely.");
+          }
+        }
       }
       
+      // Reset circuit breaker on successful load
+      fetchAttempts.current = 0;
+      
     } catch (error) {
-      logger.error('Error fetching NFTs for catalog:', {
-        error: error.message,
-        catalogId: catalog.id
-      });
-      setError("Failed to load catalog artifacts. Please try refreshing.");
-      showErrorToast(
-        "Error Loading Catalog",
-        "There was a problem loading the artifacts in this catalog."
-      );
+      if (isMounted.current) {
+        logger.error('Error fetching NFTs for catalog:', {
+          error: error.message,
+          catalogId: catalog.id
+        });
+        setError("Failed to load catalog artifacts. Please try again.");
+      }
     } finally {
-      setIsLoading(false);
-      setLoadingProgress(100);
+      if (isMounted.current) {
+        setIsLoading(false);
+        setLoadingProgress(100);
+      }
+      processingBatch.current = false;
     }
-  }, [catalog, showErrorToast]);
+  }, [catalog, findNFTInReduxStore, convertArtifactToNFT, createPlaceholderNFT]);
 
-  useEffect(() => {
-    // Load NFTs when the component mounts or catalog changes
-    fetchNFTsFromSupabase();
-  }, [fetchNFTsFromSupabase]);
-
-  // Helper function to find an NFT in the Redux store
-  const findNFTInReduxStore = (nftId) => {
+  // Define these functions here to avoid dependency errors in the useCallback
+  function findNFTInReduxStore(nftId) {
     if (!nftId || !nftId.walletId || !nfts[nftId.walletId]) return null;
 
     for (const network in nfts[nftId.walletId]) {
@@ -245,10 +290,10 @@ const CatalogViewPage = ({
     }
     
     return null;
-  };
+  }
 
-  // Helper function to create a placeholder NFT when not found
-  const createPlaceholderNFT = (nftId) => {
+  // Create a placeholder NFT when not found
+  function createPlaceholderNFT(nftId) {
     return {
       id: { tokenId: nftId.tokenId },
       contract: { 
@@ -261,13 +306,13 @@ const CatalogViewPage = ({
       network: nftId.network || 'unknown',
       isPlaceholder: true,
       media: [{
-        gateway: 'https://via.placeholder.com/400?text=Not+Found'
+        gateway: 'https://via.placeholder.com/400?text=Loading...'
       }]
     };
-  };
+  }
 
-  // Helper function to convert a Supabase artifact to NFT format
-  const convertArtifactToNFT = (artifact, walletId) => {
+  // Convert a Supabase artifact to NFT format
+  function convertArtifactToNFT(artifact, walletId) {
     try {
       // Parse metadata if it's a string
       let metadata = artifact.metadata;
@@ -283,6 +328,10 @@ const CatalogViewPage = ({
       // Find wallet info to add nickname
       const wallet = wallets.find(w => w.id === walletId);
       const walletNickname = wallet?.nickname || truncateAddress(wallet?.address);
+      
+      // Process image URL for IPFS compatibility
+      let imageUrl = artifact.media_url || metadata?.image || '';
+      imageUrl = transformIpfsUrl(imageUrl);
 
       return {
         id: { 
@@ -297,7 +346,7 @@ const CatalogViewPage = ({
         metadata: metadata || {},
         isSpam: artifact.is_spam || false,
         media: [{
-          gateway: artifact.media_url || metadata?.image || 'https://via.placeholder.com/400?text=No+Image'
+          gateway: imageUrl || 'https://via.placeholder.com/400?text=No+Image'
         }],
         walletId: walletId,
         network: artifact.network,
@@ -319,7 +368,19 @@ const CatalogViewPage = ({
         network: artifact.network || 'unknown'
       };
     }
-  };
+  }
+
+  useEffect(() => {
+    // Only run this effect once on mount, not on every render or on every catalog change
+    if (catalog && !processingBatch.current) {
+      fetchNFTsFromSupabase();
+    }
+    
+    // Cleanup function
+    return () => {
+      processingBatch.current = false;
+    };
+  }, []);  // Empty dependency array to run once on mount
 
   // Helper function to truncate addresses
   const truncateAddress = (address) => 
@@ -452,7 +513,7 @@ const CatalogViewPage = ({
     if (isRefreshing || isLoading) return;
     
     setIsRefreshing(true);
-    fetchNFTsFromSupabase()
+    fetchNFTsFromSupabase(true) // Pass true to force refresh bypassing circuit breaker
       .then(() => {
         showSuccessToast(
           "Refresh Complete",
@@ -750,13 +811,13 @@ const CatalogViewPage = ({
           </Text>
         </Box>
       )}
-
+      
       {/* Content Section */}
       <Box>
         {isLoading ? (
           <SimpleGrid columns={gridColumns} spacing={4}>
             {Array(8).fill(0).map((_, i) => (
-              <Skeleton 
+              <Skeleton
                 key={i}
                 height="280px"
                 borderRadius="md"
@@ -768,7 +829,14 @@ const CatalogViewPage = ({
             {filteredNFTs.map((nft, index) => (
               <ListViewItem
                 key={`${nft.contract?.address}-${nft.id?.tokenId}-${index}`}
-                nft={nft}
+                nft={{
+                  ...nft,
+                  // Transform IPFS URLs if needed
+                  media: nft.media?.map(media => ({
+                    ...media,
+                    gateway: transformIpfsUrl(media.gateway)
+                  }))
+                }}
                 isSelected={selectedNFTs.some(selected => 
                   selected.id?.tokenId === nft.id?.tokenId &&
                   selected.contract?.address === nft.contract?.address
@@ -790,7 +858,14 @@ const CatalogViewPage = ({
             {filteredNFTs.map((nft, index) => (
               <NFTCard
                 key={`${nft.contract?.address}-${nft.id?.tokenId}-${index}`}
-                nft={nft}
+                nft={{
+                  ...nft,
+                  // Transform IPFS URLs if needed
+                  media: nft.media?.map(media => ({
+                    ...media,
+                    gateway: transformIpfsUrl(media.gateway)
+                  }))
+                }}
                 isSelected={selectedNFTs.some(selected => 
                   selected.id?.tokenId === nft.id?.tokenId &&
                   selected.contract?.address === nft.contract?.address
