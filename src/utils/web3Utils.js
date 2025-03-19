@@ -489,7 +489,7 @@ const fetchSolanaNFTs = async (address) => {
   }
 };
 
-const normalizeBaseAddress = (address) => {
+export const normalizeBaseAddress = (address) => {
   try {
     if (!address) {
       logger.error('Attempted to normalize null/undefined Base address');
