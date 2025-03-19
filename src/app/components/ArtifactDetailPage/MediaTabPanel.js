@@ -20,6 +20,7 @@ import {
 import { FaExpand } from 'react-icons/fa';
 import ArticleRenderer from '../ContentRenderers/ArticleRenderer';
 import VideoRenderer from '../ContentRenderers/VideoRenderer';
+import AudioRenderer from '../ContentRenderers/AudioRenderer';
 import { logger } from '../../../utils/logger';
 
 // Design system colors
@@ -67,16 +68,40 @@ const MediaTabPanel = ({
     
     if (format.includes('video') || type.includes('video')) return true;
 
-    // For IPFS URLs without extensions, check if they're known video content
-    if (url.startsWith('ipfs://')) {
-      // Add any known IPFS CIDs that are videos
-      const knownVideoHashes = [
-        'bafybeif4w5c7ggc7z2a3dldooqwj5ii5rim7uqktme5gx2u3megumpq4zq'
-      ];
-      
-      const cid = url.replace('ipfs://', '');
-      if (knownVideoHashes.includes(cid)) return true;
-    }
+    return false;
+  };
+
+  // Audio content detection
+  const isAudioContent = (nft) => {
+    if (!nft?.metadata?.animation_url) return false;
+    
+    logger.debug('Audio content detection:', {
+      url: nft.metadata.animation_url,
+      mimeType: nft.metadata?.mimeType,
+      contentType: nft.metadata?.content_type,
+      type: nft.metadata?.type,
+      format: nft.metadata?.format
+    });
+
+    // Check MIME types
+    const audioMimeTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp3'];
+    if (audioMimeTypes.includes(nft.metadata?.mimeType)) return true;
+    
+    // Check file extensions
+    const url = nft.metadata.animation_url.toLowerCase();
+    if (url.match(/\.(mp3|wav|ogg|m4a|flac)$/i)) return true;
+
+    // Check metadata for audio-related keywords
+    const format = (nft.metadata?.format || '').toLowerCase();
+    const type = (nft.metadata?.type || '').toLowerCase();
+    const description = (nft.metadata?.description || '').toLowerCase();
+    
+    const audioKeywords = ['audio', 'song', 'music', 'track', 'sound'];
+    if (audioKeywords.some(keyword => 
+      format.includes(keyword) || 
+      type.includes(keyword) || 
+      description.includes(keyword)
+    )) return true;
 
     return false;
   };
@@ -86,12 +111,14 @@ const MediaTabPanel = ({
   const hasAnimation = !!nft.metadata?.animation_url;
   const hasRawContent = !!nft.metadata?.content;
   const hasVideo = hasAnimation && isVideoContent(nft);
-  const hasHostedContent = hasAnimation && !hasVideo;
+  const hasAudio = hasAnimation && isAudioContent(nft);
+  const hasHostedContent = hasAnimation && !hasVideo && !hasAudio;
 
   // Debug logging
   logger.debug('Content detection results:', {
     hasAnimation,
     hasVideo,
+    hasAudio,
     hasHostedContent,
     animationUrl: nft.metadata?.animation_url,
     mimeType: nft.metadata?.mimeType
@@ -221,6 +248,16 @@ const MediaTabPanel = ({
               Video
             </Tab>
           )}
+          {hasAudio && (
+            <Tab 
+              _selected={{ 
+                color: designTokens.libraryBrown,
+                bg: designTokens.warmWhite 
+              }}
+            >
+              Audio
+            </Tab>
+          )}
           {hasHostedContent && (
             <Tab 
               _selected={{ 
@@ -277,6 +314,17 @@ const MediaTabPanel = ({
           {hasVideo && (
             <TabPanel p={0} pt={4}>
               <VideoRenderer
+                src={nft.metadata.animation_url}
+                onFullscreen={() => onFullscreenContent?.(nft.metadata.animation_url)}
+                designTokens={designTokens}
+              />
+            </TabPanel>
+          )}
+
+          {/* Audio Content Display */}
+          {hasAudio && (
+            <TabPanel p={0} pt={4}>
+              <AudioRenderer
                 src={nft.metadata.animation_url}
                 onFullscreen={() => onFullscreenContent?.(nft.metadata.animation_url)}
                 designTokens={designTokens}
