@@ -1,12 +1,14 @@
+// src/redux/thunks/walletThunks.js
 import { fetchNFTs } from '../../../utils/web3Utils';
 import { serializeAddress, serializeNFT } from '../../../utils/serializationUtils';
 import { createAsyncThunk } from '@reduxjs/toolkit';
-import { fetchNFTsStart, fetchNFTsSuccess, fetchNFTsFailure } from '../slices/nftSlice';
+import { fetchNFTsStart, fetchNFTsSuccess, fetchNFTsFailure, updateNFT } from '../slices/nftSlice';
 import { setWallets, updateWallet } from '../slices/walletSlice';
 import { logger } from '../../../utils/logger';
 import { supabase } from '../../../utils/supabase';
+import { processWalletMetadata, processNFTMetadata } from '../../../utils/metadataProcessor';
 
-// Fetch NFTs and update both Redux and Supabase
+// Fetch NFTs and update both Redux and Supabase with enhanced metadata
 export const fetchWalletNFTs = createAsyncThunk(
   'wallets/fetchWalletNFTs',
   async ({ walletId, address, networks }, { dispatch }) => {
@@ -17,6 +19,9 @@ export const fetchWalletNFTs = createAsyncThunk(
     
     // Keep track of all NFTs for batch insertion to Supabase
     const allArtifactsToSave = [];
+    
+    // Object to store NFTs by network for metadata processing
+    const nftsByNetwork = {};
 
     for (const network of networks) {
       try {
@@ -28,9 +33,15 @@ export const fetchWalletNFTs = createAsyncThunk(
             ERC721: [],
             ERC1155: []
           };
+          
+          // Initialize network entry in our collection object
+          nftsByNetwork[network] = {
+            ERC721: [],
+            ERC1155: []
+          };
 
           // Process each NFT
-          nfts.forEach(nft => {
+          for (const nft of nfts) {
             try {
               const processedNFT = serializeNFT({
                 ...nft,
@@ -42,8 +53,10 @@ export const fetchWalletNFTs = createAsyncThunk(
                 // Add to processed NFTs for Redux
                 if (processedNFT.contract?.type === 'ERC1155') {
                   processedNFTs.ERC1155.push(processedNFT);
+                  nftsByNetwork[network].ERC1155.push(processedNFT);
                 } else {
                   processedNFTs.ERC721.push(processedNFT);
+                  nftsByNetwork[network].ERC721.push(processedNFT);
                 }
                 
                 // Convert to Supabase artifact format and add to the saving array
@@ -55,7 +68,7 @@ export const fetchWalletNFTs = createAsyncThunk(
             } catch (error) {
               logger.error('Error processing individual NFT:', error, nft);
             }
-          });
+          }
 
           const totalProcessed = processedNFTs.ERC721.length + processedNFTs.ERC1155.length;
           
@@ -80,6 +93,40 @@ export const fetchWalletNFTs = createAsyncThunk(
           error: error.message 
         }));
       }
+    }
+
+    // Process metadata for all networks
+    try {
+      logger.log('Starting metadata processing for all networks...');
+      
+      // Create a progress update function
+      const updateProgress = (progress) => {
+        // You can dispatch an action here if you want to show progress to the user
+        logger.debug(`Metadata processing progress: ${progress}%`);
+      };
+      
+      // Process metadata for all fetched NFTs
+      const enhancedNftsByNetwork = await processWalletMetadata(
+        walletId, 
+        nftsByNetwork,
+        updateProgress
+      );
+      
+      // Update Redux with enhanced NFTs
+      for (const [network, networkNFTs] of Object.entries(enhancedNftsByNetwork)) {
+        if (networkNFTs.ERC721.length > 0 || networkNFTs.ERC1155.length > 0) {
+          dispatch(fetchNFTsSuccess({ 
+            walletId, 
+            networkValue: network, 
+            nfts: networkNFTs
+          }));
+        }
+      }
+      
+      logger.log('Metadata processing completed for all networks');
+    } catch (metadataError) {
+      logger.error('Error processing metadata:', metadataError);
+      // Continue with saving as we still want to update the basic NFT data
     }
 
     // Save all artifacts to Supabase in batches
@@ -252,6 +299,95 @@ export const loadWallets = createAsyncThunk(
       return wallets;
     } catch (error) {
       logger.error('Error loading wallets:', error);
+      throw error;
+    }
+  }
+);
+
+/**
+ * Refresh metadata for all NFTs in a wallet
+ */
+export const refreshWalletMetadata = createAsyncThunk(
+  'wallets/refreshWalletMetadata',
+  async ({ walletId }, { getState, dispatch }) => {
+    try {
+      logger.log(`Refreshing metadata for wallet ${walletId}`);
+      
+      // Get current NFTs for this wallet from Redux
+      const state = getState();
+      const nftsByNetwork = state.nfts.byWallet[walletId] || {};
+      
+      // Keep track of how many NFTs were updated
+      let updatedCount = 0;
+      let totalNFTs = 0;
+      
+      // Process metadata for each network
+      for (const [network, networkNFTs] of Object.entries(nftsByNetwork)) {
+        // Process ERC721 tokens
+        if (Array.isArray(networkNFTs.ERC721)) {
+          totalNFTs += networkNFTs.ERC721.length;
+          
+          for (const nft of networkNFTs.ERC721) {
+            try {
+              // Process metadata for this NFT
+              const enhancedNFT = await processNFTMetadata(nft, walletId);
+              
+              // If metadata was enhanced, update Redux
+              if (enhancedNFT && JSON.stringify(enhancedNFT) !== JSON.stringify(nft)) {
+                dispatch(updateNFT({ 
+                  walletId, 
+                  nft: enhancedNFT 
+                }));
+                updatedCount++;
+              }
+            } catch (error) {
+              logger.error(`Error processing metadata for ERC721 token:`, {
+                tokenId: nft.id?.tokenId,
+                error: error.message
+              });
+            }
+          }
+        }
+        
+        // Process ERC1155 tokens
+        if (Array.isArray(networkNFTs.ERC1155)) {
+          totalNFTs += networkNFTs.ERC1155.length;
+          
+          for (const nft of networkNFTs.ERC1155) {
+            try {
+              // Process metadata for this NFT
+              const enhancedNFT = await processNFTMetadata(nft, walletId);
+              
+              // If metadata was enhanced, update Redux
+              if (enhancedNFT && JSON.stringify(enhancedNFT) !== JSON.stringify(nft)) {
+                dispatch(updateNFT({ 
+                  walletId, 
+                  nft: enhancedNFT 
+                }));
+                updatedCount++;
+              }
+            } catch (error) {
+              logger.error(`Error processing metadata for ERC1155 token:`, {
+                tokenId: nft.id?.tokenId,
+                error: error.message
+              });
+            }
+          }
+        }
+      }
+      
+      logger.log(`Metadata refresh complete for wallet ${walletId}:`, {
+        totalNFTs,
+        updatedCount
+      });
+      
+      return {
+        walletId,
+        totalNFTs,
+        updatedCount
+      };
+    } catch (error) {
+      logger.error('Error refreshing wallet metadata:', error);
       throw error;
     }
   }

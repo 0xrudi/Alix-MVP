@@ -1129,66 +1129,65 @@ useEffect(() => {
   );
 
   // Helper function to refresh NFTs
-  const handleRefreshNFTs = async () => {
-    setIsRefreshing(true);
-    setRefreshProgress(0);
-    
-    let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
-    let completedFetches = 0;
+const handleRefreshNFTs = async () => {
+  setIsRefreshing(true);
+  setRefreshProgress(0);
   
-    try {
-      for (const wallet of wallets) {
-        try {
-          // Fetch NFTs using Redux thunk
-          const result = await dispatch(fetchWalletNFTs({
-            walletId: wallet.id,
-            address: wallet.address,
-            networks: wallet.networks
-          })).unwrap();
-    
-          if (result.includesNewNFTs) {
-            showSuccessToast(
-              "New NFTs Found", 
-              `Found new or updated NFTs for ${wallet.nickname || wallet.address}`
-            );
-          }
-          
-          completedFetches++;
-          setRefreshProgress((completedFetches / totalFetches) * 100);
-          
-          // Sync with Supabase
-          // The actual NFT data syncing should happen in fetchWalletNFTs thunk
-          // But we can update the wallet's last_refreshed timestamp here
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            await supabase
-              .from('wallets')
-              .update({ last_refreshed: new Date().toISOString() })
-              .eq('id', wallet.id);
-          }
-        } catch (error) {
-          handleError(error, `refreshing NFTs for ${wallet.address}`);
+  let totalFetches = wallets.reduce((sum, wallet) => sum + wallet.networks.length, 0);
+  let completedFetches = 0;
+
+  try {
+    for (const wallet of wallets) {
+      try {
+        // Fetch NFTs using Redux thunk
+        // The enhanced wallet thunk will automatically process metadata
+        const result = await dispatch(fetchWalletNFTs({
+          walletId: wallet.id,
+          address: wallet.address,
+          networks: wallet.networks
+        })).unwrap();
+  
+        if (result.includesNewNFTs) {
+          showSuccessToast(
+            "New NFTs Found", 
+            `Found new or updated NFTs for ${wallet.nickname || wallet.address}`
+          );
         }
+        
+        completedFetches++;
+        setRefreshProgress((completedFetches / totalFetches) * 100);
+        
+        // Sync with Supabase
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from('wallets')
+            .update({ last_refreshed: new Date().toISOString() })
+            .eq('id', wallet.id);
+        }
+      } catch (error) {
+        handleError(error, `refreshing NFTs for ${wallet.address}`);
       }
-    
-      setIsRefreshing(false);
-      showSuccessToast(
-        "Refresh Complete", 
-        "Your NFT collection has been updated."
-      );
-    } catch (error) {
-      setIsRefreshing(false);
-      logger.error('Error refreshing NFTs:', error);
-      showErrorToast(
-        "Refresh Failed",
-        "An error occurred while refreshing your NFTs. Please try again."
-      );
     }
-    // Refresh all data from Supabase
-    fetchArtifactsFromSupabase();
-    fetchCatalogsFromSupabase();
-    fetchFoldersFromSupabase();
-  };
+  
+    setIsRefreshing(false);
+    showSuccessToast(
+      "Refresh Complete", 
+      "Your NFT collection has been updated with enhanced metadata."
+    );
+  } catch (error) {
+    setIsRefreshing(false);
+    logger.error('Error refreshing NFTs:', error);
+    showErrorToast(
+      "Refresh Failed",
+      "An error occurred while refreshing your NFTs. Please try again."
+    );
+  }
+  // Refresh all data from Supabase
+  fetchArtifactsFromSupabase();
+  fetchCatalogsFromSupabase();
+  fetchFoldersFromSupabase();
+};
   
   // Handle folder deletion
   const handleDeleteFolder = async (folderId) => {

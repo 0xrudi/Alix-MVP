@@ -16,7 +16,9 @@ import {
   StatNumber,
   VStack,
   Text,
-  Spinner
+  Spinner,
+  Button,
+  HStack
 } from "@chakra-ui/react";
 import UserProfile from './ProfileManagement/UserProfile';
 import WalletManager from './ProfileManagement/WalletManager';
@@ -24,6 +26,7 @@ import { useAppContext } from '../../context/app/AppContext';
 import { useCustomToast } from '../../utils/toastUtils';
 import { StyledButton, StyledCard, StyledContainer } from '../styles/commonStyles';
 import { useCustomColorMode } from '../hooks/useColorMode';
+import { useResponsive } from '../hooks/useResponsive';
 import { selectTotalNFTs, selectTotalSpamNFTs } from '../redux/slices/nftSlice';
 import { FaSave } from 'react-icons/fa';
 import { useServices } from '../../services/service-provider';
@@ -124,6 +127,7 @@ const ProfilePage = () => {
   const { userProfile } = useAppContext();
   const { showSuccessToast } = useCustomToast();
   const { cardBg, borderColor, textColor } = useCustomColorMode();
+  const { buttonSize } = useResponsive();
   const [activeTab, setActiveTab] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -167,6 +171,9 @@ const ProfilePage = () => {
     );
   }
 
+  // Dynamically import RefreshMetadataButton to avoid circular dependencies
+  const RefreshMetadataButton = React.lazy(() => import('./ProfileManagement/RefreshMetadataButton'));
+
   return (
     <StyledContainer>
       <VStack spacing={8} align="stretch">
@@ -186,14 +193,21 @@ const ProfilePage = () => {
           >
             Your Profile
           </Text>
-          {userProfile.nickname && (
-            <StyledButton
-              onClick={handleSaveProfile}
-              leftIcon={<FaSave />}
-            >
-              Save Profile
-            </StyledButton>
-          )}
+          <HStack spacing={2}>
+            {/* Add Refresh Metadata Button */}
+            <React.Suspense fallback={<Button isLoading colorScheme="blue">Loading</Button>}>
+              <RefreshMetadataButton buttonSize={buttonSize} variant="outline" />
+            </React.Suspense>
+            
+            {userProfile.nickname && (
+              <StyledButton
+                onClick={handleSaveProfile}
+                leftIcon={<FaSave />}
+              >
+                Save Profile
+              </StyledButton>
+            )}
+          </HStack>
         </Flex>
 
         <Box

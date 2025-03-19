@@ -59,6 +59,7 @@ import { useAppContext } from '../../../context/app/AppContext.js';
 import { updateNFT } from '../../redux/slices/nftSlice.js';
 import MediaTabPanel from './MediaTabPanel.js';
 import { supabase } from '../../../utils/supabase';
+import AttributesPanel from './AttributesPanel';
 
 
 const MetadataDisplay = ({ data, level = 0 }) => {
@@ -456,6 +457,15 @@ const ArtifactDetailPage = () => {
             >
               Information
             </Tab>
+            {/* Add this new Tab */}
+            <Tab 
+              _selected={{ 
+                color: designTokens.libraryBrown,
+                borderBottomColor: designTokens.libraryBrown 
+              }}
+            >
+              Attributes
+            </Tab>
           </TabList>
 
           <TabPanels>
@@ -492,71 +502,7 @@ const ArtifactDetailPage = () => {
             <TabPanel>
               <VStack align="stretch" spacing={4}>
                 <Accordion allowMultiple>
-                  <AccordionItem>
-                    <AccordionButton 
-                      _expanded={{ 
-                        color: designTokens.libraryBrown,
-                        bg: designTokens.warmWhite 
-                      }}
-                    >
-                      <Box flex="1" textAlign="left">Details</Box>
-                      <AccordionIcon />
-                    </AccordionButton>
-                    <AccordionPanel>
-                      <Table variant="simple" size={tableSize}>
-                        <Tbody>
-                          <Tr>
-                            <Th color={designTokens.softCharcoal}>Contract Name</Th>
-                            <Td>{nft.contract?.name || 'N/A'}</Td>
-                          </Tr>
-                          <Tr>
-                            <Th color={designTokens.softCharcoal}>Contract Address</Th>
-                            <Td>{nft.contract?.address || 'N/A'}</Td>
-                          </Tr>
-                          <Tr>
-                            <Th color={designTokens.softCharcoal}>Token ID</Th>
-                            <Td>{nft.id?.tokenId || 'N/A'}</Td>
-                          </Tr>
-                          <Tr>
-                            <Th color={designTokens.softCharcoal}>Creator/Artist</Th>
-                            <Td>{nft.creator || nft.artist || 'N/A'}</Td>
-                          </Tr>
-                        </Tbody>
-                      </Table>
-                    </AccordionPanel>
-                  </AccordionItem>
-
-                  {nft.attributes && (
-                    <AccordionItem>
-                      <AccordionButton
-                        _expanded={{ 
-                          color: designTokens.libraryBrown,
-                          bg: designTokens.warmWhite 
-                        }}
-                      >
-                        <Box flex="1" textAlign="left">Traits</Box>
-                        <AccordionIcon />
-                      </AccordionButton>
-                      <AccordionPanel>
-                        <Table variant="simple" size={tableSize}>
-                          <Thead>
-                            <Tr>
-                              <Th color={designTokens.softCharcoal}>Trait Type</Th>
-                              <Th color={designTokens.softCharcoal}>Value</Th>
-                            </Tr>
-                          </Thead>
-                          <Tbody>
-                            {nft.attributes.map((attr, index) => (
-                              <Tr key={index}>
-                                <Td>{attr.trait_type}</Td>
-                                <Td>{attr.value}</Td>
-                              </Tr>
-                            ))}
-                          </Tbody>
-                        </Table>
-                      </AccordionPanel>
-                    </AccordionItem>
-                  )}
+                  {/* Existing accordion items */}
                 </Accordion>
 
                 {nft.externalUrl && (
@@ -571,7 +517,16 @@ const ArtifactDetailPage = () => {
                 )}
               </VStack>
             </TabPanel>
+
+            {/* Add this new TabPanel for Attributes */}
+            <TabPanel>
+              <AttributesPanel
+                nft={nft}
+                designTokens={designTokens}
+              />
+            </TabPanel>
           </TabPanels>
+
         </Tabs>
       </Box>
 
