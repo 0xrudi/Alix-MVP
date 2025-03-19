@@ -1,6 +1,6 @@
 // src/utils/metadataProcessor.js
 import { logger } from './logger';
-import { fetchWithCorsProxy, needsCorsProxy } from './corsProxy';
+import { fetchWithCorsProxy, needsCorsProxy, fetchArweaveContent } from './corsProxy';
 import { supabase } from './supabase';
 
 /**
