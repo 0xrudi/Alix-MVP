@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Tabs,
@@ -19,12 +19,15 @@ import {
   Alert,
   AlertIcon,
   Badge,
+  Spinner,
+  Flex
 } from "@chakra-ui/react";
 import { FaExpand } from 'react-icons/fa';
 import ArticleRenderer from '../ContentRenderers/ArticleRenderer';
 import VideoRenderer from '../ContentRenderers/VideoRenderer';
 import AudioRenderer from '../ContentRenderers/AudioRenderer';
 import { logger } from '../../../utils/logger';
+import { fetchWithCorsProxy, needsCorsProxy } from '../../../utils/corsProxy';
 
 // Design system colors
 const designTokens = {
@@ -42,6 +45,25 @@ const safeGet = (obj, path, defaultValue = undefined) => {
     acc && acc[part] !== undefined ? acc[part] : defaultValue, obj);
 };
 
+// URL conversion utility
+const convertToGatewayUrl = (url) => {
+  if (!url) return '';
+
+  // Handle Arweave URLs
+  if (url.startsWith('ar://')) {
+    const arweaveHash = url.replace('ar://', '');
+    return `https://arweave.net/${arweaveHash}`;
+  }
+
+  // Handle IPFS URLs
+  if (url.startsWith('ipfs://')) {
+    const ipfsHash = url.replace('ipfs://', '');
+    return `https://ipfs.io/ipfs/${ipfsHash}`;
+  }
+
+  return url;
+};
+
 const MediaTabPanel = ({ 
   nft = {},
   imageUrl = '',
@@ -51,46 +73,65 @@ const MediaTabPanel = ({
   onFullscreenContent = () => {},
   borderColor
 }) => {
+  // State for dynamic media type detection
+  const [mediaType, setMediaType] = useState(null);
+  const [isMediaLoading, setIsMediaLoading] = useState(true);
+  const [mediaLoadError, setMediaLoadError] = useState(null);
+
   // Safely access metadata
   const metadata = nft.metadata || {};
-  const animationUrl = safeGet(metadata, 'animation_url', '');
+  const originalAnimationUrl = safeGet(metadata, 'animation_url', '');
+  const animationUrl = convertToGatewayUrl(originalAnimationUrl);
 
-  // Enhanced content type detection with robust safety checks
-  const isVideoContent = (url) => {
-    if (!url) return false;
-    
-    const videoIndicators = [
-      'video/',
-      '.mp4', '.webm', '.avi', '.mov', 
-      'video', 'movie', 'clip'
-    ];
+  // Detect media type
+  useEffect(() => {
+    if (!animationUrl) {
+      setIsMediaLoading(false);
+      return;
+    }
 
-    return videoIndicators.some(indicator => 
-      url.toLowerCase().includes(indicator)
-    );
-  };
+    const detectMediaType = async () => {
+      try {
+        setIsMediaLoading(true);
+        setMediaLoadError(null);
 
-  const isAudioContent = (url) => {
-    if (!url) return false;
-    
-    const audioIndicators = [
-      'audio/',
-      '.mp3', '.wav', '.ogg', '.m4a', '.flac',
-      'audio', 'song', 'music', 'track'
-    ];
+        // Use CORS proxy if needed
+        const fetchFunction = needsCorsProxy(animationUrl) 
+          ? fetchWithCorsProxy 
+          : fetch;
 
-    return audioIndicators.some(indicator => 
-      url.toLowerCase().includes(indicator)
-    );
-  };
+        const response = await fetchFunction(animationUrl, { method: 'HEAD' });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch media: ${response.status}`);
+        }
 
-  // Robust content checks
-  const hasAnimation = !!animationUrl;
-  const hasVideo = hasAnimation && isVideoContent(animationUrl);
-  const hasAudio = hasAnimation && isAudioContent(animationUrl);
-  const hasHostedContent = hasAnimation && !hasVideo && !hasAudio;
-  const hasParsedContent = !!parsedMarkdownContent;
-  const hasRawContent = safeGet(metadata, 'content', false);
+        const contentType = response.headers.get('content-type') || '';
+        logger.debug('Media Content Type:', { 
+          url: animationUrl, 
+          contentType 
+        });
+
+        if (contentType.startsWith('video/')) {
+          setMediaType('video');
+        } else if (contentType.startsWith('audio/')) {
+          setMediaType('audio');
+        } else if (contentType.startsWith('text/') || contentType.includes('html')) {
+          setMediaType('hosted');
+        } else {
+          setMediaType('unknown');
+        }
+      } catch (error) {
+        logger.error('Error detecting media type:', error);
+        setMediaLoadError(error.message);
+        setMediaType('unknown');
+      } finally {
+        setIsMediaLoading(false);
+      }
+    };
+
+    detectMediaType();
+  }, [animationUrl]);
 
   // Image rendering with error handling
   const renderImage = () => {
@@ -150,8 +191,98 @@ const MediaTabPanel = ({
     );
   };
 
+  // Render media content with loading and error states
+  const renderMediaContent = () => {
+    if (isMediaLoading) {
+      return (
+        <Flex 
+          height="400px" 
+          justifyContent="center" 
+          alignItems="center" 
+          flexDirection="column"
+        >
+          <Spinner size="xl" color={designTokens.libraryBrown} />
+          <Text mt={4} color={designTokens.inkGrey}>
+            Detecting media type...
+          </Text>
+        </Flex>
+      );
+    }
+
+    if (mediaLoadError) {
+      return (
+        <Alert status="error">
+          <AlertIcon />
+          Failed to load media: {mediaLoadError}
+        </Alert>
+      );
+    }
+
+    switch (mediaType) {
+      case 'video':
+        return (
+          <VideoRenderer
+            src={animationUrl}
+            onFullscreen={() => onFullscreenContent?.(animationUrl)}
+            designTokens={designTokens}
+          />
+        );
+      case 'audio':
+        return (
+          <AudioRenderer
+            src={animationUrl}
+            onFullscreen={() => onFullscreenContent?.(animationUrl)}
+            designTokens={designTokens}
+          />
+        );
+      case 'hosted':
+        return (
+          <Box 
+            position="relative" 
+            height="600px" 
+            border="1px solid" 
+            borderColor={designTokens.shadow}
+            borderRadius="md"
+            overflow="hidden"
+            bg={designTokens.paperWhite}
+          >
+            <iframe
+              src={animationUrl}
+              width="100%"
+              height="100%"
+              style={{ border: 'none' }}
+              title="Hosted Content"
+            />
+            <IconButton
+              icon={<FaExpand />}
+              position="absolute"
+              top={2}
+              right={2}
+              onClick={() => onFullscreenContent?.(animationUrl)}
+              aria-label="View fullscreen"
+              colorScheme="blackAlpha"
+              size="sm"
+              variant="ghost"
+              _hover={{ bg: designTokens.warmWhite }}
+            />
+          </Box>
+        );
+      default:
+        return (
+          <Alert status="warning">
+            <AlertIcon />
+            Unable to determine media type
+          </Alert>
+        );
+    }
+  };
+
+  // Additional content checks
+  const hasRawContent = safeGet(metadata, 'content', false);
+  const hasParsedContent = !!parsedMarkdownContent;
+
   // Render content or fallback
-  if (!nft || (!hasAnimation && !hasParsedContent && !hasRawContent)) {
+  if (!nft || (!originalAnimationUrl && !hasParsedContent && !hasRawContent)) {
     return (
       <Alert status="info">
         <AlertIcon />
@@ -193,16 +324,25 @@ const MediaTabPanel = ({
                   {imageUrl || 'No image source'}
                 </Text>
               </Box>
-              {animationUrl && (
+              {originalAnimationUrl && (
                 <Box>
                   <Text fontWeight="medium" fontSize="sm" color={designTokens.softCharcoal}>
                     Content URL:
                   </Text>
                   <Text fontSize="sm" color={designTokens.inkGrey} fontFamily="Fraunces">
-                    {animationUrl}
-                    {hasVideo && <Badge ml={2} colorScheme="blue">Video</Badge>}
-                    {hasAudio && <Badge ml={2} colorScheme="green">Audio</Badge>}
-                    {hasHostedContent && <Badge ml={2} colorScheme="purple">Hosted</Badge>}
+                    {originalAnimationUrl}
+                    {mediaType && (
+                      <Badge 
+                        ml={2} 
+                        colorScheme={
+                          mediaType === 'video' ? 'blue' :
+                          mediaType === 'audio' ? 'green' :
+                          mediaType === 'hosted' ? 'purple' : 'gray'
+                        }
+                      >
+                        {mediaType.toUpperCase()}
+                      </Badge>
+                    )}
                   </Text>
                 </Box>
               )}
@@ -236,34 +376,14 @@ const MediaTabPanel = ({
           >
             Cover Image
           </Tab>
-          {hasVideo && (
+          {originalAnimationUrl && (
             <Tab 
               _selected={{ 
                 color: designTokens.libraryBrown,
                 bg: designTokens.warmWhite 
               }}
             >
-              Video
-            </Tab>
-          )}
-          {hasAudio && (
-            <Tab 
-              _selected={{ 
-                color: designTokens.libraryBrown,
-                bg: designTokens.warmWhite 
-              }}
-            >
-              Audio
-            </Tab>
-          )}
-          {hasHostedContent && (
-            <Tab 
-              _selected={{ 
-                color: designTokens.libraryBrown,
-                bg: designTokens.warmWhite 
-              }}
-            >
-              Hosted View
+              Media Content
             </Tab>
           )}
           {hasRawContent && (
@@ -308,60 +428,10 @@ const MediaTabPanel = ({
             </Box>
           </TabPanel>
 
-          {/* Video Content Display */}
-          {hasVideo && (
+          {/* Media Content Display */}
+          {originalAnimationUrl && (
             <TabPanel p={0} pt={4}>
-              <VideoRenderer
-                src={animationUrl}
-                onFullscreen={() => onFullscreenContent?.(animationUrl)}
-                designTokens={designTokens}
-              />
-            </TabPanel>
-          )}
-
-          {/* Audio Content Display */}
-          {hasAudio && (
-            <TabPanel p={0} pt={4}>
-              <AudioRenderer
-                src={animationUrl}
-                onFullscreen={() => onFullscreenContent?.(animationUrl)}
-                designTokens={designTokens}
-              />
-            </TabPanel>
-          )}
-
-          {/* Hosted Content Display */}
-          {hasHostedContent && (
-            <TabPanel p={0} pt={4}>
-              <Box 
-                position="relative" 
-                height="600px" 
-                border="1px solid" 
-                borderColor={designTokens.shadow}
-                borderRadius="md"
-                overflow="hidden"
-                bg={designTokens.paperWhite}
-              >
-                <iframe
-                  src={animationUrl}
-                  width="100%"
-                  height="100%"
-                  style={{ border: 'none' }}
-                  title="Hosted Content"
-                />
-                <IconButton
-                  icon={<FaExpand />}
-                  position="absolute"
-                  top={2}
-                  right={2}
-                  onClick={() => onFullscreenContent?.(animationUrl)}
-                  aria-label="View fullscreen"
-                  colorScheme="blackAlpha"
-                  size="sm"
-                  variant="ghost"
-                  _hover={{ bg: designTokens.warmWhite }}
-                />
-              </Box>
+              {renderMediaContent()}
             </TabPanel>
           )}
 
