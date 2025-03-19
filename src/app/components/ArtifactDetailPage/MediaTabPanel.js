@@ -16,6 +16,9 @@ import {
   VStack,
   Image,
   Skeleton,
+  Alert,
+  AlertIcon,
+  Badge,
 } from "@chakra-ui/react";
 import { FaExpand } from 'react-icons/fa';
 import ArticleRenderer from '../ContentRenderers/ArticleRenderer';
@@ -33,98 +36,63 @@ const designTokens = {
   shadow: "#D8D3CC"
 };
 
+// Safe getter for nested properties
+const safeGet = (obj, path, defaultValue = undefined) => {
+  return path.split('.').reduce((acc, part) => 
+    acc && acc[part] !== undefined ? acc[part] : defaultValue, obj);
+};
+
 const MediaTabPanel = ({ 
-  nft,
-  imageUrl,
-  isLoading,
+  nft = {},
+  imageUrl = '',
+  isLoading = false,
   parsedMarkdownContent,
-  isParsingContent,
-  onFullscreenContent,
+  isParsingContent = false,
+  onFullscreenContent = () => {},
   borderColor
 }) => {
-  // Enhanced content type detection
-  const isVideoContent = (nft) => {
-    if (!nft?.metadata?.animation_url) return false;
+  // Safely access metadata
+  const metadata = nft.metadata || {};
+  const animationUrl = safeGet(metadata, 'animation_url', '');
+
+  // Enhanced content type detection with robust safety checks
+  const isVideoContent = (url) => {
+    if (!url) return false;
     
-    logger.debug('Video content detection:', {
-      url: nft.metadata.animation_url,
-      mimeType: nft.metadata?.mimeType,
-      contentType: nft.metadata?.content_type,
-      type: nft.metadata?.type,
-      format: nft.metadata?.format
-    });
+    const videoIndicators = [
+      'video/',
+      '.mp4', '.webm', '.avi', '.mov', 
+      'video', 'movie', 'clip'
+    ];
 
-    // Check for video MIME type first
-    if (nft.metadata?.mimeType?.startsWith('video/')) return true;
-    if (nft.metadata?.content_type?.startsWith('video/')) return true;
-
-    // Check file extension in animation_url
-    const url = nft.metadata.animation_url.toLowerCase();
-    if (url.match(/\.(mp4|webm|ogg|mov)$/i)) return true;
-
-    // Check other metadata indicators
-    const format = (nft.metadata?.format || '').toLowerCase();
-    const type = (nft.metadata?.type || '').toLowerCase();
-    
-    if (format.includes('video') || type.includes('video')) return true;
-
-    return false;
+    return videoIndicators.some(indicator => 
+      url.toLowerCase().includes(indicator)
+    );
   };
 
-  // Audio content detection
-  const isAudioContent = (nft) => {
-    if (!nft?.metadata?.animation_url) return false;
+  const isAudioContent = (url) => {
+    if (!url) return false;
     
-    logger.debug('Audio content detection:', {
-      url: nft.metadata.animation_url,
-      mimeType: nft.metadata?.mimeType,
-      contentType: nft.metadata?.content_type,
-      type: nft.metadata?.type,
-      format: nft.metadata?.format
-    });
+    const audioIndicators = [
+      'audio/',
+      '.mp3', '.wav', '.ogg', '.m4a', '.flac',
+      'audio', 'song', 'music', 'track'
+    ];
 
-    // Check MIME types
-    const audioMimeTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp3'];
-    if (audioMimeTypes.includes(nft.metadata?.mimeType)) return true;
-    
-    // Check file extensions
-    const url = nft.metadata.animation_url.toLowerCase();
-    if (url.match(/\.(mp3|wav|ogg|m4a|flac)$/i)) return true;
-
-    // Check metadata for audio-related keywords
-    const format = (nft.metadata?.format || '').toLowerCase();
-    const type = (nft.metadata?.type || '').toLowerCase();
-    const description = (nft.metadata?.description || '').toLowerCase();
-    
-    const audioKeywords = ['audio', 'song', 'music', 'track', 'sound'];
-    if (audioKeywords.some(keyword => 
-      format.includes(keyword) || 
-      type.includes(keyword) || 
-      description.includes(keyword)
-    )) return true;
-
-    return false;
+    return audioIndicators.some(indicator => 
+      url.toLowerCase().includes(indicator)
+    );
   };
 
-  // Content availability checks
-  const hasParsedContent = !!parsedMarkdownContent;
-  const hasAnimation = !!nft.metadata?.animation_url;
-  const hasRawContent = !!nft.metadata?.content;
-  const hasVideo = hasAnimation && isVideoContent(nft);
-  const hasAudio = hasAnimation && isAudioContent(nft);
+  // Robust content checks
+  const hasAnimation = !!animationUrl;
+  const hasVideo = hasAnimation && isVideoContent(animationUrl);
+  const hasAudio = hasAnimation && isAudioContent(animationUrl);
   const hasHostedContent = hasAnimation && !hasVideo && !hasAudio;
+  const hasParsedContent = !!parsedMarkdownContent;
+  const hasRawContent = safeGet(metadata, 'content', false);
 
-  // Debug logging
-  logger.debug('Content detection results:', {
-    hasAnimation,
-    hasVideo,
-    hasAudio,
-    hasHostedContent,
-    animationUrl: nft.metadata?.animation_url,
-    mimeType: nft.metadata?.mimeType
-  });
-
-  // Image rendering logic
+  // Image rendering with error handling
   const renderImage = () => {
     if (isLoading) {
       return (
@@ -139,6 +107,16 @@ const MediaTabPanel = ({
       );
     }
 
+    if (!imageUrl) {
+      return (
+        <Alert status="warning" mb={6}>
+          <AlertIcon />
+          No image available for this artifact
+        </Alert>
+      );
+    }
+
+    // Handle SVG data URLs
     if (typeof imageUrl === 'string' && imageUrl.startsWith('data:image/svg+xml,')) {
       return (
         <Box 
@@ -161,9 +139,26 @@ const MediaTabPanel = ({
         mb={6}
         fallbackSrc="https://via.placeholder.com/400?text=Error+Loading+Image"
         borderRadius="md"
+        onError={(e) => {
+          logger.warn('Image failed to load', { 
+            src: imageUrl, 
+            alt: nft.title 
+          });
+          e.target.src = "https://via.placeholder.com/400?text=Error+Loading+Image";
+        }}
       />
     );
   };
+
+  // Render content or fallback
+  if (!nft || (!hasAnimation && !hasParsedContent && !hasRawContent)) {
+    return (
+      <Alert status="info">
+        <AlertIcon />
+        No media content available for this artifact
+      </Alert>
+    );
+  }
 
   return (
     <Box>
@@ -195,20 +190,23 @@ const MediaTabPanel = ({
                   Cover Image:
                 </Text>
                 <Text fontSize="sm" color={designTokens.inkGrey} fontFamily="Fraunces">
-                  {imageUrl}
+                  {imageUrl || 'No image source'}
                 </Text>
               </Box>
-              {nft.metadata?.animation_url && (
+              {animationUrl && (
                 <Box>
                   <Text fontWeight="medium" fontSize="sm" color={designTokens.softCharcoal}>
                     Content URL:
                   </Text>
                   <Text fontSize="sm" color={designTokens.inkGrey} fontFamily="Fraunces">
-                    {nft.metadata.animation_url}
+                    {animationUrl}
+                    {hasVideo && <Badge ml={2} colorScheme="blue">Video</Badge>}
+                    {hasAudio && <Badge ml={2} colorScheme="green">Audio</Badge>}
+                    {hasHostedContent && <Badge ml={2} colorScheme="purple">Hosted</Badge>}
                   </Text>
                 </Box>
               )}
-              {nft.metadata?.content && (
+              {hasRawContent && (
                 <Box>
                   <Text fontWeight="medium" fontSize="sm" color={designTokens.softCharcoal}>
                     Raw Content:
@@ -222,7 +220,7 @@ const MediaTabPanel = ({
           </AccordionPanel>
         </AccordionItem>
       </Accordion>
-  
+
       {/* Media Type Selection */}
       <Tabs 
         size="sm" 
@@ -289,7 +287,7 @@ const MediaTabPanel = ({
             </Tab>
           )}
         </TabList>
-  
+
         <TabPanels>
           {/* Cover Image Display */}
           <TabPanel p={0} pt={4}>
@@ -314,8 +312,8 @@ const MediaTabPanel = ({
           {hasVideo && (
             <TabPanel p={0} pt={4}>
               <VideoRenderer
-                src={nft.metadata.animation_url}
-                onFullscreen={() => onFullscreenContent?.(nft.metadata.animation_url)}
+                src={animationUrl}
+                onFullscreen={() => onFullscreenContent?.(animationUrl)}
                 designTokens={designTokens}
               />
             </TabPanel>
@@ -325,13 +323,13 @@ const MediaTabPanel = ({
           {hasAudio && (
             <TabPanel p={0} pt={4}>
               <AudioRenderer
-                src={nft.metadata.animation_url}
-                onFullscreen={() => onFullscreenContent?.(nft.metadata.animation_url)}
+                src={animationUrl}
+                onFullscreen={() => onFullscreenContent?.(animationUrl)}
                 designTokens={designTokens}
               />
             </TabPanel>
           )}
-  
+
           {/* Hosted Content Display */}
           {hasHostedContent && (
             <TabPanel p={0} pt={4}>
@@ -345,7 +343,7 @@ const MediaTabPanel = ({
                 bg={designTokens.paperWhite}
               >
                 <iframe
-                  src={nft.metadata.animation_url}
+                  src={animationUrl}
                   width="100%"
                   height="100%"
                   style={{ border: 'none' }}
@@ -356,7 +354,7 @@ const MediaTabPanel = ({
                   position="absolute"
                   top={2}
                   right={2}
-                  onClick={() => onFullscreenContent?.(nft.metadata.animation_url)}
+                  onClick={() => onFullscreenContent?.(animationUrl)}
                   aria-label="View fullscreen"
                   colorScheme="blackAlpha"
                   size="sm"
@@ -366,12 +364,12 @@ const MediaTabPanel = ({
               </Box>
             </TabPanel>
           )}
-  
+
           {/* Raw Content Display */}
           {hasRawContent && (
             <TabPanel p={0} pt={4}>
               <ArticleRenderer
-                content={nft.metadata.content}
+                content={metadata.content}
                 onFullscreen={onFullscreenContent}
                 isRawContent={true}
                 removeHeightLimit={true}
@@ -379,7 +377,7 @@ const MediaTabPanel = ({
               />
             </TabPanel>
           )}
-  
+
           {/* Rendered Content Display */}
           {hasParsedContent && (
             <TabPanel p={0} pt={4}>
