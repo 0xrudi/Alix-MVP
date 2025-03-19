@@ -69,8 +69,20 @@ const AttributesPanel = ({ nft, designTokens = {} }) => {
     setIsRefreshing(true);
     
     try {
-      // Use the metadata processor to fetch updated metadata
-      const enhancedNFT = await processNFTMetadata(nft, nft.walletId);
+      // Ensure contract address is properly normalized before passing to processor
+      const normalizedNFT = {
+        ...nft,
+        contract: {
+          ...nft.contract,
+          // Handle object-type addresses from Moralis API response
+          address: typeof nft.contract.address === 'object' && nft.contract.address._value
+            ? normalizeBaseAddress(nft.contract.address._value)
+            : normalizeBaseAddress(nft.contract.address)
+        }
+      };
+      
+      // Use the enhanced metadata processor
+      const enhancedNFT = await processNFTMetadata(normalizedNFT, nft.walletId);
       
       // Check if metadata was actually enhanced
       const hadAttributesBefore = 
