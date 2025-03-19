@@ -1,5 +1,4 @@
 import { 
-    normalizeGatewayUrl, 
     needsCorsProxy, 
     fetchWithCorsProxy, 
     fetchArweaveContent 
