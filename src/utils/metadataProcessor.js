@@ -10,157 +10,337 @@ import { supabase } from './supabase';
  * @returns {Promise<Object>} - The enhanced NFT object with processed metadata
  */
 export const processNFTMetadata = async (nft, walletId) => {
-  if (!nft) return null;
-  
-  // Skip processing if the metadata is already present and has attributes
-  if (nft.metadata && 
-      (Array.isArray(nft.metadata.attributes) || 
-       typeof nft.metadata.attributes === 'object') && 
-      Object.keys(nft.metadata.attributes || {}).length > 0) {
-    logger.debug('Metadata already has attributes, skipping processing', {
+    if (!nft) return null;
+    
+    // Skip processing if the metadata is already present and has attributes
+    if (nft.metadata && 
+        (Array.isArray(nft.metadata.attributes) || 
+         typeof nft.metadata.attributes === 'object') && 
+        Object.keys(nft.metadata.attributes || {}).length > 0) {
+      logger.debug('Metadata already has attributes, skipping processing', {
+        tokenId: nft.id?.tokenId,
+        contractAddress: nft.contract?.address
+      });
+      return nft;
+    }
+    
+    logger.log('Processing metadata for NFT:', {
       tokenId: nft.id?.tokenId,
-      contractAddress: nft.contract?.address
+      contractAddress: nft.contract?.address,
+      hasMetadata: !!nft.metadata,
+      mediaGateway: nft.media?.[0]?.gateway
     });
-    return nft;
-  }
-  
-  logger.log('Processing metadata for NFT:', {
-    tokenId: nft.id?.tokenId,
-    contractAddress: nft.contract?.address,
-    hasMetadata: !!nft.metadata,
-    mediaGateway: nft.media?.[0]?.gateway
-  });
-  
-  // Check for potential metadata URLs
-  const potentialMetadataUrls = [
-    nft.tokenUri,
-    nft.metadata?.image_url,
-    nft.metadata?.animation_url,
-    nft.media?.[0]?.gateway,
-    nft.metadata?.external_url
-  ].filter(Boolean);
-  
-  // Arweave gateway URLs often contain metadata
-  const arweaveUrls = potentialMetadataUrls.filter(url => 
-    typeof url === 'string' && (
-      url.includes('arweave.net') || 
-      url.startsWith('ar://') ||
-      // Check for raw arweave transaction IDs
-      (url.match(/^[a-zA-Z0-9_-]{43}$/) && !url.includes('/'))
-    )
-  );
-  
-  // IPFS gateway URLs might also contain metadata
-  const ipfsUrls = potentialMetadataUrls.filter(url => 
-    typeof url === 'string' && (
-      url.includes('ipfs.io') || 
-      url.startsWith('ipfs://') ||
-      url.includes('ipfs/')
-    )
-  );
-  
-  // Try to fetch metadata from Arweave first, then IPFS
-  const metadataUrls = [...arweaveUrls, ...ipfsUrls];
-  
-  if (metadataUrls.length === 0) {
-    logger.debug('No potential metadata URLs found for NFT', {
-      tokenId: nft.id?.tokenId,
-      contractAddress: nft.contract?.address
-    });
-    return nft;
-  }
-  
-  // Try each URL until we find valid metadata
-  for (const url of metadataUrls) {
-    try {
-      logger.debug('Trying to fetch metadata from:', url);
-      
-      const normalizedUrl = normalizeGatewayUrl(url);
-      if (!normalizedUrl) continue;
-      
-      // Use CORS proxy if needed
-      let response;
+    
+    // Check for potential metadata URLs
+    const potentialMetadataUrls = [
+      nft.tokenUri,
+      nft.metadata?.image_url,
+      nft.metadata?.animation_url,
+      nft.media?.[0]?.gateway,
+      nft.metadata?.external_url
+    ].filter(Boolean);
+    
+    // Arweave gateway URLs often contain metadata
+    const arweaveUrls = potentialMetadataUrls.filter(url => 
+      typeof url === 'string' && (
+        url.includes('arweave.net') || 
+        url.startsWith('ar://') ||
+        // Check for raw arweave transaction IDs
+        (url.match(/^[a-zA-Z0-9_-]{43}$/) && !url.includes('/'))
+      )
+    );
+    
+    // IPFS gateway URLs might also contain metadata
+    const ipfsUrls = potentialMetadataUrls.filter(url => 
+      typeof url === 'string' && (
+        url.includes('ipfs.io') || 
+        url.startsWith('ipfs://') ||
+        url.includes('ipfs/')
+      )
+    );
+    
+    // Try to fetch metadata from Arweave first, then IPFS
+    const metadataUrls = [...arweaveUrls, ...ipfsUrls];
+    
+    if (metadataUrls.length === 0) {
+      logger.debug('No potential metadata URLs found for NFT', {
+        tokenId: nft.id?.tokenId,
+        contractAddress: nft.contract?.address
+      });
+      return nft;
+    }
+    
+    // Try each URL until we find valid metadata
+    for (const url of metadataUrls) {
       try {
-        if (needsCorsProxy(normalizedUrl)) {
-          response = await fetchWithCorsProxy(normalizedUrl);
-        } else {
-          response = await fetch(normalizedUrl, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json'
-            },
-            timeout: 5000
-          });
+        logger.debug('Trying to fetch metadata from:', url);
+        
+        const normalizedUrl = normalizeGatewayUrl(url);
+        if (!normalizedUrl) continue;
+        
+        // Use proper fetching method based on URL type
+        let response;
+        try {
+          // For Arweave URLs, use the specialized fetcher
+          if (url.includes('arweave.net') || url.startsWith('ar://')) {
+            const arweaveData = await fetchArweaveContent(normalizedUrl);
+            if (arweaveData) {
+              // Check if it's podcast metadata and process accordingly
+              if (isPodcastMetadata(arweaveData)) {
+                logger.debug('Detected podcast metadata format', { url });
+                
+                const podcastData = processPodcastMetadata(arweaveData);
+                
+                // Merge with existing metadata
+                const enhancedMetadata = {
+                  ...nft.metadata,
+                  ...podcastData,
+                  metadata_source: normalizedUrl
+                };
+                
+                // Update the NFT object
+                const enhancedNFT = {
+                  ...nft,
+                  title: enhancedMetadata.name || nft.title,
+                  description: enhancedMetadata.description || nft.description,
+                  metadata: enhancedMetadata
+                };
+                
+                // If we have a wallet ID, update the metadata in Supabase
+                if (walletId) {
+                  await saveMetadataToSupabase(enhancedNFT, walletId);
+                }
+                
+                return enhancedNFT;
+              }
+              
+              // Continue with normal metadata processing
+              response = new Response(JSON.stringify(arweaveData), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            } else {
+              // If Arweave fetch failed, continue to next URL
+              continue;
+            }
+          } else if (needsCorsProxy(normalizedUrl)) {
+            // Use CORS proxy for other URLs that need it
+            response = await fetchWithCorsProxy(normalizedUrl, {
+              maxRetries: 3,
+              timeout: 8000
+            });
+          } else {
+            // Direct fetch for URLs that don't need proxying
+            response = await fetch(normalizedUrl, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json'
+              },
+              timeout: 5000
+            });
+          }
+        } catch (fetchError) {
+          logger.warn('Error fetching from URL', { url: normalizedUrl, error: fetchError.message });
+          continue;
         }
-      } catch (fetchError) {
-        logger.warn('Error fetching from URL', { url: normalizedUrl, error: fetchError.message });
-        continue;
+        
+        if (!response.ok) {
+          logger.warn('Failed to fetch metadata', { url, status: response.status });
+          continue;
+        }
+        
+        const contentType = response.headers.get('content-type');
+        
+        // Only process JSON responses
+        if (!contentType || !contentType.includes('application/json')) {
+          logger.debug('Response is not JSON', { url, contentType });
+          continue;
+        }
+        
+        const data = await response.json();
+        
+        if (!data) {
+          logger.debug('Empty response data', { url });
+          continue;
+        }
+        
+        logger.debug('Successfully fetched metadata', { 
+          url, 
+          dataKeys: Object.keys(data) 
+        });
+        
+        // Check for podcast-specific metadata
+        if (isPodcastMetadata(data)) {
+          logger.debug('Detected podcast metadata format', { url });
+          
+          const podcastData = processPodcastMetadata(data);
+          
+          // Merge with existing metadata
+          const enhancedMetadata = {
+            ...nft.metadata,
+            ...podcastData,
+            metadata_source: normalizedUrl
+          };
+          
+          // Update the NFT object
+          const enhancedNFT = {
+            ...nft,
+            title: enhancedMetadata.name || nft.title,
+            description: enhancedMetadata.description || nft.description,
+            metadata: enhancedMetadata
+          };
+          
+          // If we have a wallet ID, update the metadata in Supabase
+          if (walletId) {
+            await saveMetadataToSupabase(enhancedNFT, walletId);
+          }
+          
+          return enhancedNFT;
+        }
+        
+        // Process regular metadata
+        const enhancedMetadata = {
+          ...nft.metadata,
+          name: data.name || nft.metadata?.name,
+          description: data.description || nft.metadata?.description,
+          image: data.image || data.image_url || nft.metadata?.image,
+          attributes: data.attributes || data.traits || nft.metadata?.attributes || [],
+          external_url: data.external_url || nft.metadata?.external_url,
+          animation_url: data.animation_url || nft.metadata?.animation_url,
+          // Add any other fields of interest here
+          background_color: data.background_color || nft.metadata?.background_color,
+        };
+        
+        // Store the source of the enhanced metadata
+        enhancedMetadata.metadata_source = normalizedUrl;
+        
+        // Update the NFT object
+        const enhancedNFT = {
+          ...nft,
+          title: enhancedMetadata.name || nft.title,
+          description: enhancedMetadata.description || nft.description,
+          metadata: enhancedMetadata
+        };
+        
+        // If we have a wallet ID, update the metadata in Supabase
+        if (walletId) {
+          await saveMetadataToSupabase(enhancedNFT, walletId);
+        }
+        
+        return enhancedNFT;
+      } catch (error) {
+        logger.error('Error processing metadata URL', { url, error: error.message });
+        // Continue to next URL
       }
+    }
+    
+    // If all URLs failed, return the original NFT
+    return nft;
+  };
+  
+  /**
+   * Check if metadata appears to be from a podcast
+   * @param {Object} metadata - The metadata to check 
+   * @returns {boolean} True if it appears to be podcast metadata
+   */
+  const isPodcastMetadata = (metadata) => {
+    return !!(
+      metadata.podcast || 
+      metadata.episodeTitle || 
+      metadata.episodeNumber ||
+      (metadata.primaryMedia && metadata.primaryMedia.kind === 'AUDIO') ||
+      (metadata.primaryMedia && metadata.primaryMedia.type && metadata.primaryMedia.type.includes('audio')) ||
+      (Array.isArray(metadata.credits) && metadata.credits.length > 0)
+    );
+  };
+  
+  /**
+   * Process metadata specifically for podcast NFTs
+   * @param {Object} metadata - The raw metadata 
+   * @returns {Object} Enhanced metadata with extracted fields
+   */
+  const processPodcastMetadata = (metadata) => {
+    if (!metadata) return {};
+    
+    // Extract standard fields
+    const processed = {
+      name: metadata.name || metadata.episodeTitle,
+      description: metadata.description,
+      image: metadata.image,
+      animation_url: metadata.animation_url,
+      external_url: metadata.external_url,
+      attributes: []
+    };
+    
+    // Extract podcast-specific fields
+    if (metadata.podcast || metadata.collection) {
+      processed.attributes.push({
+        trait_type: "Collection",
+        value: metadata.podcast || metadata.collection
+      });
+    }
+    
+    if (metadata.episodeNumber) {
+      processed.attributes.push({
+        trait_type: "Episode Number",
+        value: metadata.episodeNumber
+      });
+    }
+    
+    // Process credits
+    if (Array.isArray(metadata.credits)) {
+      metadata.credits.forEach(credit => {
+        processed.attributes.push({
+          trait_type: `${credit.role.charAt(0) + credit.role.slice(1).toLowerCase()}`,
+          value: credit.name
+        });
+      });
+    }
+    
+    // Convert any artwork/media objects to direct URLs
+    if (metadata.artwork && metadata.artwork.uri) {
+      processed.image = metadata.artwork.uri;
+    }
+    
+    if (metadata.primaryMedia && metadata.primaryMedia.uri) {
+      processed.animation_url = metadata.primaryMedia.uri;
+      processed.mediaType = metadata.primaryMedia.type || 'audio/mpeg';
       
-      if (!response.ok) {
-        logger.warn('Failed to fetch metadata', { url, status: response.status });
-        continue;
-      }
-      
-      const contentType = response.headers.get('content-type');
-      
-      // Only process JSON responses
-      if (!contentType || !contentType.includes('application/json')) {
-        logger.debug('Response is not JSON', { url, contentType });
-        continue;
-      }
-      
-      const data = await response.json();
-      
-      if (!data) {
-        logger.debug('Empty response data', { url });
-        continue;
-      }
-      
-      logger.debug('Successfully fetched metadata', { 
-        url, 
-        dataKeys: Object.keys(data) 
+      processed.attributes.push({
+        trait_type: "Media Type",
+        value: metadata.primaryMedia.kind || "Audio"
       });
       
-      // Extract metadata fields we're interested in
-      const enhancedMetadata = {
-        ...nft.metadata,
-        name: data.name || nft.metadata?.name,
-        description: data.description || nft.metadata?.description,
-        image: data.image || data.image_url || nft.metadata?.image,
-        attributes: data.attributes || data.traits || nft.metadata?.attributes || [],
-        external_url: data.external_url || nft.metadata?.external_url,
-        animation_url: data.animation_url || nft.metadata?.animation_url,
-        // Add any other fields of interest here
-        background_color: data.background_color || nft.metadata?.background_color,
-      };
-      
-      // Store the source of the enhanced metadata
-      enhancedMetadata.metadata_source = normalizedUrl;
-      
-      // Update the NFT object
-      const enhancedNFT = {
-        ...nft,
-        title: enhancedMetadata.name || nft.title,
-        description: enhancedMetadata.description || nft.description,
-        metadata: enhancedMetadata
-      };
-      
-      // If we have a wallet ID, update the metadata in Supabase
-      if (walletId) {
-        await saveMetadataToSupabase(enhancedNFT, walletId);
+      if (metadata.primaryMedia.duration) {
+        const minutes = Math.floor(metadata.primaryMedia.duration / 60);
+        const seconds = Math.round(metadata.primaryMedia.duration % 60);
+        processed.attributes.push({
+          trait_type: "Duration",
+          value: `${minutes}:${seconds.toString().padStart(2, '0')}`
+        });
       }
-      
-      return enhancedNFT;
-    } catch (error) {
-      logger.error('Error processing metadata URL', { url, error: error.message });
-      // Continue to next URL
     }
-  }
-  
-  // If all URLs failed, return the original NFT
-  return nft;
-};
+    
+    // Process properties
+    if (metadata.properties) {
+      Object.entries(metadata.properties).forEach(([key, value]) => {
+        // Handle both string values and nested objects
+        if (typeof value === 'object' && value !== null) {
+          processed.attributes.push({
+            trait_type: value.name || key,
+            value: value.value
+          });
+        } else if (value !== null && value !== undefined) {
+          processed.attributes.push({
+            trait_type: key,
+            value: value
+          });
+        }
+      });
+    }
+    
+    return processed;
+  };
 
 /**
  * Save enhanced metadata to Supabase

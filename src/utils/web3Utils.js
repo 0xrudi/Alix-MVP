@@ -361,10 +361,15 @@ export const fetchNFTs = async (address, network, cursor = null, limit = 100) =>
             tokenAddress: nft.tokenAddress
           });
 
+          // Properly handle the object format for contract address
+          const contractAddress = typeof nft.tokenAddress === 'object' && nft.tokenAddress !== null && nft.tokenAddress._value
+            ? normalizeBaseAddress(nft.tokenAddress._value)
+            : normalizeBaseAddress(nft.tokenAddress);
+
           return {
             id: { tokenId: nft.tokenId },
             contract: { 
-              address: normalizeBaseAddress(nft.tokenAddress),
+              address: contractAddress,
               name: nft.name,
               symbol: nft.symbol,
               type: nft.contractType
@@ -490,14 +495,20 @@ const normalizeBaseAddress = (address) => {
       logger.error('Attempted to normalize null/undefined Base address');
       return '';
     }
-    if (typeof address !== 'string') {
+    
+    // Handle case where address is an object with _value property (from Moralis API)
+    if (typeof address === 'object' && address !== null && address._value) {
+      address = address._value;
+      logger.debug('Extracted address from object format:', address);
+    } else if (typeof address !== 'string') {
       logger.error('Invalid address type:', {
         address,
         type: typeof address
       });
-      // Convert to string if possible
+      // Try to convert to string if possible
       address = String(address);
     }
+    
     // Remove '0x' prefix if it exists and convert to lowercase
     const cleanAddress = address.toLowerCase().replace('0x', '');
     // Add '0x' prefix back and return
