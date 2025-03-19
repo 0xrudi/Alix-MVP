@@ -21,6 +21,7 @@ import { processNFTMetadata } from '../../../utils/metadataProcessor';
 import { updateNFT } from '../../redux/slices/nftSlice';
 import { useCustomToast } from '../../../utils/toastUtils';
 import { logger } from '../../../utils/logger';
+import { normalizeBaseAddress } from '../../../utils/web3Utils';
 
 const AttributesPanel = ({ nft, designTokens = {} }) => {
   const dispatch = useDispatch();
