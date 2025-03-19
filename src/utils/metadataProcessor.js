@@ -1,7 +1,11 @@
-// src/utils/metadataProcessor.js
-import { logger } from './logger';
-import { fetchWithCorsProxy, needsCorsProxy, fetchArweaveContent } from './corsProxy';
-import { supabase } from './supabase';
+import { 
+    normalizeGatewayUrl, 
+    needsCorsProxy, 
+    fetchWithCorsProxy, 
+    fetchArweaveContent 
+  } from './corsProxy';
+  import { logger } from './logger';
+  import { supabase } from './supabase';
 
 /**
  * Process and enhance NFT metadata with data from IPFS/Arweave gateways
