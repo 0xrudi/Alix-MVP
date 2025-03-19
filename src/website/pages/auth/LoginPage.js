@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../../context/auth/AuthContext';
-import { supabase } from '../../../app/utils/supabase';
-import { logger } from '../../../app/utils/logger';
+import { supabase } from '../../../utils/supabase';
+import { logger } from '../../../utils/logger';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');

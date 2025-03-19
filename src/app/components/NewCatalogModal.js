@@ -29,9 +29,12 @@ import { FaTimes } from 'react-icons/fa';
 import { useDispatch, useSelector } from 'react-redux';
 import { addCatalog } from '../redux/slices/catalogSlice';
 import { addFolder, addCatalogToFolder, selectAllFolders } from '../redux/slices/folderSlice';
-import { useCustomToast } from '../utils/toastUtils';
-import { logger } from '../utils/logger';
+import { useCustomToast } from '../../utils/toastUtils';
+import { logger } from '../../utils/logger';
 import { Select as ChakraReactSelect } from 'chakra-react-select';
+import { supabase } from '../../utils/supabase';
+import { fetchWithCorsProxy } from '../../utils/corsProxy';
+
 
 // Helper function to truncate addresses
 const truncateAddress = (address) => {
@@ -352,64 +355,198 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
       handleFormUpdate({ showError: true });
       return;
     }
-  
+
     if (formState.isSubmitting) {
       return;
     }
-  
+
     try {
       handleFormUpdate({ isSubmitting: true });
-      const newCatalogId = `catalog-${Date.now()}`;
-  
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+
       logger.log('Starting catalog creation process:', {
         catalogName: formState.catalogName,
         selectedFolders: formState.selectedFolders,
-        newCatalogId
       });
-  
-      // Create catalog first
-      await dispatch(addCatalog({
-        id: newCatalogId,
-        name: formState.catalogName.trim(),
-        nftIds: formState.artifacts.map(artifact => ({
-          tokenId: artifact.id.tokenId,
-          contractAddress: artifact.contract.address,
-          network: artifact.network,
-          walletId: artifact.walletId
-        }))
-      }));
-  
-      logger.log('Catalog created successfully:', {
+
+      // First create the catalog in Supabase and let it generate the UUID
+      const { data: newCatalog, error: catalogError } = await supabase
+        .from('catalogs')
+        .insert({
+          // Omit the id field - Supabase will generate UUID
+          user_id: user.id,
+          name: formState.catalogName.trim(),
+          description: "",
+          is_system: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select() // Get the created catalog with generated UUID
+        .single();
+      
+      if (catalogError) {
+        logger.error('Supabase catalog creation error:', {
+          error: catalogError,
+          message: catalogError.message,
+          details: catalogError.details
+        });
+        
+        showErrorToast(
+          "Error Creating Catalog",
+          "Failed to create catalog in database. Please try again."
+        );
+        return;
+      }
+      
+      // Catalog created successfully, use the Supabase-generated UUID
+      const newCatalogId = newCatalog.id;
+      logger.log('Catalog created successfully in Supabase:', {
         catalogId: newCatalogId,
         name: formState.catalogName.trim()
       });
-  
-      // Handle folder assignments
-      logger.log('Starting folder assignments:', {
-        folderCount: formState.selectedFolders.length,
-        folders: formState.selectedFolders
-      });
-  
-      for (const folderInfo of formState.selectedFolders) {
-        // Add to existing folder
-        await dispatch(addCatalogToFolder({
-          folderId: folderInfo.id,
-          catalogId: newCatalogId
-        }));
+
+      // Prepare NFT IDs for the catalog
+      const nftIds = formState.artifacts.map(artifact => ({
+        tokenId: artifact.id.tokenId,
+        contractAddress: artifact.contract.address,
+        network: artifact.network,
+        walletId: artifact.walletId
+      }));
+
+      // Now update Redux with the correct UUID from Supabase
+      dispatch(addCatalog({
+        id: newCatalogId,
+        name: formState.catalogName.trim(),
+        nftIds: nftIds
+      }));
+
+      // Process artifacts
+      let artifactSuccessCount = 0;
+      if (formState.artifacts.length > 0) {
+        // Process artifacts in batches
+        const BATCH_SIZE = 5;
+        
+        for (let i = 0; i < formState.artifacts.length; i += BATCH_SIZE) {
+          const batch = formState.artifacts.slice(i, i + BATCH_SIZE);
+          
+          for (const artifact of batch) {
+            try {
+              // Check if the artifact already exists
+              const { data: existingArtifact } = await supabase
+                .from('artifacts')
+                .select('id')
+                .eq('token_id', artifact.id.tokenId)
+                .eq('contract_address', artifact.contract.address)
+                .eq('wallet_id', artifact.walletId)
+                .maybeSingle();
+              
+              let artifactId;
+              
+              if (existingArtifact) {
+                artifactId = existingArtifact.id;
+              } else {
+                // For new artifacts, let Supabase generate the UUID
+                let mediaUrl = null;
+                if (artifact.metadata?.image) {
+                  mediaUrl = artifact.metadata.image;
+                } else if (artifact.media?.[0]?.gateway) {
+                  mediaUrl = artifact.media[0].gateway;
+                }
+                
+                const { data: newArtifact, error: insertError } = await supabase
+                  .from('artifacts')
+                  .insert({
+                    // Omit the id field - Supabase will generate UUID
+                    token_id: artifact.id.tokenId,
+                    contract_address: artifact.contract.address,
+                    wallet_id: artifact.walletId,
+                    network: artifact.network || 'unknown',
+                    is_spam: artifact.isSpam || false,
+                    title: artifact.title || '',
+                    description: artifact.description || '',
+                    media_url: mediaUrl,
+                    metadata: typeof artifact.metadata === 'object' ? artifact.metadata : {}
+                  })
+                  .select('id')
+                  .single();
+                  
+                if (insertError) {
+                  logger.error('Error creating artifact:', insertError);
+                  continue;
+                }
+                
+                artifactId = newArtifact.id;
+              }
+              
+              // Create catalog-artifact relationship
+              const { error: relError } = await supabase
+                .from('catalog_artifacts')
+                .insert({
+                  catalog_id: newCatalogId,
+                  artifact_id: artifactId
+                });
+                
+              if (relError) {
+                logger.error('Error creating catalog-artifact relationship:', relError);
+                continue;
+              }
+              
+              artifactSuccessCount++;
+            } catch (artifactError) {
+              logger.error('Error processing artifact for catalog:', artifactError);
+            }
+          }
+          
+          // Small delay between batches
+          if (i + BATCH_SIZE < formState.artifacts.length) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
       }
-  
+
+      // Handle folder assignments
+      let folderSuccessCount = 0;
+      if (formState.selectedFolders.length > 0) {
+        for (const folderInfo of formState.selectedFolders) {
+          try {
+            // Add to Redux
+            dispatch(addCatalogToFolder({
+              folderId: folderInfo.id,
+              catalogId: newCatalogId
+            }));
+            
+            // Add to Supabase
+            const { error: folderError } = await supabase
+              .from('catalog_folders')
+              .insert({
+                folder_id: folderInfo.id,
+                catalog_id: newCatalogId
+              });
+              
+            if (folderError) {
+              logger.error('Error assigning catalog to folder:', folderError);
+            } else {
+              folderSuccessCount++;
+            }
+          } catch (folderError) {
+            logger.error(`Error adding catalog to folder ${folderInfo.id}:`, folderError);
+          }
+        }
+      }
+
       logger.log('Catalog creation completed:', {
         catalogId: newCatalogId,
         name: formState.catalogName,
-        assignedFolders: formState.selectedFolders.map(f => ({
-          id: f.id,
-          name: f.name
-        }))
+        artifactsAdded: artifactSuccessCount,
+        folderAssignments: folderSuccessCount
       });
-  
+
       showSuccessToast(
         "Catalog Created",
-        `Created catalog "${formState.catalogName.trim()}" with ${formState.artifacts.length} artifacts`
+        `Created catalog "${formState.catalogName.trim()}" with ${artifactSuccessCount} artifacts`
       );
       
       onClose();
@@ -421,10 +558,111 @@ const NewCatalogModal = ({ isOpen, onClose, selectedArtifacts: initialArtifacts 
       });
       showErrorToast(
         "Error",
-        "Failed to create catalog"
+        "Failed to create catalog: " + (error.message || "Unknown error")
       );
     } finally {
       handleFormUpdate({ isSubmitting: false });
+    }
+  };
+
+  // Helper function to process artifacts in batches
+  const processArtifacts = async (artifacts, catalogId, userId) => {
+    // Process in smaller batches to avoid overwhelming Supabase
+    const BATCH_SIZE = 5;
+    let successCount = 0;
+    
+    // Process artifacts in batches
+    for (let i = 0; i < artifacts.length; i += BATCH_SIZE) {
+      const batch = artifacts.slice(i, i + BATCH_SIZE);
+      const batchPromises = batch.map(artifact => processArtifact(artifact, catalogId, userId));
+      
+      // Wait for this batch to complete before processing the next
+      const results = await Promise.allSettled(batchPromises);
+      
+      // Count successful operations
+      successCount += results.filter(result => result.status === 'fulfilled' && result.value).length;
+    }
+    
+    return successCount;
+  };
+
+  // Process a single artifact
+  const processArtifact = async (artifact, catalogId, userId) => {
+    try {
+      // Check if the artifact already exists
+      const { data: existingArtifact, error: findError } = await supabase
+        .from('artifacts')
+        .select('id')
+        .eq('token_id', artifact.id.tokenId)
+        .eq('contract_address', artifact.contract.address)
+        .eq('wallet_id', artifact.walletId)
+        .maybeSingle();
+        
+      if (findError) {
+        logger.error('Error finding artifact:', findError);
+        return false;
+      }
+      
+      let artifactId;
+      
+      if (existingArtifact) {
+        artifactId = existingArtifact.id;
+      } else {
+        // Get media URL - simplified to avoid CORS issues
+        let mediaUrl = null;
+        try {
+          if (artifact.metadata?.image) {
+            mediaUrl = artifact.metadata.image;
+          } else if (artifact.media?.[0]?.gateway) {
+            mediaUrl = artifact.media[0].gateway;
+          }
+        } catch (mediaError) {
+          logger.warn('Error processing media URL:', mediaError);
+          // Continue with null mediaUrl
+        }
+        
+        // Create new artifact record
+        const { data: newArtifact, error: insertError } = await supabase
+          .from('artifacts')
+          .insert([{
+            token_id: artifact.id.tokenId,
+            contract_address: artifact.contract.address,
+            wallet_id: artifact.walletId,
+            network: artifact.network,
+            is_spam: artifact.isSpam || false,
+            title: artifact.title || '',
+            description: artifact.description || '',
+            media_url: mediaUrl,
+            metadata: typeof artifact.metadata === 'object' ? artifact.metadata : {}
+          }])
+          .select('id')
+          .single();
+          
+        if (insertError) {
+          logger.error('Error creating artifact:', insertError);
+          return false;
+        }
+        
+        artifactId = newArtifact.id;
+      }
+      
+      // Create catalog-artifact relationship
+      const { error: relError } = await supabase
+        .from('catalog_artifacts')
+        .insert([{
+          catalog_id: catalogId,
+          artifact_id: artifactId
+        }]);
+        
+      if (relError) {
+        logger.error('Error creating catalog-artifact relationship:', relError);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Error processing artifact:', error);
+      return false;
     }
   };
 

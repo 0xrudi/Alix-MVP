@@ -20,7 +20,7 @@ import {
 import { FaExpand } from 'react-icons/fa';
 import ArticleRenderer from '../ContentRenderers/ArticleRenderer';
 import VideoRenderer from '../ContentRenderers/VideoRenderer';
-import { logger } from './../../utils/logger';
+import { logger } from '../../../utils/logger';
 
 // Design system colors
 const designTokens = {

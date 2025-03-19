@@ -1,26 +1,37 @@
-// src/redux/slices/folderSlice.js
+// src/redux/slices/enhancedFolderSlice.js
 import { createSlice, createSelector } from '@reduxjs/toolkit';
-import { logger } from '../../utils/logger';
+import { logger } from '../../../utils/logger';
+import { 
+  fetchUserFolders,
+  createFolder,
+  updateFolderDetails,
+  deleteFolder,
+  addCatalogToFolderThunk,
+  removeCatalogFromFolderThunk,
+  moveCatalogToFoldersThunk
+} from '../thunks/folderThunks';
 
 const initialState = {
   folders: {}, // { folderId: { id, name, description, createdAt, updatedAt } }
   relationships: {}, // { folderId: string[] } // Array of catalog IDs
   loading: false,
-  error: null
+  error: null,
+  lastUpdated: null // Timestamp of the last update
 };
 
 const folderSlice = createSlice({
   name: 'folders',
   initialState,
   reducers: {
+    // Original reducers remain the same
     addFolder: (state, action) => {
       const { id, name, description = '' } = action.payload;
       state.folders[id] = {
         id,
         name,
         description,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: action.payload.createdAt || new Date().toISOString(),
+        updatedAt: action.payload.updatedAt || new Date().toISOString()
       };
       // Initialize empty relationships array
       state.relationships[id] = [];
@@ -31,8 +42,8 @@ const folderSlice = createSlice({
       const folder = state.folders[id];
       
       if (folder) {
-        folder.name = name;
-        folder.description = description;
+        folder.name = name !== undefined ? name : folder.name;
+        folder.description = description !== undefined ? description : folder.description;
         folder.updatedAt = new Date().toISOString();
         
         // Update relationships if catalogIds provided
@@ -97,7 +108,115 @@ const folderSlice = createSlice({
         }
       });
       logger.log('Moved catalog to folders:', { catalogId, folderIds });
+    },
+    
+    clearFolderState: (state) => {
+      state.folders = {};
+      state.relationships = {};
+      state.loading = false;
+      state.error = null;
+      state.lastUpdated = null;
     }
+  },
+  extraReducers: (builder) => {
+    // Handle fetchUserFolders thunk
+    builder
+      .addCase(fetchUserFolders.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchUserFolders.fulfilled, (state) => {
+        state.loading = false;
+        state.lastUpdated = new Date().toISOString();
+      })
+      .addCase(fetchUserFolders.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message;
+      })
+    
+    // Handle createFolder thunk
+    .addCase(createFolder.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    })
+    .addCase(createFolder.fulfilled, (state) => {
+      state.loading = false;
+      state.lastUpdated = new Date().toISOString();
+    })
+    .addCase(createFolder.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.error.message;
+    })
+
+    // Handle updateFolderDetails thunk
+    .addCase(updateFolderDetails.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    })
+    .addCase(updateFolderDetails.fulfilled, (state) => {
+      state.loading = false;
+      state.lastUpdated = new Date().toISOString();
+    })
+    .addCase(updateFolderDetails.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.error.message;
+    })
+
+    // Handle deleteFolder thunk
+    .addCase(deleteFolder.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    })
+    .addCase(deleteFolder.fulfilled, (state) => {
+      state.loading = false;
+      state.lastUpdated = new Date().toISOString();
+    })
+    .addCase(deleteFolder.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.error.message;
+    })
+
+    // Handle addCatalogToFolderThunk
+    .addCase(addCatalogToFolderThunk.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    })
+    .addCase(addCatalogToFolderThunk.fulfilled, (state) => {
+      state.loading = false;
+      state.lastUpdated = new Date().toISOString();
+    })
+    .addCase(addCatalogToFolderThunk.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.error.message;
+    })
+
+    // Handle removeCatalogFromFolderThunk
+    .addCase(removeCatalogFromFolderThunk.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    })
+    .addCase(removeCatalogFromFolderThunk.fulfilled, (state) => {
+      state.loading = false;
+      state.lastUpdated = new Date().toISOString();
+    })
+    .addCase(removeCatalogFromFolderThunk.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.error.message;
+    })
+
+    // Handle moveCatalogToFoldersThunk
+    .addCase(moveCatalogToFoldersThunk.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    })
+    .addCase(moveCatalogToFoldersThunk.fulfilled, (state) => {
+      state.loading = false;
+      state.lastUpdated = new Date().toISOString();
+    })
+    .addCase(moveCatalogToFoldersThunk.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.error.message;
+    });
   }
 });
 
@@ -136,13 +255,20 @@ export const selectFoldersForCatalog = createSelector(
   }
 );
 
+export const selectFolderLoadingState = state => ({
+  loading: state.folders.loading,
+  error: state.folders.error,
+  lastUpdated: state.folders.lastUpdated
+});
+
 export const {
   addFolder,
   updateFolder,
   removeFolder,
   addCatalogToFolder,
   removeCatalogFromFolder,
-  moveCatalogToFolders
+  moveCatalogToFolders,
+  clearFolderState
 } = folderSlice.actions;
 
 export default folderSlice.reducer;

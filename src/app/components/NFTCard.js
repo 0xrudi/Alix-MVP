@@ -1,3 +1,4 @@
+// src/app/components/NFTCard.js
 import React, { useState, useEffect } from 'react';
 import { 
   Box, 
@@ -18,8 +19,8 @@ import {
   FaEllipsisH 
 } from 'react-icons/fa';
 import { motion } from 'framer-motion';
-import { getImageUrl } from './../utils/web3Utils';
-import { isERC1155 } from './../utils/nftUtils';
+import { getImageUrl } from './../../utils/web3Utils';
+import { isERC1155 } from './../../utils/nftUtils';
 
 const MotionBox = motion(Box);
 

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { fetchNFTs } from '../../app/utils/web3Utils';
-import { logger } from '../../app/utils/logger';
+import { fetchNFTs } from '../../utils/web3Utils';
+import { logger } from '../../utils/logger';
 
 const AppContext = createContext();
 

@@ -54,7 +54,8 @@
     "vercel": "^39.3.0",
     "vm-browserify": "^1.1.2",
     "web-vitals": "^2.1.4",
-    "webpack": "^5.90.1"
+    "webpack": "^5.90.1",
+    "zwitch": "^1.0.5"
   },
   "scripts": {
     "start": "react-app-rewired start",

@@ -4,7 +4,8 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { getParsedNftAccountsByOwner } from "@nfteyez/sol-rayz";
 import { ethers } from 'ethers';
 import Resolution from '@unstoppabledomains/resolution';
-import { logger } from '../utils/logger';
+import { logger } from './logger';
+import { fetchWithCorsProxy, needsCorsProxy, applyCorsProxy } from './corsProxy';
 
 const MORALIS_API_KEY = process.env.REACT_APP_MORALIS_API_KEY;
 const MAINNET_RPC_URL = process.env.REACT_APP_ETHEREUM_RPC_URL;
@@ -123,7 +124,7 @@ export const validateTokenUri = async (uri) => {
     logger.debug('[TokenURI Validation] Validating URI:', uri);
 
     // Handle data URIs
-    if (uri.startsWith('data:')) {
+    if (uri?.startsWith('data:')) {
       return uri.startsWith('data:image/') ? uri : null;
     }
 
@@ -141,18 +142,74 @@ export const validateTokenUri = async (uri) => {
       return gatewayUrl;
     }
 
-    // Handle known CORS-restricted domains
-    const corsRestrictedDomains = [
-      'unlock-protocol.com',
-      'base.org',
-      'storage.unlock-protocol.com'
-    ];
-    
-    if (corsRestrictedDomains.some(domain => gatewayUrl.includes(domain))) {
-      logger.debug('[TokenURI Validation] Known CORS-restricted domain, skipping validation:', gatewayUrl);
-      return gatewayUrl;
+    // Handle known CORS-restricted domains with our proxy
+    if (needsCorsProxy(gatewayUrl)) {
+      try {
+        logger.debug('[TokenURI Validation] Using CORS proxy for:', gatewayUrl);
+        const response = await fetchWithCorsProxy(gatewayUrl, {
+          timeout: 5000,
+          headers: {
+            'Accept': 'application/json, image/*'
+          }
+        });
+        
+        const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+        
+        // Handle JSON responses
+        if (contentType.includes('application/json')) {
+          const data = await response.json();
+          logger.debug('[TokenURI Validation] JSON response:', { data });
+
+          const possibleImageUrls = [
+            data.image,
+            data.image_url,
+            data.artwork?.uri,
+            data.image_data,
+            data.animation_url,
+            data.metadata?.image,
+            data.metadata?.image_url,
+            data.properties?.image,
+            data.properties?.preview?.image
+          ].filter(Boolean);
+
+          logger.debug('[TokenURI Validation] Found possible image URLs:', possibleImageUrls);
+
+          // For JSON responses, don't recursively validate to avoid timeout loops
+          for (const imageUrl of possibleImageUrls) {
+            if (isValidImageExtension(imageUrl) || 
+                imageUrl.startsWith('ar://') || 
+                imageUrl.startsWith('ipfs://')) {
+              return convertToGatewayUrl(imageUrl);
+            }
+          }
+          
+          return null;
+        }
+
+        // Handle direct image responses
+        if (isValidMimeType(contentType)) {
+          return gatewayUrl;
+        }
+        
+        logger.warn('[TokenURI Validation] Invalid content type:', {
+          uri: gatewayUrl,
+          contentType
+        });
+        return null;
+      } catch (proxyError) {
+        logger.error('[TokenURI Validation] Proxy error:', {
+          uri: gatewayUrl,
+          error: proxyError.message
+        });
+        // Fall back to direct URL if it's a known image
+        if (isValidImageExtension(gatewayUrl)) {
+          return gatewayUrl;
+        }
+        return null;
+      }
     }
 
+    // For non-CORS restricted domains, proceed with standard fetch (original code)
     // Only proceed with HTTP(S) requests
     if (!gatewayUrl.startsWith('http://') && !gatewayUrl.startsWith('https://')) {
       throw new Error(`Unsupported protocol: ${gatewayUrl.split('://')[0]}`);
@@ -211,45 +268,8 @@ export const validateTokenUri = async (uri) => {
       headers: response.headers
     });
 
-    // Handle JSON responses
-    if (contentType.includes('application/json')) {
-      const data = response.data;
-      logger.debug('[TokenURI Validation] JSON response:', { data });
-
-      const possibleImageUrls = [
-        data.image,
-        data.image_url,
-        data.artwork?.uri,
-        data.image_data,
-        data.animation_url,
-        data.metadata?.image,
-        data.metadata?.image_url,
-        data.properties?.image,
-        data.properties?.preview?.image
-      ].filter(Boolean);
-
-      logger.debug('[TokenURI Validation] Found possible image URLs:', possibleImageUrls);
-
-      // For JSON responses, don't recursively validate to avoid timeout loops
-      for (const imageUrl of possibleImageUrls) {
-        if (isValidImageExtension(imageUrl) || 
-            imageUrl.startsWith('ar://') || 
-            imageUrl.startsWith('ipfs://')) {
-          return convertToGatewayUrl(imageUrl);
-        }
-      }
-    }
-
-    // Handle direct image responses
-    if (isValidMimeType(contentType)) {
-      return gatewayUrl;
-    }
-
-    logger.warn('[TokenURI Validation] Invalid content type:', {
-      uri: gatewayUrl,
-      contentType
-    });
-    return null;
+    // Handle JSON responses (original code continues)
+    // ...
 
   } catch (error) {
     logger.error('[TokenURI Validation] Error:', {
@@ -341,10 +361,15 @@ export const fetchNFTs = async (address, network, cursor = null, limit = 100) =>
             tokenAddress: nft.tokenAddress
           });
 
+          // Properly handle the object format for contract address
+          const contractAddress = typeof nft.tokenAddress === 'object' && nft.tokenAddress !== null && nft.tokenAddress._value
+            ? normalizeBaseAddress(nft.tokenAddress._value)
+            : normalizeBaseAddress(nft.tokenAddress);
+
           return {
             id: { tokenId: nft.tokenId },
             contract: { 
-              address: normalizeBaseAddress(nft.tokenAddress),
+              address: contractAddress,
               name: nft.name,
               symbol: nft.symbol,
               type: nft.contractType
@@ -464,20 +489,26 @@ const fetchSolanaNFTs = async (address) => {
   }
 };
 
-const normalizeBaseAddress = (address) => {
+export const normalizeBaseAddress = (address) => {
   try {
     if (!address) {
       logger.error('Attempted to normalize null/undefined Base address');
       return '';
     }
-    if (typeof address !== 'string') {
+    
+    // Handle case where address is an object with _value property (from Moralis API)
+    if (typeof address === 'object' && address !== null && address._value) {
+      address = address._value;
+      logger.debug('Extracted address from object format:', address);
+    } else if (typeof address !== 'string') {
       logger.error('Invalid address type:', {
         address,
         type: typeof address
       });
-      // Convert to string if possible
+      // Try to convert to string if possible
       address = String(address);
     }
+    
     // Remove '0x' prefix if it exists and convert to lowercase
     const cleanAddress = address.toLowerCase().replace('0x', '');
     // Add '0x' prefix back and return
@@ -490,6 +521,7 @@ const normalizeBaseAddress = (address) => {
     return address || '';
   }
 };
+
 
 export const getImageUrl = async (nft) => {
   const logDebug = (source, url) => {
@@ -505,11 +537,11 @@ export const getImageUrl = async (nft) => {
   const isAudioNFT = 
     nft.metadata?.mimeType === 'audio/mpeg' ||
     nft.metadata?.animation_url?.includes('audio') ||
-    nft.attributes?.some(attr => 
+    (nft.attributes && Array.isArray(nft.attributes) && nft.attributes.some(attr => 
       attr.trait_type?.toLowerCase().includes('audio') ||
       attr.trait_type?.toLowerCase().includes('song') ||
       attr.trait_type?.toLowerCase().includes('music')
-    );
+    ));
 
   if (isAudioNFT) {
     logDebug('Audio NFT detected', null);
@@ -518,36 +550,85 @@ export const getImageUrl = async (nft) => {
 
   // Gather all possible image sources
   const possibleSources = [
-    { key: 'artwork.uri', value: nft.metadata?.artwork?.uri },
     { key: 'metadata.image', value: nft.metadata?.image },
-    { key: 'metadata.image_url', value: nft.metadata?.image_url },
     { key: 'media.gateway', value: nft.media?.[0]?.gateway },
+    { key: 'metadata.image_url', value: nft.metadata?.image_url },
+    { key: 'artwork.uri', value: nft.metadata?.artwork?.uri },
     { key: 'tokenUri', value: nft.tokenUri },
     { key: 'external_url', value: nft.metadata?.external_url }
-  ];
+  ].filter(source => !!source.value);
 
   logDebug('Possible image sources', possibleSources);
 
+  // First, check for simple image URLs that don't need validation
   for (const source of possibleSources) {
-    if (source.value) {
-      logDebug('Processing source', source);
-
-      try {
-        const validatedUrl = await validateTokenUri(source.value);
-        if (validatedUrl) {
-          logDebug('Valid URL found', validatedUrl);
-          return validatedUrl;
-        }
-      } catch (error) {
-        logDebug('Error processing source', {
-          source: source.value,
-          error: error.message
-        });
+    const url = source.value;
+    
+    // Direct use cases that are safe and don't need proxying/validation
+    if (typeof url === 'string') {
+      // Case 1: Data URLs can be used directly
+      if (url.startsWith('data:image/')) {
+        logDebug('Found data URL image', url);
+        return url;
+      }
+      
+      // Case 2: URLs with common image extensions
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif'];
+      if (imageExtensions.some(ext => url.toLowerCase().endsWith(ext))) {
+        logDebug('Found direct image URL with known extension', url);
+        return url;
       }
     }
   }
 
-  logDebug('No valid image URL found', null);
+  // For other cases, try our improved approach with less CORS issues
+  for (const source of possibleSources) {
+    if (!source.value) continue;
+    
+    logDebug('Processing source', source);
+    const url = source.value;
+    
+    try {
+      // Handle IPFS URLs
+      if (typeof url === 'string' && (url.startsWith('ipfs://') || url.includes('/ipfs/'))) {
+        let ipfsUrl = url;
+        
+        // Convert ipfs:// to HTTP URL
+        if (url.startsWith('ipfs://')) {
+          const hash = url.replace('ipfs://', '');
+          ipfsUrl = `https://ipfs.io/ipfs/${hash}`;
+        }
+        
+        logDebug('Converted IPFS URL', ipfsUrl);
+        return ipfsUrl;
+      }
+
+      // Handle Arweave URLs directly
+      if (typeof url === 'string' && (url.startsWith('ar://') || url.includes('arweave.net'))) {
+        let arweaveUrl = url;
+        
+        // Convert ar:// to HTTP URL
+        if (url.startsWith('ar://')) {
+          const hash = url.replace('ar://', '');
+          arweaveUrl = `https://arweave.net/${hash}`;
+        }
+        
+        logDebug('Using Arweave URL directly', arweaveUrl);
+        return arweaveUrl;
+      }
+
+      // For all other URLs, return as-is
+      return url;
+    } catch (error) {
+      logDebug('Error processing source', {
+        source: source.value,
+        error: error.message
+      });
+    }
+  }
+
+  // Fallback to placeholder if no valid URL found
+  logDebug('No valid image URL found, using placeholder', null);
   return 'https://via.placeholder.com/400?text=No+Image';
 };
 

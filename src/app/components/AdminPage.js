@@ -22,7 +22,7 @@ import {
   StatGroup
 } from "@chakra-ui/react";
 import { FaSync, FaTrash, FaDownload } from 'react-icons/fa';
-import { addLogListener, removeLogListener, downloadLogs, logger } from '../utils/logger';
+import { addLogListener, removeLogListener, downloadLogs, logger } from '../../utils/logger';
 
 const AdminPage = () => {
   const [logs, setLogs] = useState([]);

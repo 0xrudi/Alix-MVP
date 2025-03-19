@@ -1,4 +1,4 @@
-// src/components/UserProfile.js
+// src/app/components/UserProfile.js
 import React, { useState, useEffect } from 'react';
 import {
   VStack,
@@ -16,47 +16,98 @@ import {
   FormLabel,
   useBreakpointValue,
   Flex,
+  Alert,
+  AlertIcon,
+  Button,
+  Spinner,
 } from "@chakra-ui/react";
 import { FaSave, FaTimes, FaEdit, FaLink, FaUpload, FaUser } from 'react-icons/fa';
-import { fetchENSAvatar, getAvailableENS, getImageUrl } from '../utils/web3Utils';
-import { useAppContext } from '../../context/app/AppContext';
+import { fetchENSAvatar, getAvailableENS, getImageUrl } from '../../../utils/web3Utils';
+import { useAppContext } from '../../../context/app/AppContext';
 import { useSelector } from 'react-redux';
-import { useCustomToast } from '../utils/toastUtils';
-import { StyledButton, StyledInput } from '../styles/commonStyles';
-import { useCustomColorMode } from '../hooks/useColorMode';
+import { useCustomToast } from '../../../utils/toastUtils';
+import { StyledButton, StyledInput } from '../../styles/commonStyles';
+import { useCustomColorMode } from '../../hooks/useColorMode';
+import { useServices } from '../../../services/service-provider';
+import { logger } from '../../../utils/logger';
 
-const UserProfile = () => {
+const UserProfile = ({ supabaseUser, supabaseProfile, onProfileUpdated }) => {
   const { userProfile, updateUserProfile } = useAppContext();
   const wallets = useSelector(state => state.wallets.list);
   const { showSuccessToast, showErrorToast } = useCustomToast();
   const { cardBg, borderColor, textColor } = useCustomColorMode();
+  const { userService } = useServices();
   
   const [isEditing, setIsEditing] = useState(false);
-  const [nickname, setNickname] = useState(userProfile.nickname || '');
-  const [avatarUrl, setAvatarUrl] = useState(userProfile.avatarUrl || '');
+  const [nickname, setNickname] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [availableENS, setAvailableENS] = useState([]);
   const [selectedImageSource, setSelectedImageSource] = useState('url');
+  const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = React.useRef();
 
   const avatarSize = useBreakpointValue({ base: "120px", md: "150px" });
+
+  // Initialize form when userProfile or supabaseProfile changes
+  useEffect(() => {
+    // If we have a Supabase profile, use that
+    if (supabaseProfile) {
+      setNickname(supabaseProfile.nickname || '');
+      setAvatarUrl(supabaseProfile.avatar_url || '');
+    } else {
+      // Fall back to app context profile
+      setNickname(userProfile.nickname || '');
+      setAvatarUrl(userProfile.avatarUrl || '');
+    }
+  }, [userProfile, supabaseProfile]);
 
   useEffect(() => {
     const ensDomains = getAvailableENS(wallets);
     setAvailableENS(ensDomains);
   }, [wallets]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!nickname.trim()) {
       showErrorToast('Error', 'Nickname is required');
       return;
     }
-    updateUserProfile({
-      nickname,
-      avatarUrl
-    });
-    setIsEditing(false);
-    showSuccessToast('Success', 'Profile updated successfully');
+
+    setIsLoading(true);
+    
+    try {
+      // Update Supabase profile if user is authenticated
+      if (supabaseUser) {
+        await userService.updateProfile(supabaseUser.id, {
+          nickname,
+          avatar_url: avatarUrl
+        });
+        
+        logger.log('Updated user profile in Supabase:', { 
+          userId: supabaseUser.id, 
+          nickname 
+        });
+        
+        // Refresh the Supabase profile data
+        if (onProfileUpdated) {
+          onProfileUpdated();
+        }
+      }
+      
+      // Also update local app context
+      updateUserProfile({
+        nickname,
+        avatarUrl
+      });
+      
+      setIsEditing(false);
+      showSuccessToast('Success', 'Profile updated successfully');
+    } catch (error) {
+      showErrorToast('Error', `Failed to update profile: ${error.message}`);
+      logger.error('Error updating profile:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleImageUrlSubmit = async () => {
@@ -77,9 +128,29 @@ const UserProfile = () => {
     }
   };
 
-  const handleFileUpload = (event) => {
+  const handleFileUpload = async (event) => {
     const file = event.target.files[0];
-    if (file) {
+    if (!file) return;
+    
+    if (supabaseUser) {
+      // Upload to Supabase storage
+      try {
+        setIsLoading(true);
+        const publicUrl = await userService.uploadAvatar(supabaseUser.id, file);
+        setAvatarUrl(publicUrl);
+        
+        // Refresh the profile to get updated avatar URL
+        if (onProfileUpdated) {
+          onProfileUpdated();
+        }
+      } catch (error) {
+        showErrorToast('Error', `Failed to upload avatar: ${error.message}`);
+        logger.error('Error uploading avatar:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      // Local file handling (client-side only)
       const reader = new FileReader();
       reader.onloadend = () => {
         setAvatarUrl(reader.result);
@@ -102,7 +173,13 @@ const UserProfile = () => {
     }
   };
 
-  if (!userProfile.nickname && !isEditing) {
+  // Get the current profile (either from Supabase or app context)
+  const currentProfile = supabaseProfile || { 
+    nickname: userProfile.nickname, 
+    avatar_url: userProfile.avatarUrl 
+  };
+
+  if (!currentProfile.nickname && !isEditing) {
     return (
       <Center py={8}>
         <StyledButton
@@ -127,11 +204,12 @@ const UserProfile = () => {
         </Text>
         <HStack>
           <IconButton
-            icon={<FaSave />}
+            icon={isLoading ? <Spinner size="sm" /> : <FaSave />}
             onClick={handleSave}
             aria-label="Save"
             variant="ghost"
             color="var(--ink-grey)"
+            isDisabled={isLoading}
             _hover={{ 
               color: "var(--warm-brown)",
               bg: "var(--highlight)" 
@@ -140,13 +218,14 @@ const UserProfile = () => {
           <IconButton
             icon={<FaTimes />}
             onClick={() => {
-              setNickname(userProfile.nickname || '');
-              setAvatarUrl(userProfile.avatarUrl || '');
+              setNickname(currentProfile.nickname || '');
+              setAvatarUrl(currentProfile.avatar_url || '');
               setIsEditing(false);
             }}
             aria-label="Cancel"
             variant="ghost"
             color="var(--ink-grey)"
+            isDisabled={isLoading}
             _hover={{ 
               color: "red.500",
               bg: "red.50" 
@@ -186,6 +265,21 @@ const UserProfile = () => {
               />
             </Center>
           )}
+          {isLoading && (
+            <Box
+              position="absolute"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              bg="rgba(0, 0, 0, 0.4)"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Spinner color="white" />
+            </Box>
+          )}
         </Box>
       </Center>
 
@@ -197,6 +291,7 @@ const UserProfile = () => {
           borderColor={borderColor}
           color={textColor}
           fontFamily="Inter"
+          isDisabled={isLoading}
         >
           <option value="url">Image URL</option>
           <option value="upload">Upload Image</option>
@@ -219,11 +314,13 @@ const UserProfile = () => {
                 onChange={(e) => setImageUrlInput(e.target.value)}
                 placeholder="Enter image URL"
                 pl={10} // Add left padding to prevent overlap with icon
+                isDisabled={isLoading}
               />
             </InputGroup>
             <StyledButton
               onClick={handleImageUrlSubmit}
               width="full"
+              isDisabled={isLoading}
             >
               Set Image
             </StyledButton>
@@ -235,6 +332,7 @@ const UserProfile = () => {
             leftIcon={<FaUpload />}
             onClick={() => fileInputRef.current.click()}
             width="full"
+            isDisabled={isLoading}
           >
             Upload Image
             <input
@@ -255,6 +353,7 @@ const UserProfile = () => {
             borderColor={borderColor}
             color={textColor}
             fontFamily="Inter"
+            isDisabled={isLoading}
           >
             {availableENS.map(ens => (
               <option key={ens} value={ens}>{ens}</option>
@@ -268,6 +367,7 @@ const UserProfile = () => {
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
             placeholder="Enter nickname"
+            isDisabled={isLoading}
           />
         </FormControl>
       </VStack>
@@ -303,13 +403,27 @@ const UserProfile = () => {
             borderWidth="1px"
             borderColor={borderColor}
           >
-            <Image
-              src={avatarUrl || 'https://via.placeholder.com/150'}
-              alt="User Avatar"
-              objectFit="cover"
-              width="100%"
-              height="100%"
-            />
+            {currentProfile.avatar_url || avatarUrl ? (
+              <Image
+                src={currentProfile.avatar_url || avatarUrl}
+                alt="User Avatar"
+                objectFit="cover"
+                width="100%"
+                height="100%"
+              />
+            ) : (
+              <Center
+                height="100%"
+                width="100%"
+              >
+                <Icon
+                  as={FaUser}
+                  boxSize="40%"
+                  color="var(--ink-grey)"
+                  opacity={0.5}
+                />
+              </Center>
+            )}
           </Box>
           <Text 
             fontSize="xl" 
@@ -317,8 +431,18 @@ const UserProfile = () => {
             fontFamily="Space Grotesk"
             color={textColor}
           >
-            {nickname}
+            {currentProfile.nickname || nickname}
           </Text>
+          
+          {supabaseUser && (
+            <Text
+              fontSize="sm"
+              color="var(--ink-grey)"
+              fontFamily="Inter"
+            >
+              User ID: {supabaseUser.id}
+            </Text>
+          )}
         </VStack>
       </Center>
     </VStack>
