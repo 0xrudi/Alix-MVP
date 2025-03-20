@@ -20,14 +20,15 @@ import {
   AlertIcon,
   Badge,
   Spinner,
-  Flex
+  Flex,
+  Link
 } from "@chakra-ui/react";
-import { FaExpand } from 'react-icons/fa';
+import { FaExpand, FaExternalLinkAlt } from 'react-icons/fa';
 import ArticleRenderer from '../ContentRenderers/ArticleRenderer';
 import VideoRenderer from '../ContentRenderers/VideoRenderer';
 import AudioRenderer from '../ContentRenderers/AudioRenderer';
 import { logger } from '../../../utils/logger';
-import { fetchWithCorsProxy, needsCorsProxy } from '../../../utils/corsProxy';
+import { createDirectGatewayUrl, needsCorsProxy } from '../../../utils/corsProxy';
 
 // Design system colors
 const designTokens = {
@@ -45,25 +46,6 @@ const safeGet = (obj, path, defaultValue = undefined) => {
     acc && acc[part] !== undefined ? acc[part] : defaultValue, obj);
 };
 
-// URL conversion utility
-const convertToGatewayUrl = (url) => {
-  if (!url) return '';
-
-  // Handle Arweave URLs
-  if (url.startsWith('ar://')) {
-    const arweaveHash = url.replace('ar://', '');
-    return `https://arweave.net/${arweaveHash}`;
-  }
-
-  // Handle IPFS URLs
-  if (url.startsWith('ipfs://')) {
-    const ipfsHash = url.replace('ipfs://', '');
-    return `https://ipfs.io/ipfs/${ipfsHash}`;
-  }
-
-  return url;
-};
-
 const MediaTabPanel = ({ 
   nft = {},
   imageUrl = '',
@@ -77,15 +59,23 @@ const MediaTabPanel = ({
   const [mediaType, setMediaType] = useState(null);
   const [isMediaLoading, setIsMediaLoading] = useState(true);
   const [mediaLoadError, setMediaLoadError] = useState(null);
+  const [directMediaUrl, setDirectMediaUrl] = useState('');
 
   // Safely access metadata
   const metadata = nft.metadata || {};
   const originalAnimationUrl = safeGet(metadata, 'animation_url', '');
-  const animationUrl = convertToGatewayUrl(originalAnimationUrl);
 
-  // Detect media type
+  // Convert any protocol URLs to direct URLs
   useEffect(() => {
-    if (!animationUrl) {
+    if (originalAnimationUrl) {
+      const directUrl = createDirectGatewayUrl(originalAnimationUrl);
+      setDirectMediaUrl(directUrl || originalAnimationUrl);
+    }
+  }, [originalAnimationUrl]);
+
+  // Detect media type based on URL and metadata
+  useEffect(() => {
+    if (!originalAnimationUrl) {
       setIsMediaLoading(false);
       return;
     }
@@ -95,43 +85,85 @@ const MediaTabPanel = ({
         setIsMediaLoading(true);
         setMediaLoadError(null);
 
-        // Use CORS proxy if needed
-        const fetchFunction = needsCorsProxy(animationUrl) 
-          ? fetchWithCorsProxy 
-          : fetch;
-
-        const response = await fetchFunction(animationUrl, { method: 'HEAD' });
+        // First check if we can determine type from metadata
+        const mimeType = safeGet(metadata, 'mimeType', '') || 
+                       safeGet(metadata, 'mime_type', '') || 
+                       safeGet(metadata, 'contentType', '');
+                       
+        if (mimeType) {
+          logger.debug('Media type from metadata:', { mimeType });
+          if (mimeType.startsWith('video/')) {
+            setMediaType('video');
+            setIsMediaLoading(false);
+            return;
+          } else if (mimeType.startsWith('audio/')) {
+            setMediaType('audio');
+            setIsMediaLoading(false);
+            return;
+          } else if (mimeType.startsWith('text/') || mimeType.includes('html')) {
+            setMediaType('hosted');
+            setIsMediaLoading(false);
+            return;
+          }
+        }
         
-        if (!response.ok) {
-          throw new Error(`Failed to fetch media: ${response.status}`);
+        // Check file extension in URL
+        const url = directMediaUrl || originalAnimationUrl;
+        const fileExtension = url.split('.').pop()?.toLowerCase();
+        
+        if (fileExtension) {
+          if (['mp4', 'webm', 'ogg', 'mov'].includes(fileExtension)) {
+            setMediaType('video');
+            setIsMediaLoading(false);
+            return;
+          } else if (['mp3', 'wav', 'flac', 'm4a', 'aac'].includes(fileExtension)) {
+            setMediaType('audio');
+            setIsMediaLoading(false);
+            return;
+          } else if (['html', 'htm'].includes(fileExtension)) {
+            setMediaType('hosted');
+            setIsMediaLoading(false);
+            return;
+          }
         }
-
-        const contentType = response.headers.get('content-type') || '';
-        logger.debug('Media Content Type:', { 
-          url: animationUrl, 
-          contentType 
-        });
-
-        if (contentType.startsWith('video/')) {
-          setMediaType('video');
-        } else if (contentType.startsWith('audio/')) {
-          setMediaType('audio');
-        } else if (contentType.startsWith('text/') || contentType.includes('html')) {
+        
+        // For Arweave URLs, try an intelligent guess based on other metadata
+        if (url.includes('arweave.net') || url.startsWith('ar://')) {
+          // Check if this has audio-related attributes
+          const hasAudioAttributes = 
+            nft.attributes?.some(attr => 
+              attr.trait_type?.toLowerCase().includes('audio') || 
+              attr.trait_type?.toLowerCase().includes('music') ||
+              attr.trait_type?.toLowerCase().includes('sound')
+            );
+            
+          if (hasAudioAttributes) {
+            setMediaType('audio');
+            setIsMediaLoading(false);
+            return;
+          }
+          
+          // Assume it's text/content for Arweave (most common case)
           setMediaType('hosted');
-        } else {
-          setMediaType('unknown');
+          setIsMediaLoading(false);
+          return;
         }
+
+        // As a fallback, check content type through a HEAD request
+        // This is a last resort since it can trigger CORS issues
+        setMediaType('unknown');
+        setIsMediaLoading(false);
+
       } catch (error) {
         logger.error('Error detecting media type:', error);
         setMediaLoadError(error.message);
         setMediaType('unknown');
-      } finally {
         setIsMediaLoading(false);
       }
     };
 
     detectMediaType();
-  }, [animationUrl]);
+  }, [originalAnimationUrl, directMediaUrl, metadata]);
 
   // Image rendering with error handling
   const renderImage = () => {
@@ -218,61 +250,135 @@ const MediaTabPanel = ({
       );
     }
 
+    // If we have no animation URL but we're showing content, exit early
+    if (!originalAnimationUrl) {
+      return (
+        <Alert status="info">
+          <AlertIcon />
+          No media content available
+        </Alert>
+      );
+    }
+
+    // For displaying Arweave content that might not load due to CORS
+    const renderArweaveInfo = () => {
+      // Only show this for Arweave URLs
+      if (!originalAnimationUrl.includes('arweave') && !originalAnimationUrl.startsWith('ar://')) {
+        return null;
+      }
+      
+      return (
+        <Link
+          href={directMediaUrl}
+          isExternal
+          color={designTokens.libraryBrown}
+          display="inline-flex"
+          alignItems="center"
+          fontSize="sm"
+          mt={2}
+        >
+          View directly on Arweave <FaExternalLinkAlt size={12} style={{ marginLeft: '6px' }} />
+        </Link>
+      );
+    };
+
     switch (mediaType) {
       case 'video':
         return (
-          <VideoRenderer
-            src={animationUrl}
-            onFullscreen={() => onFullscreenContent?.(animationUrl)}
-            designTokens={designTokens}
-          />
+          <Box>
+            <VideoRenderer
+              src={directMediaUrl || originalAnimationUrl}
+              onFullscreen={() => onFullscreenContent?.(directMediaUrl || originalAnimationUrl)}
+              designTokens={designTokens}
+            />
+            {renderArweaveInfo()}
+          </Box>
         );
       case 'audio':
         return (
-          <AudioRenderer
-            src={animationUrl}
-            onFullscreen={() => onFullscreenContent?.(animationUrl)}
-            designTokens={designTokens}
-          />
+          <Box>
+            <AudioRenderer
+              src={directMediaUrl || originalAnimationUrl}
+              onFullscreen={() => onFullscreenContent?.(directMediaUrl || originalAnimationUrl)}
+              designTokens={designTokens}
+            />
+            {renderArweaveInfo()}
+          </Box>
         );
       case 'hosted':
         return (
-          <Box 
-            position="relative" 
-            height="600px" 
-            border="1px solid" 
-            borderColor={designTokens.shadow}
-            borderRadius="md"
-            overflow="hidden"
-            bg={designTokens.paperWhite}
-          >
-            <iframe
-              src={animationUrl}
-              width="100%"
-              height="100%"
-              style={{ border: 'none' }}
-              title="Hosted Content"
-            />
-            <IconButton
-              icon={<FaExpand />}
-              position="absolute"
-              top={2}
-              right={2}
-              onClick={() => onFullscreenContent?.(animationUrl)}
-              aria-label="View fullscreen"
-              colorScheme="blackAlpha"
-              size="sm"
-              variant="ghost"
-              _hover={{ bg: designTokens.warmWhite }}
-            />
+          <Box>
+            <Box 
+              position="relative" 
+              height="600px" 
+              border="1px solid" 
+              borderColor={designTokens.shadow}
+              borderRadius="md"
+              overflow="hidden"
+              bg={designTokens.paperWhite}
+            >
+              {/* For hosted content, offer direct link instead of iframe for Arweave */}
+              {originalAnimationUrl.includes('arweave') || originalAnimationUrl.startsWith('ar://') ? (
+                <Flex 
+                  direction="column" 
+                  align="center" 
+                  justify="center" 
+                  height="100%"
+                  p={4}
+                >
+                  <Text mb={4}>This content is hosted on Arweave and may require direct access.</Text>
+                  <Link
+                    href={directMediaUrl}
+                    isExternal
+                    color={designTokens.libraryBrown}
+                    bg={designTokens.warmWhite}
+                    px={4}
+                    py={2}
+                    borderRadius="md"
+                    fontWeight="medium"
+                    display="inline-flex"
+                    alignItems="center"
+                  >
+                    Open Content <FaExternalLinkAlt size={12} style={{ marginLeft: '6px' }} />
+                  </Link>
+                </Flex>
+              ) : (
+                <iframe
+                  src={directMediaUrl || originalAnimationUrl}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 'none' }}
+                  title="Hosted Content"
+                  sandbox="allow-scripts allow-same-origin"
+                />
+              )}
+              <IconButton
+                icon={<FaExpand />}
+                position="absolute"
+                top={2}
+                right={2}
+                onClick={() => onFullscreenContent?.(directMediaUrl || originalAnimationUrl)}
+                aria-label="View fullscreen"
+                colorScheme="blackAlpha"
+                size="sm"
+                variant="ghost"
+                _hover={{ bg: designTokens.warmWhite }}
+              />
+            </Box>
+            {renderArweaveInfo()}
           </Box>
         );
       default:
         return (
-          <Alert status="warning">
-            <AlertIcon />
-            Unable to determine media type
-          </Alert>
+          <Box>
+            <Alert status="info">
+              <AlertIcon />
+              <VStack align="start">
+                <Text>Unable to determine media type</Text>
+                {renderArweaveInfo()}
+              </VStack>
+            </Alert>
+          </Box>
         );
     }
   };

@@ -21,10 +21,9 @@ const CORS_RESTRICTED_DOMAINS = [
 ];
 
 // Public CORS proxies that can be used (in order of preference)
-// Replaced cors-anywhere with more reliable alternatives
 const CORS_PROXIES = [
-  'https://corsproxy.io/?',
   'https://proxy.cors.sh/',
+  'https://corsproxy.io/?',
   'https://api.allorigins.win/raw?url=',
   'https://api.codetabs.com/v1/proxy?quest=',
 ];
@@ -41,8 +40,8 @@ export const needsCorsProxy = (url) => {
   if (!url || typeof url !== 'string') return false;
   
   try {
-    // Handle ipfs:// protocol directly
-    if (url.startsWith('ipfs://')) return true;
+    // Handle ipfs:// and ar:// protocols directly
+    if (url.startsWith('ipfs://') || url.startsWith('ar://')) return true;
     
     const urlObj = new URL(url);
     return CORS_RESTRICTED_DOMAINS.some(domain => urlObj.hostname.includes(domain));
@@ -73,12 +72,19 @@ export const applyCorsProxy = (url, proxyIndex = 0) => {
       return url;
     }
     
+    // Handle ar:// protocol
+    if (url.startsWith('ar://')) {
+      const arweaveHash = url.replace('ar://', '');
+      const directGatewayUrl = `https://arweave.net/${arweaveHash}`;
+      const proxiedUrl = `${CORS_PROXIES[proxyIndex % CORS_PROXIES.length]}${directGatewayUrl}`;
+      proxyCache.set(cacheKey, proxiedUrl);
+      return proxiedUrl;
+    }
+    
     // Handle ipfs:// protocol
     if (url.startsWith('ipfs://')) {
       const ipfsHash = url.replace('ipfs://', '');
-      // Return directly from IPFS gateway without proxy first
       const directGatewayUrl = `https://ipfs.io/ipfs/${ipfsHash}`;
-      // Apply proxy
       const proxiedUrl = `${CORS_PROXIES[proxyIndex % CORS_PROXIES.length]}${directGatewayUrl}`;
       proxyCache.set(cacheKey, proxiedUrl);
       return proxiedUrl;
@@ -99,15 +105,20 @@ export const applyCorsProxy = (url, proxyIndex = 0) => {
 };
 
 /**
- * Creates direct IPFS gateway URLs without using a proxy
- * This is useful as a fallback when proxies fail
+ * Creates direct gateway URLs without using a proxy
  * @param {string} url - The original URL to convert
- * @returns {string} Direct IPFS gateway URL if applicable
+ * @returns {string} Direct gateway URL
  */
-export const createDirectIpfsUrl = (url) => {
+export const createDirectGatewayUrl = (url) => {
   if (!url) return null;
   
   try {
+    // Handle ar:// protocol
+    if (url.startsWith('ar://')) {
+      const hash = url.replace('ar://', '');
+      return `https://arweave.net/${hash}`;
+    }
+    
     // Handle ipfs:// protocol
     if (url.startsWith('ipfs://')) {
       const hash = url.replace('ipfs://', '');
@@ -125,170 +136,62 @@ export const createDirectIpfsUrl = (url) => {
     
     return url;
   } catch (error) {
-    logger.error('Error creating direct IPFS URL:', error);
+    logger.error('Error creating direct gateway URL:', error);
     return url;
   }
 };
 
 /**
- * Enhanced fetch function for Arweave content with direct URL fallback
- * @param {string} url - Arweave URL to fetch
- * @returns {Promise<Object>} - Parsed JSON data or null
+ * Fetches content through a CORS proxy with improved fallback logic
+ * @param {string} url - The original URL to fetch
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Response>} Fetch response
  */
-export const fetchArweaveContent = async (url, options = {}) => {
-    // First, ensure URL is properly formatted
-    if (url.startsWith('ar://')) {
-      const hash = url.replace('ar://', '');
-      url = `https://arweave.net/${hash}`;
-    }
-    
-    logger.debug('Fetching Arweave content:', url);
-    
-    // Try traditional fetch first
+export const fetchWithCorsProxy = async (url, options = {}) => {
+  if (!url) throw new Error('URL is required');
+  
+  // Convert protocol URLs to gateway URLs first
+  let gatewayUrl = url;
+  if (url.startsWith('ar://') || url.startsWith('ipfs://')) {
+    gatewayUrl = createDirectGatewayUrl(url);
+    logger.debug('Converted protocol URL to gateway URL:', { original: url, gateway: gatewayUrl });
+  }
+  
+  // Try direct fetch first if it's not a known CORS-restricted domain
+  if (!needsCorsProxy(gatewayUrl)) {
     try {
-      const response = await fetch(url, {
+      logger.debug('Attempting direct fetch first:', gatewayUrl);
+      const response = await fetch(gatewayUrl, {
         ...options,
-        method: 'GET',
+        mode: 'cors',
         headers: {
-          'Accept': 'application/json',
-          ...options.headers
-        },
-        timeout: options.timeout || 8000
+          ...options.headers,
+          'Accept': 'application/json, image/*, audio/*, video/*, */*'
+        }
       });
       
       if (response.ok) {
-        const data = await response.json();
-        logger.debug('Successfully fetched Arweave content directly');
-        return data;
+        logger.debug('Direct fetch successful:', gatewayUrl);
+        return response;
       }
-    } catch (directError) {
-      logger.debug('Direct Arweave fetch failed, trying alternatives:', directError.message);
-      // Continue to alternatives
+    } catch (error) {
+      logger.debug('Direct fetch failed, trying with proxy:', { 
+        url: gatewayUrl, 
+        error: error.message 
+      });
+      // Continue to proxy attempts
     }
-    
-    // Try with each proxy
-    for (const proxy of CORS_PROXIES) {
-      try {
-        const proxiedUrl = `${proxy}${url}`;
-        logger.debug(`Trying Arweave fetch with proxy: ${proxy}`);
-        
-        const response = await fetch(proxiedUrl, {
-          ...options,
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            ...options.headers
-          },
-          timeout: options.timeout || 8000
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          logger.debug('Successfully fetched Arweave content with proxy:', proxy);
-          return data;
-        }
-      } catch (proxyError) {
-        logger.debug(`Proxy fetch failed with ${proxy}:`, proxyError.message);
-        // Try next proxy
-      }
-    }
-    
-    // If all methods fail, log an error
-    logger.error('All methods to fetch Arweave content failed:', url);
-    return null;
-  };
-
-
-/**
- * Fetches content through a CORS proxy with fallback logic
- * @param {string} url - The original URL to fetch
- * @param {Object} options - Fetch options
- * @param {number} retryCount - Number of retries (internal use)
- * @param {number} backoffMs - Backoff time in ms (internal use)
- * @returns {Promise<Response>} Fetch response
- */
-export const fetchWithCorsProxy = async (
-    url, 
-    options = {}, 
-    retryCount = 0, 
-    backoffMs = 1000
-  ) => {
-    if (!url) throw new Error('URL is required');
-    const maxRetries = options.maxRetries || 3;
-    
-    // List of alternate proxies to try if main ones fail
-    const ALTERNATE_PROXIES = [
-      'https://api.allorigins.win/raw?url=',
-      'https://api.codetabs.com/v1/proxy?quest=',
-      'https://thingproxy.freeboard.io/fetch/'
-    ];
-    
-    // Try without proxy first if it's not a known CORS-restricted domain
-    if (retryCount === 0 && !needsCorsProxy(url)) {
-      try {
-        const response = await fetch(url, {
-          ...options,
-          mode: 'cors',
-          headers: {
-            ...options.headers,
-            'Accept': 'application/json, image/*, */*'
-          }
-        });
-        if (response.ok) return response;
-      } catch (error) {
-        logger.debug('Direct fetch failed, trying with proxy:', { 
-          url, 
-          error: error.message 
-        });
-        // Continue to proxy attempts
-      }
-    }
-    
-    // If we've exceeded retries, try the direct IPFS/Arweave gateway as last resort
-    if (retryCount >= maxRetries) {
-      if (url.includes('ipfs') || url.startsWith('ipfs://')) {
-        try {
-          const directUrl = createDirectIpfsUrl(url);
-          logger.debug('Final retry with direct IPFS gateway:', directUrl);
-          
-          return fetch(directUrl, {
-            ...options,
-            mode: 'no-cors', // Last resort attempt
-            headers: {
-              ...options.headers,
-              'Accept': 'application/json, image/*, */*'
-            }
-          });
-        } catch (ipfsError) {
-          logger.error('Direct IPFS gateway fallback failed:', ipfsError);
-        }
-      } else if (url.includes('arweave.net') || url.startsWith('ar://')) {
-        // For Arweave, simply return the URL itself so the client can handle it
-        logger.warn('All proxies failed, returning Arweave URL for direct client handling:', url);
-        
-        // Create a mock Response object to avoid errors
-        return new Response(JSON.stringify({ 
-          error: 'proxy_failed', 
-          directUrl: url 
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-      
-      throw new Error(`All proxies failed for URL after ${maxRetries} retries: ${url}`);
-    }
-    
-    // Use different proxy sets based on retry count
-    const proxyList = retryCount === 0 ? CORS_PROXIES : ALTERNATE_PROXIES;
-    const proxyIndex = retryCount % proxyList.length;
-    const proxyUrl = proxyList[proxyIndex];
-    
+  }
+  
+  let lastError = null;
+  
+  // Try with each proxy until one works
+  for (let i = 0; i < CORS_PROXIES.length; i++) {
     try {
-      const proxiedUrl = `${proxyUrl}${url}`;
-      logger.debug(`Proxy attempt ${retryCount+1}/${maxRetries}:`, { 
-        proxy: proxyUrl, 
-        url 
+      const proxiedUrl = applyCorsProxy(gatewayUrl, i);
+      logger.debug(`Trying proxy ${i+1}/${CORS_PROXIES.length}:`, { 
+        originalUrl: gatewayUrl, 
+        proxiedUrl 
       });
       
       const controller = new AbortController();
@@ -299,74 +202,140 @@ export const fetchWithCorsProxy = async (
         signal: controller.signal,
         headers: {
           ...options.headers,
-          'Accept': 'application/json, image/*, */*'
+          'Accept': 'application/json, image/*, audio/*, video/*, */*'
         }
       });
       
       clearTimeout(timeoutId);
       
       if (response.ok) {
-        logger.debug(`Proxy attempt ${retryCount+1} successful:`, { 
-          url, 
-          proxy: proxyUrl 
-        });
+        logger.debug(`Proxy ${i+1} successful:`, { url: gatewayUrl, proxy: CORS_PROXIES[i] });
         return response;
+      } else {
+        throw new Error(`Proxy returned status ${response.status}`);
       }
-      
-      // If we get rate limited (429), add exponential backoff
-      if (response.status === 429) {
-        logger.warn(`Proxy rate limited:`, { url, proxy: proxyUrl });
-        const waitTime = backoffMs * Math.pow(2, retryCount);
-        
-        // Wait with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        
-        // Retry with next proxy
-        return fetchWithCorsProxy(url, options, retryCount + 1, backoffMs);
-      }
-      
-      // For other status codes, try next proxy immediately
-      throw new Error(`Proxy returned status ${response.status}`);
     } catch (error) {
-      logger.warn(`Proxy attempt ${retryCount+1} failed:`, { 
-        url, 
-        proxy: proxyUrl, 
+      logger.warn(`Proxy attempt ${i+1} failed:`, { 
+        url: gatewayUrl, 
+        proxy: CORS_PROXIES[i], 
         error: error.message 
       });
-      
-      // Wait briefly before trying the next proxy
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Retry with next proxy
-      return fetchWithCorsProxy(url, options, retryCount + 1, backoffMs);
+      lastError = error;
+      // Continue to the next proxy
     }
-  };
+  }
+  
+  // Last resort - try with no-cors mode
+  // This will give us limited access but might be better than nothing
+  logger.debug('All proxies failed, trying no-cors mode as last resort');
+  try {
+    logger.debug('All proxies failed, returning gateway URL for direct client handling:', gatewayUrl);
+    const response = await fetch(gatewayUrl, {
+      ...options,
+      mode: 'no-cors',
+      headers: {
+        ...options.headers,
+        'Accept': 'application/json, image/*, audio/*, video/*, */*'
+      }
+    });
+    
+    // With no-cors mode, we can't check status or read content normally,
+    // but we can return the response for handling by the caller
+    return response;
+  } catch (finalError) {
+    logger.error('Final no-cors attempt failed:', finalError);
+    // If all else fails, throw the last proxy error
+    throw lastError || new Error(`All CORS proxies failed for URL: ${gatewayUrl}`);
+  }
+};
 
 /**
- * Simplified image URL validation that's less likely to trigger CORS errors
- * @param {string} url - The URL to validate
- * @returns {Promise<string>} - The validated URL or null
+ * Creates a URL object that can be used directly in media elements,
+ * bypassing CORS restrictions for audio/video playback
+ * @param {string} url - The URL to process
+ * @returns {string} - A URL that can be used in audio/video elements
  */
-export const validateImageUrl = async (url) => {
-  if (!url) return null;
+export const createMediaUrl = (url) => {
+  if (!url) return '';
   
-  // Handle data URLs directly
-  if (url.startsWith('data:')) {
-    return url.startsWith('data:image/') ? url : null;
-  }
-  
-  // Known image extensions - return directly without validation
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif'];
-  if (imageExtensions.some(ext => url.toLowerCase().endsWith(ext))) {
+  try {
+    // For ar:// and ipfs:// protocols, convert to direct gateway URLs
+    if (url.startsWith('ar://') || url.startsWith('ipfs://')) {
+      return createDirectGatewayUrl(url);
+    }
+    
+    // For HTTP URLs, return as is - HTML media elements handle CORS differently
+    return url;
+  } catch (error) {
+    logger.error('Error creating media URL:', error);
     return url;
   }
-  
-  // IPFS and Arweave URLs are likely to be images in NFT context
-  if (url.includes('ipfs') || url.includes('arweave')) {
-    return url; // Return without validation to avoid CORS issues
-  }
-  
-  // For all other URLs, we'll trust them without validation
-  // This reduces CORS errors at the expense of potentially showing broken images
-  return url;
+};
+
+/**
+ * Specifically fetch Arweave content with special handling for CORS and errors
+ * @param {string} url - The Arweave URL (can be ar:// protocol or direct https://arweave.net/...)
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Object>} - The parsed JSON response or error object
+ */
+export const fetchArweaveContent = async (url, options = {}) => {
+    if (!url) {
+      return { error: 'No URL provided' };
+    }
+    
+    try {
+      // Convert ar:// protocol to direct URL if needed
+      let arweaveUrl = url;
+      if (url.startsWith('ar://')) {
+        arweaveUrl = createDirectGatewayUrl(url);
+      }
+      
+      logger.debug('Fetching Arweave content:', arweaveUrl);
+      
+      // Try to fetch using our proxy mechanism
+      const response = await fetchWithCorsProxy(arweaveUrl, {
+        ...options,
+        timeout: options.timeout || 15000, // Extend timeout for Arweave
+        headers: {
+          ...options.headers,
+          'Accept': 'application/json, */*'
+        }
+      });
+      
+      // If response is in no-cors mode, we can't access the content
+      // This happens when all proxies fail and we fall back to direct access
+      if (response.type === 'opaque') {
+        return { 
+          error: 'CORS restriction prevented content access', 
+          url: arweaveUrl,
+          directAccess: true
+        };
+      }
+      
+      // Handle JSON responses
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return { data };
+      }
+      
+      // Handle text responses
+      const text = await response.text();
+      
+      // Try to parse as JSON even if content-type is not set correctly
+      try {
+        const data = JSON.parse(text);
+        return { data };
+      } catch (parseError) {
+        // If not JSON, return as text
+        return { data: { text } };
+      }
+    } catch (error) {
+      logger.error('Error fetching Arweave content:', { url, error: error.message });
+      return { 
+        error: error.message || 'Failed to fetch Arweave content',
+        url,
+        directAccess: true
+      };
+    }
 };

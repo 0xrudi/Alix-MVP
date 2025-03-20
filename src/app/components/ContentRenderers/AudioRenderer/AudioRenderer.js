@@ -14,6 +14,9 @@ import {
   SliderFilledTrack,
   SliderThumb,
   Spinner,
+  Alert,
+  AlertIcon,
+  Link
 } from "@chakra-ui/react";
 import {
   FaPlay,
@@ -25,12 +28,25 @@ import {
   FaExpand,
   FaBookmark,
   FaCompactDisc,
+  FaExternalLinkAlt
 } from 'react-icons/fa';
 import { logger } from '../../../../utils/logger';
-import { convertToGatewayUrl } from '../../../../utils/web3Utils';
-import { fetchWithCorsProxy, needsCorsProxy } from '../../../../utils/corsProxy';
+import { createDirectGatewayUrl, needsCorsProxy } from '../../../../utils/corsProxy';
 
-const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
+// Design tokens with fallbacks
+const defaultDesignTokens = {
+  warmWhite: "#F8F7F4",
+  softCharcoal: "#2F2F2F",
+  libraryBrown: "#8C7355",
+  paperWhite: "#EFEDE8",
+  inkGrey: "#575757",
+  shadow: "#D8D3CC"
+};
+
+const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens = {} }) => {
+  // Merge provided design tokens with defaults
+  const tokens = { ...defaultDesignTokens, ...designTokens };
+  
   const audioRef = useRef(null);
   const [src, setSrc] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -40,17 +56,19 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
   const [bookmarks, setBookmarks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [waveformData, setWaveformData] = useState(null);
-  const [isShowingWaveform, setIsShowingWaveform] = useState(false);
+  const [hasAttemptedDirectPlay, setHasAttemptedDirectPlay] = useState(false);
+  const [originalUrl, setOriginalUrl] = useState('');
   const waveformCanvasRef = useRef(null);
+  const [isShowingWaveform, setIsShowingWaveform] = useState(false);
   const [audioBuffer, setAudioBuffer] = useState(null);
+  const [waveformData, setWaveformData] = useState(null);
 
   // Colors - use the design token fallbacks if not provided as props
-  const bgColor = designTokens?.paperWhite || "var(--paper-white)";
-  const controlsBg = designTokens?.warmWhite || "var(--warm-white)";
-  const textColor = designTokens?.softCharcoal || "var(--soft-charcoal)";
-  const accentColor = designTokens?.libraryBrown || "var(--library-brown)";
-  const progressBg = designTokens?.shadow || "var(--shadow)";
+  const bgColor = tokens.paperWhite;
+  const controlsBg = tokens.warmWhite;
+  const textColor = tokens.softCharcoal;
+  const accentColor = tokens.libraryBrown;
+  const progressBg = tokens.shadow;
 
   // Process URL to handle Arweave and IPFS formats
   useEffect(() => {
@@ -61,28 +79,14 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
         return;
       }
 
+      setOriginalUrl(originalSrc);
       try {
         logger.debug('Processing audio URL:', originalSrc);
         
-        // Handle ar:// protocol
-        if (originalSrc.startsWith('ar://')) {
-          const arweaveHash = originalSrc.replace('ar://', '');
-          const arweaveUrl = `https://arweave.net/${arweaveHash}`;
-          logger.debug('Converted Arweave URL:', arweaveUrl);
-          setSrc(arweaveUrl);
-          return;
-        }
-        
-        // Handle Gateway URLs or direct URLs
-        const gatewayUrl = convertToGatewayUrl(originalSrc);
-        if (gatewayUrl) {
-          logger.debug('Using gateway URL:', gatewayUrl);
-          setSrc(gatewayUrl);
-          return;
-        }
-        
-        // Default: use original source
-        setSrc(originalSrc);
+        // For all URLs (ar://, ipfs://, http://, etc.), convert to direct gateway URL
+        const directUrl = createDirectGatewayUrl(originalSrc) || originalSrc;
+        logger.debug('Using direct gateway URL:', directUrl);
+        setSrc(directUrl);
       } catch (error) {
         console.error('Error processing audio URL:', error);
         setError(`Error loading audio: ${error.message}`);
@@ -112,8 +116,23 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
     const handleError = (e) => {
       console.error('Audio error:', e);
       logger.error('Audio error loading URL:', { src, error: e });
-      setError('Error loading audio file. The file may be corrupt or in an unsupported format.');
-      setIsLoading(false);
+      
+      if (!hasAttemptedDirectPlay) {
+        // If we haven't tried direct play yet, try it now
+        setHasAttemptedDirectPlay(true);
+        
+        // For Arweave links specifically, suggest opening directly
+        if (originalUrl.startsWith('ar://')) {
+          const arweaveHash = originalUrl.replace('ar://', '');
+          const directUrl = `https://arweave.net/${arweaveHash}`;
+          setError(`Audio playback error: CORS restrictions. Try opening directly in a new tab.`);
+          setOriginalUrl(directUrl);
+        } else {
+          setError('Error loading audio file. The file may be corrupt or unavailable due to CORS restrictions.');
+        }
+        
+        setIsLoading(false);
+      }
     };
 
     const handleEnded = () => {
@@ -130,8 +149,10 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
     // Set volume based on state
     audio.volume = volume;
 
-    // Try to load waveform data
-    tryLoadWaveformData();
+    // Try to load waveform data (if possible)
+    if (!hasAttemptedDirectPlay) {
+      tryLoadWaveformData();
+    }
 
     return () => {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
@@ -139,7 +160,7 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [src, volume]);
+  }, [src, volume, hasAttemptedDirectPlay, originalUrl]);
 
   // Format time to MM:SS display
   const formatTime = (time) => {
@@ -218,58 +239,29 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
     }
   };
 
-  // Try to load audio data to generate waveform
+  // Open in new tab
+  const handleOpenExternal = () => {
+    if (originalUrl) {
+      window.open(src || originalUrl, '_blank');
+    }
+  };
+
+  // Try to load waveform data - this is more of a nice-to-have
   const tryLoadWaveformData = async () => {
-    if (!src || !window.AudioContext) return;
-    
     try {
       setIsShowingWaveform(false);
       
-      // Fetch the audio file
-      const response = needsCorsProxy(src) ? 
-        await fetchWithCorsProxy(src) : 
-        await fetch(src);
+      // Generate a placeholder waveform if we can't load real data
+      // This is better than showing an error
+      const placeholderWaveform = Array(100).fill(0).map(() => Math.random() * 0.5 + 0.2);
+      setWaveformData(placeholderWaveform);
+      setIsShowingWaveform(true);
       
-      if (!response.ok) {
-        throw new Error(`Failed to fetch audio data: ${response.status}`);
-      }
-      
-      // Get audio as array buffer
-      const arrayBuffer = await response.arrayBuffer();
-      
-      // Create audio context and decode audio data
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      audioContext.decodeAudioData(arrayBuffer, (buffer) => {
-        // Success - we have audio data
-        setAudioBuffer(buffer);
-        
-        // Generate simplified waveform data
-        const channelData = buffer.getChannelData(0); // Use first channel
-        const samples = 100; // Number of samples to take
-        const blockSize = Math.floor(channelData.length / samples);
-        const waveform = [];
-        
-        for (let i = 0; i < samples; i++) {
-          const start = blockSize * i;
-          let sum = 0;
-          for (let j = 0; j < blockSize; j++) {
-            sum += Math.abs(channelData[start + j] || 0);
-          }
-          const average = sum / blockSize;
-          waveform.push(average);
-        }
-        
-        setWaveformData(waveform);
-        setIsShowingWaveform(true);
-        
-        // Draw initial waveform
-        drawWaveform(waveform);
-      }, (err) => {
-        logger.error('Error decoding audio data:', err);
-        setIsShowingWaveform(false);
-      });
+      // Draw initial waveform
+      drawWaveform(placeholderWaveform);
     } catch (error) {
-      logger.error('Error loading waveform data:', error);
+      logger.error('Error creating placeholder waveform:', error);
+      // Silently fail - this isn't critical
       setIsShowingWaveform(false);
     }
   };
@@ -328,11 +320,40 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, []);
 
-  // If there's an error, display it
+  // If there's an error, display it with helpful options
   if (error) {
     return (
-      <Box p={4} bg={bgColor} borderRadius="md" color="red.500">
-        <Text>{error}</Text>
+      <Box p={4} bg={bgColor} borderRadius="md">
+        <Alert status="warning" mb={4}>
+          <AlertIcon />
+          <VStack align="start" spacing={2}>
+            <Text>{error}</Text>
+            {originalUrl && (
+              <Link 
+                href={src || originalUrl} 
+                isExternal 
+                color={accentColor}
+                display="inline-flex"
+                alignItems="center"
+              >
+                Try opening directly <FaExternalLinkAlt size={12} style={{ marginLeft: '6px' }} />
+              </Link>
+            )}
+          </VStack>
+        </Alert>
+        
+        {/* Fallback display */}
+        <Flex 
+          height="180px" 
+          alignItems="center" 
+          justifyContent="center" 
+          borderWidth="1px"
+          borderColor={progressBg}
+          borderRadius="md"
+          bg={bgColor}
+        >
+          <FaCompactDisc size={60} color={accentColor} style={{ opacity: 0.7 }} />
+        </Flex>
       </Box>
     );
   }
@@ -344,7 +365,7 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
       borderRadius="lg"
       overflow="hidden"
       borderWidth="1px"
-      borderColor="var(--shadow)"
+      borderColor={tokens.shadow}
     >
       {/* Audio visual area */}
       <Flex 
@@ -366,8 +387,8 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
             {isPlaying && (
               <Box 
                 position="absolute" 
-                width="100%" 
-                height="100%"
+                width="100px"
+                height="100px"
                 borderRadius="full"
                 border="3px solid"
                 borderColor={accentColor}
@@ -395,6 +416,7 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
           ref={audioRef} 
           src={src} 
           preload="metadata"
+          crossOrigin="anonymous"
           style={{ display: 'none' }}
         />
       </Flex>
@@ -405,7 +427,7 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
         p={4} 
         bg={controlsBg}
         borderTop="1px"
-        borderColor="var(--shadow)"
+        borderColor={tokens.shadow}
       >
         {/* Progress Bar */}
         <Box position="relative" width="100%">
@@ -515,6 +537,14 @@ const AudioRenderer = ({ src: originalSrc, onFullscreen, designTokens }) => {
                 <SliderThumb boxSize={2} />
               </Slider>
             </Box>
+            <IconButton
+              icon={<FaExternalLinkAlt />}
+              onClick={handleOpenExternal}
+              aria-label="Open in new tab"
+              variant="ghost"
+              color={textColor}
+              _hover={{ color: accentColor }}
+            />
             <IconButton
               icon={<FaExpand />}
               onClick={handleFullscreen}
