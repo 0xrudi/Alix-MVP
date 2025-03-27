@@ -4,8 +4,8 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { getParsedNftAccountsByOwner } from "@nfteyez/sol-rayz";
 import { ethers } from 'ethers';
 import Resolution from '@unstoppabledomains/resolution';
+import { needsCorsProxy, applyCorsShProxy, applyCorsProxy } from './corsProxy';
 import { logger } from './logger';
-import { fetchWithCorsProxy, needsCorsProxy, applyCorsProxy } from './corsProxy';
 
 const MORALIS_API_KEY = process.env.REACT_APP_MORALIS_API_KEY;
 const MAINNET_RPC_URL = process.env.REACT_APP_ETHEREUM_RPC_URL;
@@ -520,9 +520,12 @@ export const normalizeBaseAddress = (address) => {
     });
     return address || '';
   }
-};
+};  
 
 
+
+// Enhanced getImageUrl function with CORS.sh integration
+// This version maintains backward compatibility with existing code
 export const getImageUrl = async (nft) => {
   const logDebug = (source, url) => {
     logger.debug(`[NFT: ${nft.title || nft.id?.tokenId}] Image Resolution:`, {
@@ -572,16 +575,21 @@ export const getImageUrl = async (nft) => {
         return url;
       }
       
-      // Case 2: URLs with common image extensions
+      // Case 2: URLs with common image extensions that aren't IPFS/Arweave
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif'];
-      if (imageExtensions.some(ext => url.toLowerCase().endsWith(ext))) {
+      if (imageExtensions.some(ext => url.toLowerCase().endsWith(ext)) && 
+          !url.includes('ipfs') && 
+          !url.includes('arweave')) {
         logDebug('Found direct image URL with known extension', url);
         return url;
       }
     }
   }
 
-  // For other cases, try our improved approach with less CORS issues
+  // Check if CORS_API_KEY is available
+  const hasCorsApiKey = !!process.env.REACT_APP_CORS_API_KEY;
+
+  // For IPFS and Arweave URLs, apply CORS proxy with API key from environment
   for (const source of possibleSources) {
     if (!source.value) continue;
     
@@ -589,36 +597,31 @@ export const getImageUrl = async (nft) => {
     const url = source.value;
     
     try {
-      // Handle IPFS URLs
-      if (typeof url === 'string' && (url.startsWith('ipfs://') || url.includes('/ipfs/'))) {
-        let ipfsUrl = url;
+      // Enhanced handling with CORS.sh if API key is available
+      if (typeof url === 'string' && needsCorsProxy(url) && hasCorsApiKey) {
+        // Use the enhanced applyCorsShProxy function for CORS.sh
+        const { url: proxiedUrl, headers } = applyCorsShProxy(url);
+        logDebug('Proxied URL with CORS.sh', proxiedUrl);
         
-        // Convert ipfs:// to HTTP URL
-        if (url.startsWith('ipfs://')) {
-          const hash = url.replace('ipfs://', '');
-          ipfsUrl = `https://ipfs.io/ipfs/${hash}`;
-        }
-        
-        logDebug('Converted IPFS URL', ipfsUrl);
-        return ipfsUrl;
+        // Return object format with URL and headers
+        return {
+          url: proxiedUrl,
+          headers
+        };
+      } 
+      // Fallback to legacy behavior if no API key
+      else if (typeof url === 'string' && needsCorsProxy(url)) {
+        // Use the legacy applyCorsProxy function
+        const proxiedUrl = applyCorsProxy(url);
+        logDebug('Proxied URL with fallback proxy', proxiedUrl);
+        return proxiedUrl;
       }
 
-      // Handle Arweave URLs directly
-      if (typeof url === 'string' && (url.startsWith('ar://') || url.includes('arweave.net'))) {
-        let arweaveUrl = url;
-        
-        // Convert ar:// to HTTP URL
-        if (url.startsWith('ar://')) {
-          const hash = url.replace('ar://', '');
-          arweaveUrl = `https://arweave.net/${hash}`;
-        }
-        
-        logDebug('Using Arweave URL directly', arweaveUrl);
-        return arweaveUrl;
+      // Return URL directly if no proxy needed
+      if (typeof url === 'string') {
+        logDebug('Using URL directly (no proxy needed)', url);
+        return url;
       }
-
-      // For all other URLs, return as-is
-      return url;
     } catch (error) {
       logDebug('Error processing source', {
         source: source.value,
