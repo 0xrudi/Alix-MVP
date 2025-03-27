@@ -4,7 +4,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { getParsedNftAccountsByOwner } from "@nfteyez/sol-rayz";
 import { ethers } from 'ethers';
 import Resolution from '@unstoppabledomains/resolution';
-import { needsCorsProxy, applyCorsShProxy, applyCorsProxy } from './corsProxy';
+import { needsCorsProxy, applyCorsShProxy, applyCorsProxy, fetchWithCorsProxy } from './corsProxy';
 import { logger } from './logger';
 
 const MORALIS_API_KEY = process.env.REACT_APP_MORALIS_API_KEY;
