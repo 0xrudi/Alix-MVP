@@ -16,7 +16,11 @@ import {
   FaTrash, 
   FaPlus, 
   FaCheck,
-  FaEllipsisH 
+  FaEllipsisH,
+  FaMusic,
+  FaVideo,
+  FaFileAlt,
+  FaCube 
 } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { getImageUrl } from './../../utils/web3Utils';
@@ -92,11 +96,30 @@ const NFTCard = ({
     }
   };
 
+  // Get the media type icon based on media_type field
+  const getMediaTypeIcon = () => {
+    if (!nft.media_type) return null;
+
+    switch (nft.media_type) {
+      case 'audio':
+        return <FaMusic size={16} />;
+      case 'video':
+        return <FaVideo size={16} />;
+      case 'article':
+        return <FaFileAlt size={16} />;
+      case '3d':
+        return <FaCube size={16} />;
+      default:
+        return null;
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     const loadImage = async () => {
       try {
         setIsLoading(true);
+        // Use cover_image_url instead of media_url for thumbnails if available
         const url = await getImageUrl(nft);
         if (mounted) {
           setImageUrl(url || 'https://via.placeholder.com/400?text=No+Image');
@@ -161,6 +184,25 @@ const NFTCard = ({
               onChange={handleSelectChange}
               colorScheme="brown"
             />
+          </Box>
+        )}
+
+        {/* Media Type Badge */}
+        {nft.media_type && nft.media_type !== 'image' && (
+          <Box
+            position="absolute"
+            top={2}
+            left={isSelectMode ? 10 : 2}
+            zIndex={5}
+            bg="rgba(0, 0, 0, 0.7)"
+            color="white"
+            borderRadius="full"
+            p={1}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+          >
+            {getMediaTypeIcon()}
           </Box>
         )}
 

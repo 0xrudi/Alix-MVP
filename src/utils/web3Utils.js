@@ -4,54 +4,14 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { getParsedNftAccountsByOwner } from "@nfteyez/sol-rayz";
 import { ethers } from 'ethers';
 import Resolution from '@unstoppabledomains/resolution';
-import { needsCorsProxy, applyCorsShProxy, applyCorsProxy, fetchWithCorsProxy } from './corsProxy';
 import { logger } from './logger';
+import { fetchWithCorsProxy, needsCorsProxy, applyCorsProxy } from './corsProxy';
 
 const MORALIS_API_KEY = process.env.REACT_APP_MORALIS_API_KEY;
 const MAINNET_RPC_URL = process.env.REACT_APP_ETHEREUM_RPC_URL;
 const BASE_RPC_URL = process.env.REACT_APP_BASE_RPC_URL;
 
-const OPTIMISM_RPC_URL = process.env.REACT_APP_OPTIMISM_RPC_URL;
-const ARBITRUM_RPC_URL = process.env.REACT_APP_ARBITRUM_RPC_URL;
-const POLYGON_RPC_URL = process.env.REACT_APP_POLYGON_RPC_URL;
-const AVALANCHE_RPC_URL = process.env.REACT_APP_AVALANCHE_RPC_URL;
-const BSC_RPC_URL = process.env.REACT_APP_BSC_RPC_URL;
-const FANTOM_RPC_URL = process.env.REACT_APP_FANTOM_RPC_URL;
-
-const resolution = new Resolution();
-
-let moralisStartPromise = null;
-
-const startMoralis = async () => {
-  if (!moralisStartPromise) {
-    moralisStartPromise = (async () => {
-      if (!MORALIS_API_KEY) {
-        throw new Error('Moralis API Key is not set');
-      }
-      try {
-        console.log('Starting Moralis with API key:', MORALIS_API_KEY.substring(0, 10) + '...');
-        await Moralis.start({
-          apiKey: MORALIS_API_KEY,
-        });
-        console.log('Moralis started successfully');
-        return true;
-      } catch (error) {
-        console.error('Error starting Moralis:', error);
-        if (error.message.includes('Modules are started already')) {
-          return true;
-        }
-        throw error;
-      }
-    })();
-  }
-  return moralisStartPromise;
-};
-
-const withMoralis = async (fn) => {
-  await startMoralis();
-  return fn();
-};
-
+// Define all supported networks
 export const networks = [
   { value: "eth", label: "Ethereum", chain: "0x1", type: "evm" },
   { value: "polygon", label: "Polygon", chain: "0x89", type: "evm" },
@@ -64,241 +24,53 @@ export const networks = [
   { value: "solana", label: "Solana", chain: "1", type: "solana" },
 ];
 
-const isValidImageExtension = (url) => {
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif'];
-  return imageExtensions.some(ext => url.toLowerCase().endsWith(ext));
-};
+const resolution = new Resolution();
 
-const isValidMimeType = (contentType) => {
-  const validMimeTypes = [
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'image/svg+xml',
-    'image/bmp',
-    'image/avif'
-  ];
-  return validMimeTypes.some(mime => contentType.toLowerCase().includes(mime));
-};
+// Track Moralis initialization to prevent multiple starts
+let moralisStartPromise = null;
 
-const convertToGatewayUrl = (uri) => {
-  if (!uri) return null;
-
-  logger.debug('[Gateway Conversion] Processing URI:', uri);
-
-  // Handle Arweave protocol - process this first
-  if (uri.startsWith('ar://')) {
-    const hash = uri.replace('ar://', '');
-    const arweaveUrl = `https://arweave.net/${hash}`;
-    logger.debug('[Gateway Conversion] Converted Arweave URI:', { original: uri, converted: arweaveUrl });
-    return arweaveUrl;
-  }
-
-  // Handle raw Arweave hash
-  if (uri.match(/^[a-zA-Z0-9_-]{43}$/)) {
-    const arweaveUrl = `https://arweave.net/${uri}`;
-    logger.debug('[Gateway Conversion] Converted Arweave hash:', { original: uri, converted: arweaveUrl });
-    return arweaveUrl;
-  }
-
-  // Handle IPFS protocol
-  if (uri.startsWith('ipfs://')) {
-    const hash = uri.replace('ipfs://', '');
-    return `https://ipfs.io/ipfs/${hash}`;
-  }
-
-  // Handle IPFS gateway URLs that might need normalization
-  if (uri.includes('/ipfs/')) {
-    const hash = uri.split('/ipfs/')[1];
-    return `https://ipfs.io/ipfs/${hash}`;
-  }
-
-  // Return original URI if no conversion needed
-  return uri;
-};
-
-
-export const validateTokenUri = async (uri) => {
-  try {
-    logger.debug('[TokenURI Validation] Validating URI:', uri);
-
-    // Handle data URIs
-    if (uri?.startsWith('data:')) {
-      return uri.startsWith('data:image/') ? uri : null;
-    }
-
-    // Convert URI to gateway URL if needed
-    const gatewayUrl = convertToGatewayUrl(uri);
-    if (!gatewayUrl) {
-      logger.warn('[TokenURI Validation] Invalid URI:', uri);
-      return null;
-    }
-
-    // If it has a valid image extension, return the URL without validation
-    // This helps avoid unnecessary timeouts for known image types
-    if (isValidImageExtension(gatewayUrl)) {
-      logger.debug('[TokenURI Validation] Valid image extension found, skipping validation:', gatewayUrl);
-      return gatewayUrl;
-    }
-
-    // Handle known CORS-restricted domains with our proxy
-    if (needsCorsProxy(gatewayUrl)) {
+/**
+ * Initialize Moralis safely with error handling
+ */
+const startMoralis = async () => {
+  if (!moralisStartPromise) {
+    moralisStartPromise = (async () => {
+      if (!MORALIS_API_KEY) {
+        throw new Error('Moralis API Key is not set');
+      }
       try {
-        logger.debug('[TokenURI Validation] Using CORS proxy for:', gatewayUrl);
-        const response = await fetchWithCorsProxy(gatewayUrl, {
-          timeout: 5000,
-          headers: {
-            'Accept': 'application/json, image/*'
-          }
+        logger.info('Starting Moralis with API key:', MORALIS_API_KEY.substring(0, 8) + '...');
+        await Moralis.start({
+          apiKey: MORALIS_API_KEY,
         });
-        
-        const contentType = response.headers.get('content-type')?.toLowerCase() || '';
-        
-        // Handle JSON responses
-        if (contentType.includes('application/json')) {
-          const data = await response.json();
-          logger.debug('[TokenURI Validation] JSON response:', { data });
-
-          const possibleImageUrls = [
-            data.image,
-            data.image_url,
-            data.artwork?.uri,
-            data.image_data,
-            data.animation_url,
-            data.metadata?.image,
-            data.metadata?.image_url,
-            data.properties?.image,
-            data.properties?.preview?.image
-          ].filter(Boolean);
-
-          logger.debug('[TokenURI Validation] Found possible image URLs:', possibleImageUrls);
-
-          // For JSON responses, don't recursively validate to avoid timeout loops
-          for (const imageUrl of possibleImageUrls) {
-            if (isValidImageExtension(imageUrl) || 
-                imageUrl.startsWith('ar://') || 
-                imageUrl.startsWith('ipfs://')) {
-              return convertToGatewayUrl(imageUrl);
-            }
-          }
-          
-          return null;
-        }
-
-        // Handle direct image responses
-        if (isValidMimeType(contentType)) {
-          return gatewayUrl;
+        logger.info('Moralis started successfully');
+        return true;
+      } catch (error) {
+        // Special case: if Moralis is already started, that's fine
+        if (error.message && error.message.includes('Modules are started already')) {
+          logger.info('Moralis was already started');
+          return true;
         }
         
-        logger.warn('[TokenURI Validation] Invalid content type:', {
-          uri: gatewayUrl,
-          contentType
-        });
-        return null;
-      } catch (proxyError) {
-        logger.error('[TokenURI Validation] Proxy error:', {
-          uri: gatewayUrl,
-          error: proxyError.message
-        });
-        // Fall back to direct URL if it's a known image
-        if (isValidImageExtension(gatewayUrl)) {
-          return gatewayUrl;
-        }
-        return null;
+        logger.error('Error starting Moralis:', error);
+        throw error;
       }
-    }
-
-    // For non-CORS restricted domains, proceed with standard fetch (original code)
-    // Only proceed with HTTP(S) requests
-    if (!gatewayUrl.startsWith('http://') && !gatewayUrl.startsWith('https://')) {
-      throw new Error(`Unsupported protocol: ${gatewayUrl.split('://')[0]}`);
-    }
-
-    try {
-      // Try a HEAD request first for faster validation
-      const response = await axios.head(gatewayUrl, {
-        timeout: 3000, // Shorter timeout for HEAD requests
-        validateStatus: status => status === 200,
-      });
-
-      // If HEAD request succeeds and it's an image, return immediately
-      const contentType = response.headers['content-type'].toLowerCase();
-      if (isValidMimeType(contentType)) {
-        return gatewayUrl;
-      }
-    } catch (headError) {
-      // If HEAD fails, continue with GET request
-      logger.debug('[TokenURI Validation] HEAD request failed, trying GET:', { 
-        url: gatewayUrl,
-        error: headError.message 
-      });
-    }
-
-    // Proceed with full GET request
-    const response = await axios.get(gatewayUrl, {
-      timeout: 5000,
-      validateStatus: status => status === 200,
-      headers: {
-        'Accept': 'application/json, image/*'
-      }
-    }).catch(error => {
-      // Special handling for CORS and timeout errors
-      if (error.message.includes('CORS') || error.code === 'ECONNABORTED') {
-        logger.debug('[TokenURI Validation] CORS/Timeout error, returning URL without validation:', gatewayUrl);
-        return { 
-          data: null, 
-          headers: { 'content-type': 'unknown' }, 
-          bypassValidation: true 
-        };
-      }
-      throw error;
-    });
-
-    // If we bypassed validation due to CORS/timeout
-    if (response.bypassValidation) {
-      return gatewayUrl;
-    }
-
-    const contentType = response.headers['content-type'].toLowerCase();
-    
-    logger.debug('[TokenURI Validation] Response:', {
-      uri: gatewayUrl,
-      contentType,
-      headers: response.headers
-    });
-
-    // Handle JSON responses (original code continues)
-    // ...
-
-  } catch (error) {
-    logger.error('[TokenURI Validation] Error:', {
-      uri,
-      gatewayUrl: convertToGatewayUrl(uri),
-      error: error.message
-    });
-
-    // If validation fails but we have a known image URL, return it anyway
-    if (isValidImageExtension(uri) || 
-        uri.startsWith('ar://') || 
-        uri.startsWith('ipfs://')) {
-      return convertToGatewayUrl(uri);
-    }
-
-    return null;
+    })();
   }
+  return moralisStartPromise;
 };
 
-
-export const isValidBaseAddress = (address) => {
-  try {
-    const normalized = normalizeBaseAddress(address);
-    return normalized.length === 42 && normalized.startsWith('0x');
-  } catch {
-    return false;
-  }
+/**
+ * Execute a function with Moralis initialized
+ */
+const withMoralis = async (fn) => {
+  await startMoralis();
+  return fn();
 };
 
+/**
+ * Get the chain ID for a network
+ */
 export const getChainForNetwork = (networkValue) => {
   const network = networks.find(n => n.value === networkValue);
   if (network) {
@@ -311,65 +83,236 @@ export const getChainForNetwork = (networkValue) => {
   return null;
 };
 
+/**
+ * Get the network type (evm or solana)
+ */
 export const getNetworkType = (networkValue) => {
   const network = networks.find(n => n.value === networkValue);
   return network ? network.type : null;
 };
 
-export const fetchNFTs = async (address, network, cursor = null, limit = 100) => {
-  const networkType = getNetworkType(network);
+/**
+ * Main function to fetch NFTs with improved error handling
+ */
+export const fetchNFTs = async (address, network, cursor = null, limit = 100, progressCallback = null) => {
+  try {
+    const networkType = getNetworkType(network);
+    if (!networkType) {
+      throw new Error(`Unsupported network: ${network}`);
+    }
+    
+    logger.info(`Fetching NFTs for address ${address} on ${network}`);
+    
+    // Report initial progress
+    if (progressCallback) {
+      progressCallback({
+        network,
+        status: 'started',
+        progress: 0
+      });
+    }
 
-  if (networkType === 'evm') {
-    if (network === 'base') {
-      try {
-        logger.log('Fetching Base NFTs - Raw Input:', {
-          address,
+    if (networkType === 'evm') {
+      if (network === 'base') {
+        // Special handling for Base network
+        return await fetchBaseNFTs(address, cursor, limit, progressCallback);
+      }
+      return await fetchEVMNFTs(address, network, cursor, limit, progressCallback);
+    } else if (networkType === 'solana') {
+      return await fetchSolanaNFTs(address, progressCallback);
+    } else {
+      throw new Error(`Unsupported network type: ${networkType}`);
+    }
+  } catch (error) {
+    logger.error(`Failed to fetch NFTs for ${network}:`, error);
+    
+    // Report error progress
+    if (progressCallback) {
+      progressCallback({
+        network,
+        status: 'error',
+        progress: 100,
+        error: error.message
+      });
+    }
+    
+    // Return empty result instead of throwing
+    return { nfts: [], cursor: null };
+  }
+};
+
+/**
+ * Fetch NFTs for Base network with specific error handling
+ */
+const fetchBaseNFTs = async (address, cursor = null, limit = 100, progressCallback = null) => {
+  try {
+    // Report progress
+    if (progressCallback) {
+      progressCallback({
+        network: 'base',
+        status: 'normalizing',
+        progress: 10
+      });
+    }
+    
+    // Use the utility function to normalize address
+    const normalizedAddress = normalizeBaseAddress(address);
+    
+    logger.info('Base network - Normalized address:', normalizedAddress);
+    
+    // Report progress
+    if (progressCallback) {
+      progressCallback({
+        network: 'base',
+        status: 'fetching',
+        progress: 30
+      });
+    }
+    
+    return withMoralis(async () => {
+      const response = await Moralis.EvmApi.nft.getWalletNFTs({
+        address: normalizedAddress,
+        chain: getChainForNetwork('base'),
+        limit,
+        cursor,
+        normalizeMetadata: true,
+      });
+      
+      // Report progress
+      if (progressCallback) {
+        progressCallback({
+          network: 'base',
+          status: 'processing',
+          progress: 60,
+          count: response.result.length
+        });
+      }
+
+      // Log the raw response for Base network
+      logger.debug('Base network - found NFTs:', response.result.length);
+
+      const nfts = response.result.map(nft => {
+        return {
+          id: { tokenId: nft.tokenId },
+          contract: { 
+            address: normalizeBaseAddress(nft.tokenAddress),
+            name: nft.name,
+            symbol: nft.symbol,
+            type: nft.contractType
+          },
+          title: nft.metadata?.name || nft.name || `Token ID: ${nft.tokenId}`,
+          description: nft.metadata?.description || '',
+          media: [{
+            gateway: nft.metadata?.image || nft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
+          }],
+          metadata: nft.metadata || {},
+          isSpam: nft.possibleSpam,
+          network: 'base'
+        };
+      });
+      
+      // Report complete progress
+      if (progressCallback) {
+        progressCallback({
+          network: 'base',
+          status: 'success',
+          progress: 100,
+          count: nfts.length
+        });
+      }
+
+      return { 
+        nfts, 
+        cursor: response.pagination.cursor
+      };
+    });
+  } catch (error) {
+    logger.error('Error in Base NFT fetching:', {
+      error: error.message,
+      stack: error.stack,
+      address
+    });
+    
+    // Report error progress
+    if (progressCallback) {
+      progressCallback({
+        network: 'base',
+        status: 'error',
+        progress: 100,
+        error: error.message
+      });
+    }
+    
+    return { nfts: [], cursor: null };
+  }
+};
+
+/**
+ * Fetch EVMs NFTs with improved error handling
+ */
+const fetchEVMNFTs = async (address, network, cursor = null, limit = 100, progressCallback = null) => {
+  try {
+    // Report progress
+    if (progressCallback) {
+      progressCallback({
+        network,
+        status: 'preparing',
+        progress: 10
+      });
+    }
+    
+    return withMoralis(async () => {
+      const chain = getChainForNetwork(network);
+      if (!chain) {
+        throw new Error(`Unsupported network: ${network}`);
+      }
+      
+      // Report progress
+      if (progressCallback) {
+        progressCallback({
           network,
-          cursor,
-          limit
+          status: 'fetching',
+          progress: 30
         });
+      }
 
-        // Use the utility function
-        const normalizedAddress = normalizeBaseAddress(address);
-        
-        logger.log('Base network - Normalized address:', normalizedAddress);
-        
-        const response = await Moralis.EvmApi.nft.getWalletNFTs({
-          address: normalizedAddress,
-          chain: getChainForNetwork(network),
-          limit,
-          cursor,
-          normalizeMetadata: true,
-        });
-
-        // Log the raw response for Base network
-        logger.log('Raw Moralis API Response (Base):', {
-          result: response.result.map(nft => ({
-            tokenId: nft.tokenId,
-            name: nft.name,
-            metadata: nft.metadata,
-            tokenAddress: nft.tokenAddress,
-            tokenUri: nft.tokenUri,
-            rawData: nft
-          }))
-        });
-
-        const nfts = response.result.map(nft => {
-          logger.log('Processing Base NFT:', {
-            tokenId: nft.tokenId,
-            name: nft.name,
-            tokenAddress: nft.tokenAddress
+      // Add retry logic for better reliability
+      let retries = 2;
+      let lastError = null;
+      
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          // Add small delay between retries
+          if (attempt > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            logger.info(`Retry attempt ${attempt} for ${network}`);
+          }
+          
+          const response = await Moralis.EvmApi.nft.getWalletNFTs({
+            address,
+            chain,
+            limit,
+            cursor,
+            normalizeMetadata: true,
           });
+          
+          // Process the results
+          logger.debug(`Found ${response.result.length} NFTs on ${network}`);
+          
+          // Report progress
+          if (progressCallback) {
+            progressCallback({
+              network,
+              status: 'processing',
+              progress: 60,
+              count: response.result.length
+            });
+          }
 
-          // Properly handle the object format for contract address
-          const contractAddress = typeof nft.tokenAddress === 'object' && nft.tokenAddress !== null && nft.tokenAddress._value
-            ? normalizeBaseAddress(nft.tokenAddress._value)
-            : normalizeBaseAddress(nft.tokenAddress);
-
-          return {
+          const nfts = response.result.map(nft => ({
             id: { tokenId: nft.tokenId },
             contract: { 
-              address: contractAddress,
+              address: nft.tokenAddress,
               name: nft.name,
               symbol: nft.symbol,
               type: nft.contractType
@@ -381,95 +324,102 @@ export const fetchNFTs = async (address, network, cursor = null, limit = 100) =>
             }],
             metadata: nft.metadata || {},
             isSpam: nft.possibleSpam,
-            network: 'base'
-          };
-        });
+            network
+          }));
+          
+          // Report complete progress
+          if (progressCallback) {
+            progressCallback({
+              network,
+              status: 'success',
+              progress: 100,
+              count: nfts.length
+            });
+          }
 
-        return { 
-          nfts, 
-          cursor: response.pagination.cursor
-        };
-      } catch (error) {
-        logger.error('Error in Base NFT fetching:', {
-          error: error.message,
-          stack: error.stack,
-          address,
-          network
-        });
-        throw error;
+          return { 
+            nfts, 
+            cursor: response.pagination.cursor
+          };
+        } catch (error) {
+          lastError = error;
+          logger.warn(`Attempt ${attempt + 1}/${retries + 1} failed for ${network}:`, error);
+          
+          // Don't retry some errors
+          if (
+            error.message?.includes('Invalid address') || 
+            error.status === 404
+          ) {
+            break;
+          }
+        }
       }
+      
+      // If we got here, all retries failed
+      throw lastError || new Error(`Failed to fetch NFTs from ${network}`);
+    });
+  } catch (error) {
+    logger.error(`Error fetching NFTs for ${network}:`, error);
+    
+    // Report error progress
+    if (progressCallback) {
+      progressCallback({
+        network,
+        status: 'error',
+        progress: 100,
+        error: error.message
+      });
     }
-    return fetchEVMNFTs(address, network, cursor, limit);
-  } else if (networkType === 'solana') {
-    return fetchSolanaNFTs(address);
-  } else {
-    throw new Error(`Unsupported network type: ${networkType}`);
+    
+    return { nfts: [], cursor: null };
   }
 };
 
-const fetchEVMNFTs = (address, network, cursor = null, limit = 100) => 
-  withMoralis(async () => {
-    const chain = getChainForNetwork(network);
-    if (!chain) {
-      throw new Error(`Unsupported network: ${network}`);
+/**
+ * Fetch Solana NFTs with improved error handling
+ */
+const fetchSolanaNFTs = async (address, progressCallback = null) => {
+  try {
+    // Report progress
+    if (progressCallback) {
+      progressCallback({
+        network: 'solana',
+        status: 'connecting',
+        progress: 10
+      });
+    }
+    
+    const connection = new Connection("https://api.mainnet-beta.solana.com");
+    const publicKey = new PublicKey(address);
+    
+    // Report progress
+    if (progressCallback) {
+      progressCallback({
+        network: 'solana',
+        status: 'fetching',
+        progress: 30
+      });
     }
 
-    const response = await Moralis.EvmApi.nft.getWalletNFTs({
-      address,
-      chain,
-      limit,
-      cursor,
-      normalizeMetadata: true,
-    });
-
-    // Log the raw response
-    logger.log('Raw Moralis API Response:', {
-      result: response.result.map(nft => ({
-        tokenId: nft.tokenId,
-        name: nft.name,
-        metadata: nft.metadata,
-        tokenAddress: nft.tokenAddress,
-        tokenUri: nft.tokenUri,
-        rawData: nft // Include the complete raw NFT data
-      }))
-    });
-
-    const nfts = response.result.map(nft => ({
-      id: { tokenId: nft.tokenId },
-      contract: { 
-        address: nft.tokenAddress,
-        name: nft.name,
-        symbol: nft.symbol
-      },
-      title: nft.metadata?.name || nft.name || `Token ID: ${nft.tokenId}`,
-      description: nft.metadata?.description || '',
-      media: [{
-        gateway: nft.metadata?.image || nft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
-      }],
-      metadata: nft.metadata || {},
-      isSpam: nft.possibleSpam
-    }));
-
-    return { 
-      nfts, 
-      cursor: response.pagination.cursor
-    };
-  });
-
-const fetchSolanaNFTs = async (address) => {
-  const connection = new Connection("https://api.mainnet-beta.solana.com");
-  const publicKey = new PublicKey(address);
-
-  try {
     const nftArray = await getParsedNftAccountsByOwner({
       publicAddress: publicKey,
       connection: connection,
     });
+    
+    // Report progress
+    if (progressCallback) {
+      progressCallback({
+        network: 'solana',
+        status: 'processing',
+        progress: 60,
+        count: nftArray.length
+      });
+    }
 
     const nfts = nftArray.map(nft => ({
       id: { tokenId: nft.mint },
       contract: {
-        address: nft.data.creators[0].address,
+        address: nft.data.creators?.[0]?.address || nft.mint,
         name: nft.data.name,
         symbol: nft.data.symbol
       },
@@ -479,53 +429,41 @@ const fetchSolanaNFTs = async (address) => {
         gateway: nft.data.uri || 'https://via.placeholder.com/150?text=No+Image'
       }],
       metadata: nft.data,
-      isSpam: false // Solana doesn't provide spam detection, so we set it to false by default
+      isSpam: false, // Solana doesn't provide spam detection
+      network: 'solana'
     }));
+    
+    // Report complete progress
+    if (progressCallback) {
+      progressCallback({
+        network: 'solana',
+        status: 'success',
+        progress: 100,
+        count: nfts.length
+      });
+    }
 
     return { nfts, cursor: null };
   } catch (error) {
-    console.error("Error fetching Solana NFTs:", error);
-    throw error;
+    logger.error("Error fetching Solana NFTs:", error);
+    
+    // Report error progress
+    if (progressCallback) {
+      progressCallback({
+        network: 'solana',
+        status: 'error',
+        progress: 100,
+        error: error.message
+      });
+    }
+    
+    return { nfts: [], cursor: null };
   }
 };
 
-export const normalizeBaseAddress = (address) => {
-  try {
-    if (!address) {
-      logger.error('Attempted to normalize null/undefined Base address');
-      return '';
-    }
-    
-    // Handle case where address is an object with _value property (from Moralis API)
-    if (typeof address === 'object' && address !== null && address._value) {
-      address = address._value;
-      logger.debug('Extracted address from object format:', address);
-    } else if (typeof address !== 'string') {
-      logger.error('Invalid address type:', {
-        address,
-        type: typeof address
-      });
-      // Try to convert to string if possible
-      address = String(address);
-    }
-    
-    // Remove '0x' prefix if it exists and convert to lowercase
-    const cleanAddress = address.toLowerCase().replace('0x', '');
-    // Add '0x' prefix back and return
-    return `0x${cleanAddress}`;
-  } catch (error) {
-    logger.error('Error normalizing Base address:', {
-      error: error.message,
-      address
-    });
-    return address || '';
-  }
-};  
-
-
-
-// Enhanced getImageUrl function with CORS.sh integration
-// This version maintains backward compatibility with existing code
+/**
+ * Get image URL with CORS handling
+ */
 export const getImageUrl = async (nft) => {
   const logDebug = (source, url) => {
     logger.debug(`[NFT: ${nft.title || nft.id?.tokenId}] Image Resolution:`, {
@@ -536,19 +474,18 @@ export const getImageUrl = async (nft) => {
     });
   };
 
-  // Check for audio NFT
-  const isAudioNFT = 
-    nft.metadata?.mimeType === 'audio/mpeg' ||
-    nft.metadata?.animation_url?.includes('audio') ||
-    (nft.attributes && Array.isArray(nft.attributes) && nft.attributes.some(attr => 
-      attr.trait_type?.toLowerCase().includes('audio') ||
-      attr.trait_type?.toLowerCase().includes('song') ||
-      attr.trait_type?.toLowerCase().includes('music')
-    ));
+  // Check for audio NFT based on media_type field
+  const isAudioNFT = nft.media_type === 'audio';
 
   if (isAudioNFT) {
     logDebug('Audio NFT detected', null);
     return 'https://via.placeholder.com/400?text=Audio+NFT';
+  }
+
+  // First prioritize the cover_image_url field if it exists
+  if (nft.cover_image_url) {
+    logDebug('Using cover_image_url', nft.cover_image_url);
+    return nft.cover_image_url;
   }
 
   // Gather all possible image sources
@@ -558,7 +495,8 @@ export const getImageUrl = async (nft) => {
     { key: 'metadata.image_url', value: nft.metadata?.image_url },
     { key: 'artwork.uri', value: nft.metadata?.artwork?.uri },
     { key: 'tokenUri', value: nft.tokenUri },
-    { key: 'external_url', value: nft.metadata?.external_url }
+    { key: 'external_url', value: nft.metadata?.external_url },
+    { key: 'media_url', value: nft.media_url }, // Added media_url as fallback
   ].filter(source => !!source.value);
 
   logDebug('Possible image sources', possibleSources);
@@ -575,21 +513,16 @@ export const getImageUrl = async (nft) => {
         return url;
       }
       
-      // Case 2: URLs with common image extensions that aren't IPFS/Arweave
+      // Case 2: URLs with common image extensions
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif'];
-      if (imageExtensions.some(ext => url.toLowerCase().endsWith(ext)) && 
-          !url.includes('ipfs') && 
-          !url.includes('arweave')) {
+      if (imageExtensions.some(ext => url.toLowerCase().endsWith(ext))) {
         logDebug('Found direct image URL with known extension', url);
         return url;
       }
     }
   }
 
-  // Check if CORS_API_KEY is available
-  const hasCorsApiKey = !!process.env.REACT_APP_CORS_API_KEY;
-
-  // For IPFS and Arweave URLs, apply CORS proxy with API key from environment
+  // For other cases, try our improved approach with less CORS issues
   for (const source of possibleSources) {
     if (!source.value) continue;
     
@@ -597,31 +530,36 @@ export const getImageUrl = async (nft) => {
     const url = source.value;
     
     try {
-      // Enhanced handling with CORS.sh if API key is available
-      if (typeof url === 'string' && needsCorsProxy(url) && hasCorsApiKey) {
-        // Use the enhanced applyCorsShProxy function for CORS.sh
-        const { url: proxiedUrl, headers } = applyCorsShProxy(url);
-        logDebug('Proxied URL with CORS.sh', proxiedUrl);
+      // Handle IPFS URLs
+      if (typeof url === 'string' && (url.startsWith('ipfs://') || url.includes('/ipfs/'))) {
+        let ipfsUrl = url;
         
-        // Return object format with URL and headers
-        return {
-          url: proxiedUrl,
-          headers
-        };
-      } 
-      // Fallback to legacy behavior if no API key
-      else if (typeof url === 'string' && needsCorsProxy(url)) {
-        // Use the legacy applyCorsProxy function
-        const proxiedUrl = applyCorsProxy(url);
-        logDebug('Proxied URL with fallback proxy', proxiedUrl);
-        return proxiedUrl;
+        // Convert ipfs:// to HTTP URL
+        if (url.startsWith('ipfs://')) {
+          const hash = url.replace('ipfs://', '');
+          ipfsUrl = `https://ipfs.io/ipfs/${hash}`;
+        }
+        
+        logDebug('Converted IPFS URL', ipfsUrl);
+        return ipfsUrl;
       }
 
-      // Return URL directly if no proxy needed
-      if (typeof url === 'string') {
-        logDebug('Using URL directly (no proxy needed)', url);
-        return url;
+      // Handle Arweave URLs directly
+      if (typeof url === 'string' && (url.startsWith('ar://') || url.includes('arweave.net'))) {
+        let arweaveUrl = url;
+        
+        // Convert ar:// to HTTP URL
+        if (url.startsWith('ar://')) {
+          const hash = url.replace('ar://', '');
+          arweaveUrl = `https://arweave.net/${hash}`;
+        }
+        
+        logDebug('Using Arweave URL directly', arweaveUrl);
+        return arweaveUrl;
       }
+
+      // For all other URLs, return as-is
+      return url;
     } catch (error) {
       logDebug('Error processing source', {
         source: source.value,
@@ -630,11 +568,85 @@ export const getImageUrl = async (nft) => {
     }
   }
 
-  // Fallback to placeholder if no valid URL found
+  // Special placeholder based on media type if no valid URL found
+  if (nft.media_type) {
+    switch (nft.media_type) {
+      case 'audio':
+        return 'https://via.placeholder.com/400?text=Audio+Content';
+      case 'video':
+        return 'https://via.placeholder.com/400?text=Video+Content';
+      case 'article':
+        return 'https://via.placeholder.com/400?text=Article+Content';
+      case '3d':
+        return 'https://via.placeholder.com/400?text=3D+Model';
+      case 'animation':
+        return 'https://via.placeholder.com/400?text=Animation';
+      default:
+        break;
+    }
+  }
+
+  // Fallback to generic placeholder if no valid URL found
   logDebug('No valid image URL found, using placeholder', null);
   return 'https://via.placeholder.com/400?text=No+Image';
 };
 
+/**
+ * Helper function for Base addresses
+ */
+export const normalizeBaseAddress = (address) => {
+  try {
+    if (!address) {
+      logger.error('Attempted to normalize null/undefined Base address');
+      return '';
+    }
+    
+    // Handle Moralis EvmAddress object
+    if (typeof address === 'object' && address._value) {
+      return address._value.toLowerCase();
+    }
+    
+    if (typeof address !== 'string') {
+      logger.error('Invalid address type:', {
+        address,
+        type: typeof address
+      });
+      // Try to get string representation
+      if (address.toString && typeof address.toString === 'function') {
+        address = address.toString();
+      } else {
+        return '';
+      }
+    }
+    
+    // Remove '0x' prefix if it exists and convert to lowercase
+    const cleanAddress = address.toLowerCase().replace('0x', '');
+    // Add '0x' prefix back and return
+    return `0x${cleanAddress}`;
+  } catch (error) {
+    logger.error('Error normalizing Base address:', {
+      error: error.message,
+      address
+    });
+    return address || '';
+  }
+};
+
+/**
+ * Check if Base address is valid
+ */
+export const isValidBaseAddress = (address) => {
+  try {
+    const normalized = normalizeBaseAddress(address);
+    return normalized.length === 42 && normalized.startsWith('0x');
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Resolve ENS domain to address
+ */
 export const resolveENS = async (ensName) => {
   const mainnetProvider = new ethers.providers.JsonRpcProvider(MAINNET_RPC_URL);
   
@@ -677,15 +689,9 @@ export const resolveENS = async (ensName) => {
   }
 };
 
-// Update the BASE_PROVIDER initialization
-const getBaseProvider = () => {
-  return new ethers.providers.JsonRpcProvider(BASE_RPC_URL, {
-    name: 'base',
-    chainId: 8453,
-    ensAddress: null // Base doesn't have native ENS support
-  });
-};
-
+/**
+ * Resolve Unstoppable Domains
+ */
 export const resolveUnstoppableDomain = async (domain) => {
   try {
     const address = await resolution.addr(domain, 'ETH');
@@ -708,6 +714,9 @@ export const resolveUnstoppableDomain = async (domain) => {
   return { success: false, message: 'Unstoppable Domain not found or no address associated' };
 };
 
+/**
+ * Check if Solana address is valid
+ */
 export const isValidSolanaAddress = (address) => {
   try {
     new PublicKey(address);
@@ -717,6 +726,9 @@ export const isValidSolanaAddress = (address) => {
   }
 };
 
+/**
+ * Check if any wallet address is valid
+ */
 export const isValidAddress = (address) => {
   // Check if it's a valid Ethereum address
   if (/^0x[a-fA-F0-9]{40}$/.test(address)) {
@@ -731,6 +743,9 @@ export const isValidAddress = (address) => {
   return { isValid: false };
 };
 
+/**
+ * Fetch ENS avatar
+ */
 export const fetchENSAvatar = (ensName) => 
   withMoralis(async () => {
     try {
@@ -751,10 +766,16 @@ export const fetchENSAvatar = (ensName) =>
     }
   });
 
+/**
+ * Check if NFT is spam
+ */
 export const isNftSpam = (tokenId, contractAddress, spamNfts) => {
   return Object.values(spamNfts).flat().some(spam => spam.tokenId === tokenId && spam.contractAddress === contractAddress);
 };
 
+/**
+ * Get available ENS names from wallets
+ */
 export const getAvailableENS = (wallets) => {
   if (!wallets || !Array.isArray(wallets)) {
     return [];
