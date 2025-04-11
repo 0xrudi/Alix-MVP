@@ -9,7 +9,7 @@ import {
   Tooltip,
   useBreakpointValue,
 } from "@chakra-ui/react";
-import { FaBookOpen, FaUser, FaTools } from 'react-icons/fa';
+import { FaBookOpen, FaUser, FaTools, FaSitemap, FaLayerGroup } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const MenuModal = () => {
@@ -24,6 +24,8 @@ const MenuModal = () => {
 
   const menuItems = [
     { name: 'Library', icon: FaBookOpen, path: '/app/library' },
+    { name: 'Catalogs', icon: FaLayerGroup, path: '/app/catalogs' },
+    { name: 'Organize', icon: FaSitemap, path: '/app/organize' },
     { name: 'Profile', icon: FaUser, path: '/app/profile' },
     { name: 'Service Test', icon: FaTools, path: '/app/service-test' },
   ];

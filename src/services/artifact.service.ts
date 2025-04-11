@@ -23,6 +23,8 @@ export class ArtifactService extends BaseService {
     coverImageUrl?: string,
     mediaType?: string,
     additionalMedia?: Json,
+    isSpam: boolean = false,
+    isInCatalog: boolean = false,
   ): Promise<Artifact> {
     try {
       // Check if artifact already exists
@@ -36,6 +38,18 @@ export class ArtifactService extends BaseService {
         .maybeSingle();
 
       if (existing) {
+        // Update is_in_catalog field if needed
+        if (existing.is_in_catalog !== isInCatalog) {
+          const { data: updated, error } = await this.supabase
+            .from('artifacts')
+            .update({ is_in_catalog: isInCatalog })
+            .eq('id', existing.id)
+            .select()
+            .single();
+            
+          if (error) throw error;
+          if (updated) return updated;
+        }
         return existing;
       }
 
@@ -47,6 +61,11 @@ export class ArtifactService extends BaseService {
         if (!mediaUrl) mediaUrl = mediaInfo.media_url as string | undefined;
         if (!mediaType) mediaType = mediaInfo.media_type as string | undefined;
         if (!additionalMedia) additionalMedia = mediaInfo.additional_media as Json | undefined;
+      }
+
+      // Set is_in_catalog to true if it's spam
+      if (isSpam) {
+        isInCatalog = true;
       }
 
       // Create new artifact
@@ -64,7 +83,8 @@ export class ArtifactService extends BaseService {
           cover_image_url: coverImageUrl || null,
           media_type: mediaType || null,
           additional_media: additionalMedia || null,
-          is_spam: false
+          is_spam: isSpam,
+          is_in_catalog: isInCatalog
         }])
         .select()
         .single();
@@ -97,11 +117,16 @@ export class ArtifactService extends BaseService {
             cover_image_url: artifact.cover_image_url || mediaInfo.cover_image_url,
             media_url: artifact.media_url || mediaInfo.media_url,
             media_type: artifact.media_type || mediaInfo.media_type,
-            additional_media: artifact.additional_media || mediaInfo.additional_media
+            additional_media: artifact.additional_media || mediaInfo.additional_media,
+            // Set is_in_catalog to true if it's spam
+            is_in_catalog: artifact.is_in_catalog || artifact.is_spam || false
           };
         }
         
-        return artifact;
+        return {
+          ...artifact,
+          is_in_catalog: artifact.is_in_catalog || artifact.is_spam || false
+        };
       });
 
       const { data, error } = await this.supabase
@@ -160,9 +185,16 @@ export class ArtifactService extends BaseService {
    */
   async updateSpamStatus(artifactId: string, isSpam: boolean): Promise<Artifact> {
     try {
+      // If marking as spam, also set is_in_catalog to true
+      const updates = { 
+        is_spam: isSpam,
+        // Spam artifacts are always considered to be in a catalog
+        is_in_catalog: isSpam ? true : undefined
+      };
+
       const { data, error } = await this.supabase
         .from('artifacts')
-        .update({ is_spam: isSpam })
+        .update(updates)
         .eq('id', artifactId)
         .select()
         .single();
@@ -174,6 +206,28 @@ export class ArtifactService extends BaseService {
       return data;
     } catch (error) {
       this.handleError(error, 'updateSpamStatus');
+    }
+  }
+
+  /**
+   * Update artifact catalog status
+   */
+  async updateCatalogStatus(artifactId: string, isInCatalog: boolean): Promise<Artifact> {
+    try {
+      const { data, error } = await this.supabase
+        .from('artifacts')
+        .update({ is_in_catalog: isInCatalog })
+        .eq('id', artifactId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (!data) throw new Error('Artifact not found');
+
+      logger.log('Artifact catalog status updated:', { artifactId, isInCatalog });
+      return data;
+    } catch (error) {
+      this.handleError(error, 'updateCatalogStatus');
     }
   }
 
@@ -209,6 +263,28 @@ export class ArtifactService extends BaseService {
       return data || [];
     } catch (error) {
       this.handleError(error, 'getSpamArtifacts');
+    }
+  }
+
+  /**
+   * Get artifacts that are not in any catalog for a user
+   */
+  async getUnorganizedArtifacts(userId: string): Promise<Artifact[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('artifacts')
+        .select('*, wallets!inner(user_id)')
+        .eq('wallets.user_id', userId)
+        .eq('is_in_catalog', false)
+        .eq('is_spam', false);
+
+      if (error) throw error;
+      
+      logger.log('Unorganized artifacts fetched:', { count: data?.length || 0 });
+      return data || [];
+    } catch (error) {
+      this.handleError(error, 'getUnorganizedArtifacts');
+      return [];
     }
   }
 
@@ -305,6 +381,76 @@ export class ArtifactService extends BaseService {
       return updatedCount;
     } catch (error) {
       this.handleError(error, 'bulkUpdateArtifactMedia');
+    }
+  }
+
+  /**
+   * Check and update catalog status for artifacts
+   * This can be used to fix inconsistencies in the is_in_catalog flag
+   */
+  async fixCatalogStatuses(userId: string): Promise<{ updated: number, errors: number }> {
+    try {
+      // Find artifacts that should be marked as in catalog (in any catalog)
+      const { data: inCatalog, error: queryError } = await this.supabase
+        .from('catalog_artifacts')
+        .select('artifact_id')
+        .distinct();
+        
+      if (queryError) throw queryError;
+      
+      // Find spam artifacts
+      const { data: spamArtifacts, error: spamError } = await this.supabase
+        .from('artifacts')
+        .select('id')
+        .eq('is_spam', true);
+        
+      if (spamError) throw spamError;
+      
+      // Combine IDs that should be marked as in catalog
+      const shouldBeInCatalog = new Set([
+        ...(inCatalog || []).map(item => item.artifact_id),
+        ...(spamArtifacts || []).map(item => item.id)
+      ]);
+      
+      // Find artifacts with incorrect is_in_catalog flags
+      const { data: incorrectFlags, error: flagError } = await this.supabase
+        .from('artifacts')
+        .select('id, is_in_catalog')
+        .or(`id.in.(${Array.from(shouldBeInCatalog).join(',')}),is_in_catalog.eq.true`);
+        
+      if (flagError) throw flagError;
+      
+      // Update incorrect flags
+      let updated = 0;
+      let errors = 0;
+      
+      if (incorrectFlags && incorrectFlags.length > 0) {
+        for (const artifact of incorrectFlags) {
+          const shouldBeIn = shouldBeInCatalog.has(artifact.id);
+          if (artifact.is_in_catalog !== shouldBeIn) {
+            const { error: updateError } = await this.supabase
+              .from('artifacts')
+              .update({ is_in_catalog: shouldBeIn })
+              .eq('id', artifact.id);
+              
+            if (updateError) {
+              errors++;
+              logger.error('Error fixing catalog status:', { 
+                artifactId: artifact.id, 
+                error: updateError 
+              });
+            } else {
+              updated++;
+            }
+          }
+        }
+      }
+      
+      logger.log('Fixed catalog statuses:', { updated, errors });
+      return { updated, errors };
+    } catch (error) {
+      this.handleError(error, 'fixCatalogStatuses');
+      return { updated: 0, errors: 0 };
     }
   }
 

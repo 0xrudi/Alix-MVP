@@ -167,7 +167,7 @@ export const useSupabaseSync = () => {
     if (user) {
       initializeAppData();
     }
-  }, [user, initializeAppData]);
+  }, [user]);
   
   return {
     // State

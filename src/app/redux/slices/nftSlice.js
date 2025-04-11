@@ -60,6 +60,7 @@ const mergeNFTArrays = (existing = [], incoming = []) => {
           ...merged[existingIndex],
           ...serializedNewNFT,
           isSpam: merged[existingIndex].isSpam || serializedNewNFT.isSpam,
+          isInCatalog: merged[existingIndex].isInCatalog || serializedNewNFT.isInCatalog || serializedNewNFT.isSpam,
         };
         updatedCount++;
       }
@@ -109,6 +110,10 @@ const nftSlice = createSlice({
 
         // Add to appropriate array based on token standard
         const serializedNft = serializeNFT(nft);
+        
+        // Initialize isInCatalog property based on isSpam flag
+        serializedNft.isInCatalog = nft.isInCatalog || nft.isSpam || false;
+        
         state.byWallet[walletId][network][tokenStandard].push(serializedNft);
 
         // Handle ERC1155 balances
@@ -149,8 +154,48 @@ const nftSlice = createSlice({
             network,
             type,
             nftId: nft.id?.tokenId,
-            isSpam: nft.isSpam
+            isSpam: nft.isSpam,
+            isInCatalog: nft.isInCatalog
           });
+        }
+      }
+      
+      state.lastUpdated = new Date().toISOString();
+    },
+
+    // Update NFT catalog status
+    updateNFTCatalogStatus: (state, action) => {
+      const { walletId, contractAddress, tokenId, network, isInCatalog } = action.payload;
+      const type = 'ERC721'; // Assume ERC721 for simplicity, update as needed
+      
+      if (state.byWallet[walletId]?.[network]?.[type]) {
+        const index = state.byWallet[walletId][network][type]
+          .findIndex(n => 
+            n.id?.tokenId === tokenId && 
+            safeCompareAddresses(n.contract?.address, contractAddress)
+          );
+        
+        if (index !== -1) {
+          state.byWallet[walletId][network][type][index].isInCatalog = isInCatalog;
+          
+          logger.log('Updated NFT catalog status:', {
+            walletId,
+            network,
+            tokenId,
+            contractAddress,
+            isInCatalog
+          });
+        }
+        
+        // Also check ERC1155 tokens
+        const indexERC1155 = state.byWallet[walletId][network]['ERC1155']
+          .findIndex(n => 
+            n.id?.tokenId === tokenId && 
+            safeCompareAddresses(n.contract?.address, contractAddress)
+          );
+        
+        if (indexERC1155 !== -1) {
+          state.byWallet[walletId][network]['ERC1155'][indexERC1155].isInCatalog = isInCatalog;
         }
       }
       
@@ -215,7 +260,8 @@ const nftSlice = createSlice({
         if (nfts.ERC721?.length > 0) {
           const processedERC721 = nfts.ERC721.map(nft => ({
             ...serializeNFT(nft),
-            network: networkValue
+            network: networkValue,
+            isInCatalog: nft.isInCatalog || nft.isSpam || false // Initialize with appropriate value
           })).filter(Boolean);
 
           state.byWallet[walletId][networkValue].ERC721 = 
@@ -226,7 +272,8 @@ const nftSlice = createSlice({
         if (nfts.ERC1155?.length > 0) {
           const processedERC1155 = nfts.ERC1155.map(nft => ({
             ...serializeNFT(nft),
-            network: networkValue
+            network: networkValue,
+            isInCatalog: nft.isInCatalog || nft.isSpam || false // Initialize with appropriate value
           })).filter(Boolean);
 
           state.byWallet[walletId][networkValue].ERC1155 = 
@@ -321,6 +368,44 @@ export const selectTotalSpamNFTs = (state) => {
         (networkNfts.ERC1155?.filter(nft => nft.isSpam)?.length || 0);
     }, 0);
   }, 0);
+};
+
+// NEW SELECTOR: Select NFTs that are not in any catalog
+export const selectNFTsNotInCatalog = (state) => {
+  const result = [];
+  
+  try {
+    // Loop through all wallets and networks to find NFTs not in catalogs
+    Object.entries(state.nfts.byWallet).forEach(([walletId, walletNfts]) => {
+      Object.entries(walletNfts).forEach(([network, networkNfts]) => {
+        // Check ERC721 tokens
+        networkNfts.ERC721?.forEach(nft => {
+          if (!nft.isInCatalog && !nft.isSpam) {
+            result.push({
+              ...nft,
+              walletId,
+              network
+            });
+          }
+        });
+        
+        // Check ERC1155 tokens
+        networkNfts.ERC1155?.forEach(nft => {
+          if (!nft.isInCatalog && !nft.isSpam) {
+            result.push({
+              ...nft,
+              walletId,
+              network
+            });
+          }
+        });
+      });
+    });
+  } catch (error) {
+    logger.error('Error in selectNFTsNotInCatalog:', error);
+  }
+  
+  return result;
 };
 
 // Debug selector for development
@@ -421,6 +506,7 @@ export const {
   clearWalletNFTs,
   addNFTs,
   updateNFT,
+  updateNFTCatalogStatus, // New action for updating catalog status
   removeNFT,
   updateTotalNFTs
 } = nftSlice.actions;

@@ -2,6 +2,7 @@
 import { createSlice, createSelector, createAsyncThunk } from '@reduxjs/toolkit';
 import { selectSpamNFTs } from './nftSlice';
 import { logger } from '../../../utils/logger';
+import { updateArtifactCatalogStatus } from '../thunks/artifactThunks';
 
 // Base selectors
 const selectCatalogState = state => state.catalogs;
@@ -26,21 +27,12 @@ export const fetchCatalogs = createAsyncThunk(
   'catalogs/fetchCatalogs',
   async (_, { getState }) => {
     try {
-      // Access services from the window object (should be set by ServiceProvider)
-      const { services } = window;
-      if (!services || !services.user) {
-        logger.warn('No user or services available for fetching catalogs');
-        return []; // Return empty array if no user or services
-      }
-
-      const { catalogService, user } = services;
-      logger.log('Fetching catalogs from Supabase for user:', user.id);
-      
-      const catalogs = await catalogService.getUserCatalogs(user.id);
-      logger.log('Catalogs fetched:', { count: catalogs.length });
-      return catalogs;
+      // This function is now just a placeholder - we'll fetch catalogs directly
+      // in the component using Supabase
+      logger.log('fetchCatalogs thunk called - processing will be done in component');
+      return [];
     } catch (error) {
-      logger.error('Error fetching catalogs:', error);
+      logger.error('Error in fetchCatalogs thunk:', error);
       throw error;
     }
   }
@@ -165,6 +157,66 @@ const catalogSlice = createSlice({
       });
       
       logger.log('Set catalogs from Supabase:', { count: action.payload.length });
+    },
+    
+    // New action to add NFT to catalog and update catalog status
+    addNFTToCatalog: (state, action) => {
+      const { catalogId, nft } = action.payload;
+      if (!state.items[catalogId]) {
+        logger.warn('Attempted to add NFT to non-existent catalog:', catalogId);
+        return;
+      }
+      
+      const nftId = createNFTId(nft);
+      
+      // Check if NFT is already in this catalog
+      const isAlreadyInCatalog = state.items[catalogId].nftIds.some(id => 
+        id.tokenId === nftId.tokenId && 
+        id.contractAddress === nftId.contractAddress &&
+        id.network === nftId.network &&
+        id.walletId === nftId.walletId
+      );
+      
+      if (!isAlreadyInCatalog) {
+        // Add to catalog
+        state.items[catalogId].nftIds.push(nftId);
+        state.items[catalogId].updatedAt = new Date().toISOString();
+        
+        logger.log('Added NFT to catalog:', { 
+          catalogId, 
+          tokenId: nftId.tokenId,
+          contractAddress: nftId.contractAddress,
+          total: state.items[catalogId].nftIds.length
+        });
+      }
+    },
+    
+    // New action to remove NFT from catalog and possibly update catalog status
+    removeNFTFromCatalog: (state, action) => {
+      const { catalogId, nft } = action.payload;
+      if (!state.items[catalogId]) {
+        logger.warn('Attempted to remove NFT from non-existent catalog:', catalogId);
+        return;
+      }
+      
+      const nftId = createNFTId(nft);
+      
+      // Remove from this catalog
+      state.items[catalogId].nftIds = state.items[catalogId].nftIds.filter(id => 
+        id.tokenId !== nftId.tokenId || 
+        id.contractAddress !== nftId.contractAddress ||
+        id.network !== nftId.network ||
+        id.walletId !== nftId.walletId
+      );
+      
+      state.items[catalogId].updatedAt = new Date().toISOString();
+      
+      logger.log('Removed NFT from catalog:', { 
+        catalogId, 
+        tokenId: nftId.tokenId,
+        contractAddress: nftId.contractAddress,
+        remaining: state.items[catalogId].nftIds.length
+      });
     }
   },
   extraReducers: (builder) => {
@@ -175,25 +227,7 @@ const catalogSlice = createSlice({
       })
       .addCase(fetchCatalogs.fulfilled, (state, action) => {
         state.isLoading = false;
-        // Reset user catalogs (but keep system catalogs)
-        state.items = {};
-        
-        // Add the fetched catalogs
-        action.payload.forEach(catalog => {
-          // Skip system catalogs from Supabase (we manage them differently)
-          if (catalog.is_system) return;
-          
-          state.items[catalog.id] = {
-            id: catalog.id,
-            name: catalog.name,
-            description: catalog.description || '',
-            nftIds: [], // We'll need to populate this with another call
-            type: 'user',
-            isSystem: false,
-            createdAt: catalog.created_at,
-            updatedAt: catalog.updated_at
-          };
-        });
+        // We'll handle catalog loading directly in the component now
       })
       .addCase(fetchCatalogs.rejected, (state, action) => {
         state.isLoading = false;
@@ -271,13 +305,185 @@ export const selectAutomatedCatalogs = createSelector(
     .filter(catalog => catalog.type === 'system')
 );
 
+// Modified thunk to work with existing store
+export const addNFTToCatalogWithStatus = createAsyncThunk(
+  'catalogs/addNFTToCatalogWithStatus',
+  async ({ catalogId, nft, artifactId }, { dispatch, getState }) => {
+    try {
+      // Access services from the window object as a fallback
+      const services = window.services;
+      
+      // First, update Redux
+      dispatch(catalogSlice.actions.addNFTToCatalog({ catalogId, nft }));
+      
+      // Mark the NFT as being in a catalog in Redux
+      dispatch({
+        type: 'nfts/updateNFTCatalogStatus',
+        payload: {
+          walletId: nft.walletId,
+          contractAddress: nft.contract.address,
+          tokenId: nft.id.tokenId,
+          network: nft.network,
+          isInCatalog: true
+        }
+      });
+      
+      // If services is available, update Supabase
+      if (services && services.supabase && services.user) {
+        const { supabase } = services;
+        
+        // If we already have the artifactId, use it
+        if (artifactId) {
+          await dispatch(updateArtifactCatalogStatus({ 
+            artifactId, 
+            isInCatalog: true 
+          }));
+        } else {
+          // Get the artifact ID from Supabase
+          const { data, error } = await supabase
+            .from('artifacts')
+            .select('id')
+            .eq('wallet_id', nft.walletId)
+            .eq('token_id', nft.id.tokenId)
+            .eq('contract_address', nft.contract.address)
+            .eq('network', nft.network)
+            .maybeSingle();
+            
+          if (error) {
+            throw error;
+          }
+          
+          if (data) {
+            await dispatch(updateArtifactCatalogStatus({ 
+              artifactId: data.id, 
+              isInCatalog: true 
+            }));
+          } else {
+            logger.warn('Could not find artifact in Supabase:', {
+              walletId: nft.walletId,
+              tokenId: nft.id.tokenId,
+              contractAddress: nft.contract.address
+            });
+          }
+        }
+        
+        // Also update the catalog_artifacts junction table
+        await supabase
+          .from('catalog_artifacts')
+          .upsert({
+            catalog_id: catalogId,
+            artifact_id: artifactId
+          });
+      }
+      
+      return { success: true, nft, catalogId };
+    } catch (error) {
+      logger.error('Error adding NFT to catalog with status update:', error);
+      throw error;
+    }
+  }
+);
+
+// Modified thunk to work with existing store
+export const removeNFTFromCatalogWithStatus = createAsyncThunk(
+  'catalogs/removeNFTFromCatalogWithStatus',
+  async ({ catalogId, nft, artifactId }, { dispatch, getState }) => {
+    try {
+      // Access services from the window object as a fallback
+      const services = window.services;
+      
+      // First, update Redux
+      dispatch(catalogSlice.actions.removeNFTFromCatalog({ catalogId, nft }));
+      
+      // If services is available, update Supabase
+      if (services && services.supabase && services.user) {
+        const { supabase } = services;
+        
+        // First, check if the NFT is in any other catalogs
+        const allCatalogs = selectAllCatalogs(getState());
+        const isInOtherCatalogs = allCatalogs.some(catalog => 
+          catalog.id !== catalogId &&
+          catalog.nftIds.some(nftId => 
+            nftId.tokenId === nft.id.tokenId &&
+            nftId.contractAddress === nft.contract.address &&
+            nftId.network === nft.network &&
+            nftId.walletId === nft.walletId
+          )
+        );
+        
+        // If the NFT is not in any other catalogs and not spam, mark it as not in any catalog
+        if (!isInOtherCatalogs && !nft.isSpam) {
+          // Update Redux
+          dispatch({
+            type: 'nfts/updateNFTCatalogStatus',
+            payload: {
+              walletId: nft.walletId,
+              contractAddress: nft.contract.address,
+              tokenId: nft.id.tokenId,
+              network: nft.network,
+              isInCatalog: false
+            }
+          });
+          
+          // Update Supabase
+          if (artifactId) {
+            await dispatch(updateArtifactCatalogStatus({ 
+              artifactId, 
+              isInCatalog: false 
+            }));
+          } else {
+            // Get the artifact ID from Supabase
+            const { data, error } = await supabase
+              .from('artifacts')
+              .select('id')
+              .eq('wallet_id', nft.walletId)
+              .eq('token_id', nft.id.tokenId)
+              .eq('contract_address', nft.contract.address)
+              .eq('network', nft.network)
+              .maybeSingle();
+              
+            if (error) {
+              throw error;
+            }
+            
+            if (data) {
+              await dispatch(updateArtifactCatalogStatus({ 
+                artifactId: data.id, 
+                isInCatalog: false 
+              }));
+            }
+          }
+        }
+        
+        // Remove from the catalog_artifacts junction table
+        if (artifactId) {
+          await supabase
+            .from('catalog_artifacts')
+            .delete()
+            .match({
+              catalog_id: catalogId,
+              artifact_id: artifactId
+            });
+        }
+      }
+      
+      return { success: true, nft, catalogId };
+    } catch (error) {
+      logger.error('Error removing NFT from catalog with status update:', error);
+      throw error;
+    }
+  }
+);
+
 export const {
   addCatalog,
   updateCatalog,
   removeCatalog,
   updateSpamCatalog,
   updateUnorganizedCatalog,
-  setCatalogs
+  setCatalogs,
+  addNFTToCatalog,
+  removeNFTFromCatalog
 } = catalogSlice.actions;
 
 export default catalogSlice.reducer;

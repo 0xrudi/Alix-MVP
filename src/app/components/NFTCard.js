@@ -1,4 +1,3 @@
-// src/app/components/NFTCard.js
 import React, { useState, useEffect } from 'react';
 import { 
   Box, 
@@ -25,6 +24,7 @@ import {
 import { motion } from 'framer-motion';
 import { getImageUrl } from './../../utils/web3Utils';
 import { isERC1155 } from './../../utils/nftUtils';
+import { logger } from './../../utils/logger';
 
 const MotionBox = motion(Box);
 
@@ -119,18 +119,56 @@ const NFTCard = ({
     const loadImage = async () => {
       try {
         setIsLoading(true);
-        // Use cover_image_url instead of media_url for thumbnails if available
-        const url = await getImageUrl(nft);
+        
+        // Log NFT data to help debug media issues
+        logger.debug('NFTCard loading image for:', {
+          tokenId: nft.id?.tokenId,
+          contractAddress: nft.contract?.address,
+          hasMedia: !!nft.media,
+          mediaCount: nft.media?.length,
+          mediaUrl: nft.media?.[0]?.gateway,
+          directMediaUrl: nft.media_url,
+          coverImageUrl: nft.cover_image_url,
+          metadataImage: nft.metadata?.image
+        });
+
+        let url;
+        
+        // First, try the media array which is standard format
+        if (nft.media && nft.media.length > 0 && nft.media[0].gateway) {
+          url = nft.media[0].gateway;
+        } 
+        // Then try specific media_url from database
+        else if (nft.media_url) {
+          url = nft.media_url;
+        }
+        // Then try cover_image_url from database
+        else if (nft.cover_image_url) {
+          url = nft.cover_image_url;
+        }
+        // Then try metadata.image
+        else if (nft.metadata?.image) {
+          url = nft.metadata.image;
+        }
+        // If still nothing, get a standard image URL using utility
+        else {
+          url = await getImageUrl(nft);
+        }
+        
         if (mounted) {
           setImageUrl(url || 'https://via.placeholder.com/400?text=No+Image');
+          setIsLoading(false);
         }
+        
+        // Log final image URL
+        logger.debug('NFTCard final image URL:', {
+          tokenId: nft.id?.tokenId, 
+          imageUrl: url
+        });
       } catch (error) {
         console.error('Error loading NFT image:', error);
         if (mounted) {
           setImageUrl('https://via.placeholder.com/400?text=Error+Loading+Image');
-        }
-      } finally {
-        if (mounted) {
           setIsLoading(false);
         }
       }
@@ -139,6 +177,19 @@ const NFTCard = ({
     loadImage();
     return () => { mounted = false; };
   }, [nft]);
+
+  // Transform IPFS URLs to HTTP URLs
+  const transformIpfsUrl = (url) => {
+    if (!url) return url;
+    
+    // Handle ipfs:// protocol
+    if (url.startsWith('ipfs://')) {
+      const ipfsHash = url.replace('ipfs://', '');
+      return `https://ipfs.io/ipfs/${ipfsHash}`;
+    }
+    
+    return url;
+  };
 
   return (
     <MotionBox
@@ -229,12 +280,16 @@ const NFTCard = ({
         <AspectRatio ratio={1} width="100%">
           <Skeleton isLoaded={!isLoading} height="100%" width="100%">
             <Image
-              src={imageUrl}
+              src={transformIpfsUrl(imageUrl)}
               alt={sortableData.name}
               objectFit="cover"
               width="100%"
               height="100%"
               fallbackSrc="https://via.placeholder.com/400?text=Error+Loading+Image"
+              onError={(e) => {
+                logger.warn('Image failed to load:', imageUrl);
+                e.target.src = "https://via.placeholder.com/400?text=Error+Loading+Image";
+              }}
             />
           </Skeleton>
         </AspectRatio>

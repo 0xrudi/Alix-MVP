@@ -95,6 +95,47 @@ const CatalogViewPage = ({
     xl: 5
   };
 
+  // Helper function to truncate addresses - moved to the top for proper hoisting
+  const truncateAddress = useCallback((address) => {
+    return address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
+  }, []);
+
+  // Get wallet nickname for filtering - moved to the top for proper hoisting
+  const getWalletNickname = useCallback((walletId) => {
+    const wallet = wallets.find(w => w.id === walletId);
+    return wallet ? (wallet.nickname || truncateAddress(wallet.address)) : 'Unknown Wallet';
+  }, [wallets, truncateAddress]);
+
+  // Add after the initial const declarations but before useEffects
+  const normalizeNFTData = (nft) => {
+    if (!nft) return null;
+    
+    logger.debug('Normalizing NFT data:', nft);
+    
+    // If it's already in the correct format, return as is
+    if (nft.contract && nft.id) {
+      return nft;
+    }
+
+    // Transform the system catalog NFT format to match user catalog format
+    return {
+      id: { tokenId: nft.tokenId },
+      contract: {
+        address: nft.contractAddress,
+        name: nft.contract?.name || 'Unknown Collection'
+      },
+      title: nft.title || `Token ID: ${nft.tokenId}`,
+      description: nft.description || '',
+      metadata: nft.metadata || {},
+      walletId: nft.walletId,
+      network: nft.network,
+      isSpam: nft.isSpam || false,
+      media: [{
+        gateway: nft.media_url || nft.cover_image_url || nft.metadata?.image || 'https://via.placeholder.com/400?text=No+Image'
+      }]
+    };
+  };
+
   // Effect to prevent fetch loops on unmount
   useEffect(() => {
     isMounted.current = true;
@@ -109,6 +150,124 @@ const CatalogViewPage = ({
     };
   }, [catalog?.id]);
   
+  // Function to find NFT in Redux store
+  const findNFTInReduxStore = useCallback((nftId) => {
+    if (!nftId || !nftId.walletId || !nfts[nftId.walletId]) return null;
+
+    for (const network in nfts[nftId.walletId]) {
+      // Check in ERC721 collection
+      const erc721Match = nfts[nftId.walletId][network].ERC721?.find(nft => 
+        nft.id?.tokenId === nftId.tokenId && 
+        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
+      );
+      
+      if (erc721Match) {
+        return {
+          ...erc721Match,
+          walletId: nftId.walletId,
+          network,
+          walletNickname: getWalletNickname(nftId.walletId)
+        };
+      }
+      
+      // Check in ERC1155 collection
+      const erc1155Match = nfts[nftId.walletId][network].ERC1155?.find(nft => 
+        nft.id?.tokenId === nftId.tokenId && 
+        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
+      );
+      
+      if (erc1155Match) {
+        return {
+          ...erc1155Match,
+          walletId: nftId.walletId,
+          network,
+          walletNickname: getWalletNickname(nftId.walletId)
+        };
+      }
+    }
+    
+    return null;
+  }, [nfts, getWalletNickname]);
+
+  // Create a placeholder NFT when not found
+  const createPlaceholderNFT = useCallback((nftId) => {
+    return {
+      id: { tokenId: nftId.tokenId },
+      contract: { 
+        address: nftId.contractAddress,
+        name: 'Unknown Collection'
+      },
+      title: `Token ID: ${nftId.tokenId}`,
+      description: 'NFT details unavailable',
+      walletId: nftId.walletId,
+      network: nftId.network || 'unknown',
+      isPlaceholder: true,
+      media: [{
+        gateway: 'https://via.placeholder.com/400?text=Loading...'
+      }]
+    };
+  }, []);
+
+  // Convert a Supabase artifact to NFT format
+  const convertArtifactToNFT = useCallback((artifact, walletId) => {
+    try {
+      // Parse metadata if it's a string
+      let metadata = artifact.metadata;
+      if (typeof metadata === 'string') {
+        try {
+          metadata = JSON.parse(metadata);
+        } catch (e) {
+          logger.warn('Failed to parse metadata as JSON:', e);
+          metadata = {};
+        }
+      }
+
+      // Find wallet info to add nickname
+      const wallet = wallets.find(w => w.id === walletId);
+      const walletNickname = wallet?.nickname || truncateAddress(wallet?.address);
+      
+      // Process image URL for IPFS compatibility
+      let imageUrl = artifact.media_url || metadata?.image || '';
+      imageUrl = transformIpfsUrl(imageUrl);
+
+      return {
+        id: { 
+          tokenId: artifact.token_id 
+        },
+        contract: {
+          address: artifact.contract_address,
+          name: metadata?.collection?.name || metadata?.contract_name || 'Unknown Collection'
+        },
+        title: artifact.title || metadata?.name || `Token ID: ${artifact.token_id}`,
+        description: artifact.description || metadata?.description || '',
+        metadata: metadata || {},
+        isSpam: artifact.is_spam || false,
+        media: [{
+          gateway: imageUrl || artifact.cover_image_url || 'https://via.placeholder.com/400?text=No+Image'
+        }],
+        walletId: walletId,
+        network: artifact.network,
+        walletNickname: walletNickname
+      };
+    } catch (error) {
+      logger.error('Error converting artifact:', {
+        error: error.message,
+        artifact
+      });
+      
+      // Return a simplified version if conversion fails
+      return {
+        id: { tokenId: artifact.token_id || 'unknown' },
+        contract: { address: artifact.contract_address || 'unknown', name: 'Unknown' },
+        title: artifact.title || `Token ID: ${artifact.token_id || 'unknown'}`,
+        isSpam: artifact.is_spam || false,
+        walletId: walletId,
+        network: artifact.network || 'unknown',
+        media: [{ gateway: 'https://via.placeholder.com/400?text=Error+Loading+Image' }]
+      };
+    }
+  }, [wallets]);
+
   const fetchNFTsFromSupabase = useCallback(async (forceRefresh = false) => {
     // Check if we're in a circuit breaker lockout period
     const now = Date.now();
@@ -143,13 +302,27 @@ const CatalogViewPage = ({
     setError(null);
     
     try {
-      logger.log('Fetching NFTs for catalog:', catalog.id);
+      logger.log('Fetching NFTs for catalog:', {
+        catalogId: catalog.id,
+        isSystem: catalog.isSystem,
+        name: catalog.name,
+        nftCount: catalog.nftIds?.length
+      });
       
       // For system catalogs (spam, unorganized), we already have the NFT objects
       if (catalog.isSystem) {
-        logger.log('System catalog, using provided NFT objects');
+        logger.log('System catalog, normalizing NFT objects');
         if (isMounted.current) {
-          setCatalogNFTs(catalog.nftIds);
+          const normalizedNFTs = catalog.nftIds
+            .map(normalizeNFTData)
+            .filter(Boolean); // Remove any null results
+          
+          logger.debug('Normalized system catalog NFTs:', { 
+            count: normalizedNFTs.length,
+            first: normalizedNFTs[0]
+          });
+          
+          setCatalogNFTs(normalizedNFTs);
           setIsLoading(false);
         }
         processingBatch.current = false;
@@ -251,154 +424,25 @@ const CatalogViewPage = ({
       }
       processingBatch.current = false;
     }
-  }, [catalog, findNFTInReduxStore, convertArtifactToNFT, createPlaceholderNFT]);
+  }, [catalog, findNFTInReduxStore, convertArtifactToNFT, createPlaceholderNFT, normalizeNFTData]);
 
-  // Define these functions here to avoid dependency errors in the useCallback
-  function findNFTInReduxStore(nftId) {
-    if (!nftId || !nftId.walletId || !nfts[nftId.walletId]) return null;
+  // // Helper function to truncate addresses
+  // const truncateAddress = useCallback((address) => 
+  //   address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '', []);
 
-    for (const network in nfts[nftId.walletId]) {
-      // Check in ERC721 collection
-      const erc721Match = nfts[nftId.walletId][network].ERC721?.find(nft => 
-        nft.id?.tokenId === nftId.tokenId && 
-        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
-      );
-      
-      if (erc721Match) {
-        return {
-          ...erc721Match,
-          walletId: nftId.walletId,
-          network,
-          walletNickname: getWalletNickname(nftId.walletId)
-        };
-      }
-      
-      // Check in ERC1155 collection
-      const erc1155Match = nfts[nftId.walletId][network].ERC1155?.find(nft => 
-        nft.id?.tokenId === nftId.tokenId && 
-        nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
-      );
-      
-      if (erc1155Match) {
-        return {
-          ...erc1155Match,
-          walletId: nftId.walletId,
-          network,
-          walletNickname: getWalletNickname(nftId.walletId)
-        };
-      }
-    }
-    
-    return null;
-  }
-
-  // Create a placeholder NFT when not found
-  function createPlaceholderNFT(nftId) {
-    return {
-      id: { tokenId: nftId.tokenId },
-      contract: { 
-        address: nftId.contractAddress,
-        name: 'Unknown Collection'
-      },
-      title: `Token ID: ${nftId.tokenId}`,
-      description: 'NFT details unavailable',
-      walletId: nftId.walletId,
-      network: nftId.network || 'unknown',
-      isPlaceholder: true,
-      media: [{
-        gateway: 'https://via.placeholder.com/400?text=Loading...'
-      }]
-    };
-  }
-
-  // Convert a Supabase artifact to NFT format
-  function convertArtifactToNFT(artifact, walletId) {
-    try {
-      // Parse metadata if it's a string
-      let metadata = artifact.metadata;
-      if (typeof metadata === 'string') {
-        try {
-          metadata = JSON.parse(metadata);
-        } catch (e) {
-          logger.warn('Failed to parse metadata as JSON:', e);
-          metadata = {};
-        }
-      }
-
-      // Find wallet info to add nickname
-      const wallet = wallets.find(w => w.id === walletId);
-      const walletNickname = wallet?.nickname || truncateAddress(wallet?.address);
-      
-      // Process image URL for IPFS compatibility
-      let imageUrl = artifact.media_url || metadata?.image || '';
-      imageUrl = transformIpfsUrl(imageUrl);
-
-      return {
-        id: { 
-          tokenId: artifact.token_id 
-        },
-        contract: {
-          address: artifact.contract_address,
-          name: metadata?.collection?.name || metadata?.contract_name || 'Unknown Collection'
-        },
-        title: artifact.title || metadata?.name || `Token ID: ${artifact.token_id}`,
-        description: artifact.description || metadata?.description || '',
-        metadata: metadata || {},
-        isSpam: artifact.is_spam || false,
-        media: [{
-          gateway: imageUrl || 'https://via.placeholder.com/400?text=No+Image'
-        }],
-        walletId: walletId,
-        network: artifact.network,
-        walletNickname: walletNickname
-      };
-    } catch (error) {
-      logger.error('Error converting artifact:', {
-        error: error.message,
-        artifact
-      });
-      
-      // Return a simplified version if conversion fails
-      return {
-        id: { tokenId: artifact.token_id || 'unknown' },
-        contract: { address: artifact.contract_address || 'unknown', name: 'Unknown' },
-        title: artifact.title || `Token ID: ${artifact.token_id || 'unknown'}`,
-        isSpam: artifact.is_spam || false,
-        walletId: walletId,
-        network: artifact.network || 'unknown'
-      };
-    }
-  }
-
-  useEffect(() => {
-    // Only run this effect once on mount, not on every render or on every catalog change
-    if (catalog && !processingBatch.current) {
-      fetchNFTsFromSupabase();
-    }
-    
-    // Cleanup function
-    return () => {
-      processingBatch.current = false;
-    };
-  }, []);  // Empty dependency array to run once on mount
-
-  // Helper function to truncate addresses
-  const truncateAddress = (address) => 
-    address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
-
-  // Get wallet nickname for filtering
-  const getWalletNickname = (walletId) => {
-    const wallet = wallets.find(w => w.id === walletId);
-    return wallet ? (wallet.nickname || truncateAddress(wallet.address)) : 'Unknown Wallet';
-  };
+  // // Get wallet nickname for filtering
+  // const getWalletNickname = useCallback((walletId) => {
+  //   const wallet = wallets.find(w => w.id === walletId);
+  //   return wallet ? (wallet.nickname || truncateAddress(wallet.address)) : 'Unknown Wallet';
+  // }, [wallets, truncateAddress]);
 
   // Get media type for filtering
-  const getMediaType = (nft) => {
+  const getMediaType = useCallback((nft) => {
     if (nft.metadata?.mimeType?.startsWith('video/')) return 'Video';
     if (nft.metadata?.mimeType?.startsWith('audio/')) return 'Audio';
     if (nft.metadata?.mimeType?.startsWith('model/')) return '3D';
     return 'Image';
-  };
+  }, []);
 
   const filteredNFTs = useMemo(() => {
     if (!catalogNFTs.length) return [];
@@ -465,14 +509,22 @@ const CatalogViewPage = ({
     }
   
     return result;
-  }, [catalogNFTs, searchTerm, activeFilters, activeSort]);
+  }, [catalogNFTs, searchTerm, activeFilters, activeSort, getMediaType]);
   
 
-  const handleNFTClick = (nft) => {
+  const handleNFTClick = useCallback((nft) => {
     navigate('/app/artifact', { state: { nft } });
+  }, [navigate]);
+
+  // Debug logger component
+  const DebugLogger = ({ data }) => {
+    useEffect(() => {
+      logger.debug('NFT data for catalog view:', data);
+    }, [data]);
+    return null;
   };
 
-  const handleNFTSelect = (nft) => {
+  const handleNFTSelect = useCallback((nft) => {
     setSelectedNFTs(prev => {
       const isSelected = prev.some(selected => 
         selected.id?.tokenId === nft.id?.tokenId &&
@@ -486,30 +538,30 @@ const CatalogViewPage = ({
           )
         : [...prev, nft];
     });
-  };
+  }, []);
 
-  const handleClearSelections = () => {
+  const handleClearSelections = useCallback(() => {
     setSelectedNFTs([]);
     setIsSelectMode(false);
-  };
+  }, []);
 
-  const handleFilterChange = (filters) => {
+  const handleFilterChange = useCallback((filters) => {
     setActiveFilters(filters);
-  };
+  }, []);
 
-  const handleSortChange = (sort) => {
+  const handleSortChange = useCallback((sort) => {
     setActiveSort(sort);
-  };
+  }, []);
 
-  const handleRemoveSelectedNFTs = () => {
+  const handleRemoveSelectedNFTs = useCallback(() => {
     if (selectedNFTs.length === 0) return;
     
     onRemoveNFTs(selectedNFTs);
     setSelectedNFTs([]);
     setIsSelectMode(false);
-  };
+  }, [selectedNFTs, onRemoveNFTs]);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     if (isRefreshing || isLoading) return;
     
     setIsRefreshing(true);
@@ -526,7 +578,7 @@ const CatalogViewPage = ({
       .finally(() => {
         setIsRefreshing(false);
       });
-  };
+  }, [isRefreshing, isLoading, fetchNFTsFromSupabase, showSuccessToast]);
 
   // Get list of wallets and networks for filters
   const availableWallets = useMemo(() => {
@@ -555,7 +607,7 @@ const CatalogViewPage = ({
   }, [catalogNFTs]);
 
   // Handle spam toggle with Supabase integration
-  const handleSpamToggle = async (nft) => {
+  const handleSpamToggle = useCallback(async (nft) => {
     // Call the parent component's handler first for Redux update
     onSpamToggle(nft);
     
@@ -632,7 +684,21 @@ const CatalogViewPage = ({
         "Failed to update artifact status in database"
       );
     }
-  };
+  }, [onSpamToggle, showInfoToast, showErrorToast]);
+
+  // Use effect to fetch NFTs once on mount
+  useEffect(() => {
+    // Only run this effect once on mount, not on every render or on every catalog change
+    if (catalog && !processingBatch.current) {
+      logger.log('Initial fetch of catalog NFTs on mount');
+      fetchNFTsFromSupabase();
+    }
+    
+    // Cleanup function
+    return () => {
+      processingBatch.current = false;
+    };
+  }, []); // Empty dependency array to run once on mount
 
   return (
     <MotionBox
@@ -811,6 +877,30 @@ const CatalogViewPage = ({
           </Text>
         </Box>
       )}
+
+      <DebugLogger 
+          data={{
+            catalogInfo: {
+              catalogId: catalog && catalog.id,
+              isSystemCatalog: catalog && catalog.isSystem,
+              catalogName: catalog && catalog.name
+            },
+            stats: {
+              nftCount: filteredNFTs.length,
+              isLoading,
+              viewMode
+            },
+            nfts: filteredNFTs.slice(0, 3).map(function(nft) {
+              return {
+                tokenId: nft && nft.id && nft.id.tokenId,
+                contractAddress: nft && nft.contract && nft.contract.address,
+                title: nft && nft.title,
+                network: nft && nft.network,
+                hasMedia: !!(nft && nft.media && nft.media[0] && nft.media[0].gateway)
+              };
+            })
+          }}
+        />
       
       {/* Content Section */}
       <Box>

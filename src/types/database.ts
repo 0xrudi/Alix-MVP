@@ -73,6 +73,7 @@ export interface Database {
           media_type: string | null
           additional_media: Json | null
           is_spam: boolean
+          is_in_catalog: boolean;
           created_at: string
           updated_at: string
         }
