@@ -20,6 +20,7 @@ import { FaBook, FaEdit, FaTrash, FaEllipsisV, FaEye, FaLayerGroup } from 'react
 import { motion } from 'framer-motion';
 import { cardSizes } from './constants/sizes';
 import { logger } from '../../utils/logger';
+import { useNavigate } from 'react-router-dom';
 
 // Motion-enhanced Box component
 const MotionBox = motion(Box);
@@ -28,7 +29,6 @@ const MotionBox = motion(Box);
  * Enhanced CatalogCard component for displaying catalogs in grid or list view
  * 
  * @param {Object} catalog - The catalog data to display
- * @param {Function} onView - Function to call when viewing the catalog
  * @param {Function} onEdit - Function to call when editing the catalog
  * @param {Function} onDelete - Function to call when deleting the catalog
  * @param {string} cardSize - Size of the card (sm, md, lg)
@@ -37,7 +37,6 @@ const MotionBox = motion(Box);
  */
 const EnhancedCatalogCard = ({ 
   catalog, 
-  onView, 
   onEdit, 
   onDelete, 
   cardSize = "md",
@@ -46,6 +45,7 @@ const EnhancedCatalogCard = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
   // Chakra UI color mode values
   const cardBg = useColorModeValue('white', 'gray.800');
@@ -72,13 +72,14 @@ const EnhancedCatalogCard = ({
   };
 
   const handleView = () => {
-    if (onView && typeof onView === 'function') {
-      logger.log('Viewing catalog:', { catalogId: catalog.id });
-      setIsLoading(true);
-      onView(catalog);
-      // In a real implementation, you might want to cancel this if the component unmounts
-      setTimeout(() => setIsLoading(false), 300);
-    }
+    logger.log('Viewing catalog:', { catalogId: catalog.id });
+    setIsLoading(true);
+    
+    // Navigate to the new catalog view page with the catalog ID
+    navigate(`/app/catalogs/${catalog.id}`);
+    
+    // In a real implementation, you might want to cancel this if the component unmounts
+    setTimeout(() => setIsLoading(false), 300);
   };
 
   // Determine the correct counts

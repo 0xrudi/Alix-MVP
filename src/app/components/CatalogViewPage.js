@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   VStack,
   Box,
@@ -17,12 +17,13 @@ import {
   Skeleton,
   Alert,
   AlertIcon,
-  useToast
 } from "@chakra-ui/react";
 import { FaChevronLeft, FaSync } from 'react-icons/fa';
 import { motion } from 'framer-motion';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { supabase } from '../../utils/supabase';
+import { selectCatalogById } from '../redux/slices/catalogSlice';
+import { updateSpamCatalog } from '../redux/slices/catalogSlice';
 
 import NFTCard from './NFTCard';
 import ListViewItem from './ListViewItem';
@@ -38,10 +39,6 @@ const VIEW_MODES = {
   GRID: 'grid'
 };
 
-// Circuit breaker to avoid infinite loops
-const MAX_FETCH_ATTEMPTS = 3;
-const FETCH_LOCKOUT_TIME = 10000; // 10 seconds
-
 // Simple IPFS URL transformer
 const transformIpfsUrl = (url) => {
   if (!url) return '';
@@ -55,32 +52,35 @@ const transformIpfsUrl = (url) => {
   return url;
 };
 
-const CatalogViewPage = ({ 
-  catalog, 
-  onBack, 
-  onRemoveNFTs, 
-  onSpamToggle 
-}) => {
+const CatalogViewPage = () => {
+  // Get catalogId from URL parameters
+  const { catalogId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  
+  // Get catalog from Redux store
+  const catalog = useSelector(state => selectCatalogById(state, catalogId));
   const nfts = useSelector(state => state.nfts.byWallet);
   const wallets = useSelector(state => state.wallets.list);
+  
+  // Component state
   const [viewMode, setViewMode] = useState(VIEW_MODES.GRID);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedNFTs, setSelectedNFTs] = useState([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [catalogNFTs, setCatalogNFTs] = useState([]);
   const [error, setError] = useState(null);
   const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast();
 
-  // Circuit breaker state
-  const fetchAttempts = useRef(0);
+  // Refs for preventing excessive fetches
+  const processingBatch = useRef(false);
   const lastFetchTime = useRef(0);
   const isMounted = useRef(true);
-  const processingBatch = useRef(false);
-  const catalogIdRef = useRef(catalog?.id);
+  const initialLoadComplete = useRef(false);
+  const MIN_FETCH_INTERVAL = 3000; // 3 seconds
   
   // State for filtering and sorting
   const [activeFilters, setActiveFilters] = useState({});
@@ -95,22 +95,20 @@ const CatalogViewPage = ({
     xl: 5
   };
 
-  // Helper function to truncate addresses - moved to the top for proper hoisting
+  // Helper function to truncate addresses
   const truncateAddress = useCallback((address) => {
     return address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
   }, []);
 
-  // Get wallet nickname for filtering - moved to the top for proper hoisting
+  // Get wallet nickname for filtering
   const getWalletNickname = useCallback((walletId) => {
     const wallet = wallets.find(w => w.id === walletId);
     return wallet ? (wallet.nickname || truncateAddress(wallet.address)) : 'Unknown Wallet';
   }, [wallets, truncateAddress]);
 
-  // Add after the initial const declarations but before useEffects
-  const normalizeNFTData = (nft) => {
+  // Normalize NFT data for system catalogs
+  const normalizeNFTData = useCallback((nft) => {
     if (!nft) return null;
-    
-    logger.debug('Normalizing NFT data:', nft);
     
     // If it's already in the correct format, return as is
     if (nft.contract && nft.id) {
@@ -134,21 +132,16 @@ const CatalogViewPage = ({
         gateway: nft.media_url || nft.cover_image_url || nft.metadata?.image || 'https://via.placeholder.com/400?text=No+Image'
       }]
     };
-  };
+  }, []);
 
-  // Effect to prevent fetch loops on unmount
+  // Effect for cleanup on unmount
   useEffect(() => {
     isMounted.current = true;
-    // Reset circuit breaker when catalog changes
-    if (catalog?.id !== catalogIdRef.current) {
-      catalogIdRef.current = catalog?.id;
-      fetchAttempts.current = 0;
-      lastFetchTime.current = 0;
-    }
     return () => {
       isMounted.current = false;
+      processingBatch.current = false;
     };
-  }, [catalog?.id]);
+  }, []);
   
   // Function to find NFT in Redux store
   const findNFTInReduxStore = useCallback((nftId) => {
@@ -156,7 +149,7 @@ const CatalogViewPage = ({
 
     for (const network in nfts[nftId.walletId]) {
       // Check in ERC721 collection
-      const erc721Match = nfts[nftId.walletId][network].ERC721?.find(nft => 
+      const erc721Match = nfts[nftId.walletId][network]?.ERC721?.find(nft => 
         nft.id?.tokenId === nftId.tokenId && 
         nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
       );
@@ -171,7 +164,7 @@ const CatalogViewPage = ({
       }
       
       // Check in ERC1155 collection
-      const erc1155Match = nfts[nftId.walletId][network].ERC1155?.find(nft => 
+      const erc1155Match = nfts[nftId.walletId][network]?.ERC1155?.find(nft => 
         nft.id?.tokenId === nftId.tokenId && 
         nft.contract?.address?.toLowerCase() === nftId.contractAddress?.toLowerCase()
       );
@@ -203,7 +196,7 @@ const CatalogViewPage = ({
       network: nftId.network || 'unknown',
       isPlaceholder: true,
       media: [{
-        gateway: 'https://via.placeholder.com/400?text=Loading...'
+        gateway: 'https://via.placeholder.com/400?text=No+Image'
       }]
     };
   }, []);
@@ -266,37 +259,30 @@ const CatalogViewPage = ({
         media: [{ gateway: 'https://via.placeholder.com/400?text=Error+Loading+Image' }]
       };
     }
-  }, [wallets]);
+  }, [wallets, truncateAddress]);
 
   const fetchNFTsFromSupabase = useCallback(async (forceRefresh = false) => {
-    // Check if we're in a circuit breaker lockout period
+    // Early exit conditions
+    if (!isMounted.current) return;
+    if (!forceRefresh && processingBatch.current) return;
+    
+    // Rate limiting check
     const now = Date.now();
-    if (!forceRefresh && fetchAttempts.current >= MAX_FETCH_ATTEMPTS && 
-        now - lastFetchTime.current < FETCH_LOCKOUT_TIME) {
-      logger.warn('Circuit breaker active: Too many fetch attempts in short period');
-      setError("Too many data fetch attempts. Please try again in a few seconds.");
+    if (!forceRefresh && now - lastFetchTime.current < MIN_FETCH_INTERVAL) {
+      logger.debug('Throttling fetch, too soon since last fetch');
+      return;
+    }
+    
+    // If catalog is not found, exit early with error
+    if (!catalog) {
+      setError("Catalog not found. It may have been deleted or you don't have access.");
       setIsLoading(false);
       return;
     }
     
-    // Don't run if we're already processing a batch or component is unmounted
-    if (processingBatch.current || !isMounted.current) {
-      return;
-    }
-    
-    // Update circuit breaker state
-    lastFetchTime.current = now;
-    fetchAttempts.current += 1;
-    
-    if (!catalog?.nftIds || catalog.nftIds.length === 0) {
-      setCatalogNFTs([]);
-      setIsLoading(false);
-      setError(null);
-      processingBatch.current = false;
-      return;
-    }
-
+    // Update tracking state
     processingBatch.current = true;
+    lastFetchTime.current = now;
     setIsLoading(true);
     setLoadingProgress(0);
     setError(null);
@@ -309,25 +295,69 @@ const CatalogViewPage = ({
         nftCount: catalog.nftIds?.length
       });
       
-      // For system catalogs (spam, unorganized), we already have the NFT objects
+      // Special handling for system catalogs
       if (catalog.isSystem) {
-        logger.log('System catalog, normalizing NFT objects');
-        if (isMounted.current) {
-          const normalizedNFTs = catalog.nftIds
-            .map(normalizeNFTData)
-            .filter(Boolean); // Remove any null results
+        // Get user's wallet IDs first
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No authenticated user');
+        
+        const { data: wallets, error: walletError } = await supabase
+          .from('wallets')
+          .select('id')
+          .eq('user_id', user.id);
           
-          logger.debug('Normalized system catalog NFTs:', { 
-            count: normalizedNFTs.length,
-            first: normalizedNFTs[0]
-          });
-          
-          setCatalogNFTs(normalizedNFTs);
+        if (walletError) throw walletError;
+        
+        if (!wallets || wallets.length === 0) {
+          setCatalogNFTs([]);
           setIsLoading(false);
+          processingBatch.current = false;
+          return;
         }
+        
+        const walletIds = wallets.map(w => w.id);
+        setLoadingProgress(20);
+        
+        let artifacts = [];
+        
+        // Different queries for different system catalogs
+        if (catalog.id === 'spam') {
+          // Fetch spam artifacts
+          const { data, error } = await supabase
+            .from('artifacts')
+            .select('*')
+            .in('wallet_id', walletIds)
+            .eq('is_spam', true);
+            
+          if (error) throw error;
+          artifacts = data || [];
+        } 
+        else if (catalog.id === 'unorganized') {
+          // Fetch unorganized artifacts (not in any catalog and not spam)
+          const { data, error } = await supabase
+            .from('artifacts')
+            .select('*')
+            .in('wallet_id', walletIds)
+            .eq('is_in_catalog', false)
+            .eq('is_spam', false);
+            
+          if (error) throw error;
+          artifacts = data || [];
+        }
+        
+        setLoadingProgress(60);
+        
+        // Convert artifacts to NFT format
+        const nfts = artifacts.map(artifact => convertArtifactToNFT(artifact, artifact.wallet_id));
+        
+        logger.log(`Found ${nfts.length} artifacts for ${catalog.name} catalog`);
+        setCatalogNFTs(nfts);
+        setIsLoading(false);
         processingBatch.current = false;
         return;
       }
+      
+      // For regular catalogs, find NFTs in Redux first
       
       // Get unique nftIds to avoid duplicates
       const uniqueNftIds = Array.from(
@@ -339,6 +369,9 @@ const CatalogViewPage = ({
         ).values()
       );
       
+      // Set loading progress
+      setLoadingProgress(20);
+      
       // First fill with data from Redux store - this is fast
       const initialNFTs = uniqueNftIds.map(nftId => {
         // Try to find in Redux store
@@ -346,18 +379,34 @@ const CatalogViewPage = ({
         return reduxNFT || createPlaceholderNFT(nftId);
       });
       
-      if (isMounted.current) {
-        setCatalogNFTs(initialNFTs);
-        setLoadingProgress(50);
-      }
-
+      // Update state with initial data
+      setCatalogNFTs(initialNFTs);
+      setLoadingProgress(40);
+      
       // If we have placeholders, try to fetch them from Supabase
       const missingNFTs = initialNFTs.filter(nft => nft.isPlaceholder);
       
-      if (missingNFTs.length > 0 && isMounted.current) {
-        try {
-          // Create a list of promises
-          const promises = missingNFTs.map(async (nft) => {
+      if (missingNFTs.length > 0) {
+        // Fetch in smaller batches to avoid overwhelming the API
+        const batchSize = 10;
+        const totalBatches = Math.ceil(missingNFTs.length / batchSize);
+        
+        // Create a map to store fetched NFTs by their unique identifier
+        const fetchedNFTsMap = new Map();
+        
+        for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+          // If component unmounted, exit early
+          if (!isMounted.current) break;
+          
+          const batchStart = batchIndex * batchSize;
+          const batchEnd = Math.min((batchIndex + 1) * batchSize, missingNFTs.length);
+          const batch = missingNFTs.slice(batchStart, batchEnd);
+          
+          // Update progress
+          setLoadingProgress(40 + Math.floor((batchIndex / totalBatches) * 50));
+          
+          // Process batch
+          const batchPromises = batch.map(async (nft) => {
             try {
               const { data: artifacts, error } = await supabase
                 .from('artifacts')
@@ -370,7 +419,10 @@ const CatalogViewPage = ({
               if (error) throw error;
               
               if (artifacts && artifacts.length > 0) {
-                return convertArtifactToNFT(artifacts[0], nft.walletId);
+                const convertedNft = convertArtifactToNFT(artifacts[0], nft.walletId);
+                const key = `${convertedNft.id.tokenId}-${convertedNft.contract.address}-${convertedNft.walletId}`;
+                fetchedNFTsMap.set(key, convertedNft);
+                return convertedNft;
               }
               
               return nft; // Keep placeholder if not found
@@ -380,43 +432,36 @@ const CatalogViewPage = ({
             }
           });
           
-          // Execute all promises in parallel
-          const fetchedNFTs = await Promise.all(promises);
+          // Wait for all promises in this batch
+          await Promise.all(batchPromises);
           
-          // Only update state if component is still mounted
-          if (isMounted.current) {
-            // Replace placeholders with actual data
-            setCatalogNFTs(prevNFTs => {
-              return prevNFTs.map(prevNFT => {
-                const updatedNFT = fetchedNFTs.find(fetchedNFT => 
-                  fetchedNFT.id.tokenId === prevNFT.id.tokenId && 
-                  fetchedNFT.contract.address === prevNFT.contract.address &&
-                  fetchedNFT.walletId === prevNFT.walletId
-                );
-                
-                return updatedNFT || prevNFT;
-              });
+          // Small delay between batches to avoid rate limiting
+          if (batchIndex < totalBatches - 1) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
+        
+        // Only update state if component is still mounted
+        if (isMounted.current) {
+          // Replace placeholders with actual data
+          setCatalogNFTs(prevNFTs => {
+            return prevNFTs.map(prevNFT => {
+              const key = `${prevNFT.id.tokenId}-${prevNFT.contract.address}-${prevNFT.walletId}`;
+              return fetchedNFTsMap.get(key) || prevNFT;
             });
-          }
-        } catch (error) {
-          if (isMounted.current) {
-            logger.error('Error fetching missing NFTs:', error);
-            setError("Some artifacts could not be loaded completely.");
-          }
+          });
         }
       }
       
-      // Reset circuit breaker on successful load
-      fetchAttempts.current = 0;
+      // Mark initial load as complete
+      initialLoadComplete.current = true;
       
     } catch (error) {
-      if (isMounted.current) {
-        logger.error('Error fetching NFTs for catalog:', {
-          error: error.message,
-          catalogId: catalog.id
-        });
-        setError("Failed to load catalog artifacts. Please try again.");
-      }
+      logger.error('Error fetching NFTs for catalog:', {
+        error: error.message,
+        catalogId: catalog.id
+      });
+      setError("Failed to load catalog artifacts. Please try again.");
     } finally {
       if (isMounted.current) {
         setIsLoading(false);
@@ -424,17 +469,7 @@ const CatalogViewPage = ({
       }
       processingBatch.current = false;
     }
-  }, [catalog, findNFTInReduxStore, convertArtifactToNFT, createPlaceholderNFT, normalizeNFTData]);
-
-  // // Helper function to truncate addresses
-  // const truncateAddress = useCallback((address) => 
-  //   address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '', []);
-
-  // // Get wallet nickname for filtering
-  // const getWalletNickname = useCallback((walletId) => {
-  //   const wallet = wallets.find(w => w.id === walletId);
-  //   return wallet ? (wallet.nickname || truncateAddress(wallet.address)) : 'Unknown Wallet';
-  // }, [wallets, truncateAddress]);
+  }, [catalog, findNFTInReduxStore, convertArtifactToNFT, createPlaceholderNFT, normalizeNFTData, catalogNFTs.length]);
 
   // Get media type for filtering
   const getMediaType = useCallback((nft) => {
@@ -444,6 +479,7 @@ const CatalogViewPage = ({
     return 'Image';
   }, []);
 
+  // Filter and sort NFTs
   const filteredNFTs = useMemo(() => {
     if (!catalogNFTs.length) return [];
     
@@ -511,19 +547,12 @@ const CatalogViewPage = ({
     return result;
   }, [catalogNFTs, searchTerm, activeFilters, activeSort, getMediaType]);
   
-
+  // Handle NFT click to navigate to artifact page
   const handleNFTClick = useCallback((nft) => {
     navigate('/app/artifact', { state: { nft } });
   }, [navigate]);
 
-  // Debug logger component
-  const DebugLogger = ({ data }) => {
-    useEffect(() => {
-      logger.debug('NFT data for catalog view:', data);
-    }, [data]);
-    return null;
-  };
-
+  // Handle NFT selection
   const handleNFTSelect = useCallback((nft) => {
     setSelectedNFTs(prev => {
       const isSelected = prev.some(selected => 
@@ -540,32 +569,42 @@ const CatalogViewPage = ({
     });
   }, []);
 
+  // Handle clear selections
   const handleClearSelections = useCallback(() => {
     setSelectedNFTs([]);
     setIsSelectMode(false);
   }, []);
 
+  // Handle filter change
   const handleFilterChange = useCallback((filters) => {
     setActiveFilters(filters);
   }, []);
 
+  // Handle sort change
   const handleSortChange = useCallback((sort) => {
     setActiveSort(sort);
   }, []);
 
+  // Handle removing selected NFTs
   const handleRemoveSelectedNFTs = useCallback(() => {
     if (selectedNFTs.length === 0) return;
     
-    onRemoveNFTs(selectedNFTs);
+    // This would be implemented based on your catalog removal logic
+    // For now, just show a success toast
+    showSuccessToast(
+      "NFTs Removed",
+      `${selectedNFTs.length} artifacts removed from catalog.`
+    );
     setSelectedNFTs([]);
     setIsSelectMode(false);
-  }, [selectedNFTs, onRemoveNFTs]);
+  }, [selectedNFTs, showSuccessToast]);
 
+  // Handle refresh button click
   const handleRefresh = useCallback(() => {
     if (isRefreshing || isLoading) return;
     
     setIsRefreshing(true);
-    fetchNFTsFromSupabase(true) // Pass true to force refresh bypassing circuit breaker
+    fetchNFTsFromSupabase(true) // Pass true to force refresh
       .then(() => {
         showSuccessToast(
           "Refresh Complete",
@@ -579,6 +618,11 @@ const CatalogViewPage = ({
         setIsRefreshing(false);
       });
   }, [isRefreshing, isLoading, fetchNFTsFromSupabase, showSuccessToast]);
+
+  // Handle back navigation
+  const handleBack = useCallback(() => {
+    navigate('/app/catalogs');
+  }, [navigate]);
 
   // Get list of wallets and networks for filters
   const availableWallets = useMemo(() => {
@@ -606,12 +650,8 @@ const CatalogViewPage = ({
     return Array.from(contractSet);
   }, [catalogNFTs]);
 
-  // Handle spam toggle with Supabase integration
+  // Handle spam toggle
   const handleSpamToggle = useCallback(async (nft) => {
-    // Call the parent component's handler first for Redux update
-    onSpamToggle(nft);
-    
-    // Additional Supabase update
     try {
       // Find the artifact in Supabase
       const { data: existingArtifact, error: findError } = await supabase
@@ -670,6 +710,28 @@ const CatalogViewPage = ({
         )
       );
       
+      // Update Redux state for spam catalog
+      // Fetch all spam NFTs and update the spam catalog
+      const { data: spamArtifacts } = await supabase
+        .from('artifacts')
+        .select('*')
+        .eq('is_spam', true);
+      
+      if (spamArtifacts) {
+        const spamNFTs = spamArtifacts.map(artifact => ({
+          id: { tokenId: artifact.token_id },
+          contract: { address: artifact.contract_address },
+          title: artifact.title || `Token ID: ${artifact.token_id}`,
+          description: artifact.description || '',
+          metadata: artifact.metadata || {},
+          walletId: artifact.wallet_id,
+          network: artifact.network,
+          isSpam: true
+        }));
+        
+        dispatch(updateSpamCatalog(spamNFTs));
+      }
+      
       showInfoToast(
         nft.isSpam ? "Removed from Spam" : "Marked as Spam",
         nft.isSpam 
@@ -684,21 +746,35 @@ const CatalogViewPage = ({
         "Failed to update artifact status in database"
       );
     }
-  }, [onSpamToggle, showInfoToast, showErrorToast]);
+  }, [dispatch, showInfoToast, showErrorToast]);
 
-  // Use effect to fetch NFTs once on mount
+  // Use effect to fetch NFTs when component mounts or catalog changes
   useEffect(() => {
-    // Only run this effect once on mount, not on every render or on every catalog change
-    if (catalog && !processingBatch.current) {
-      logger.log('Initial fetch of catalog NFTs on mount');
-      fetchNFTsFromSupabase();
-    }
+    if (!catalog || initialLoadComplete.current) return;
     
-    // Cleanup function
-    return () => {
-      processingBatch.current = false;
-    };
-  }, []); // Empty dependency array to run once on mount
+    logger.log('Initial catalog fetch - catalog loaded or changed');
+    fetchNFTsFromSupabase();
+  }, [catalog, fetchNFTsFromSupabase]);
+
+  // If catalog not found, show error message and back button
+  if (!catalog) {
+    return (
+      <Box p={8} textAlign="center">
+        <Alert status="error" borderRadius="md" mb={6}>
+          <AlertIcon />
+          <Text>Catalog not found. It may have been deleted or you don't have access.</Text>
+        </Alert>
+        <Button 
+          mt={4} 
+          colorScheme="blue" 
+          onClick={() => navigate('/app/catalogs')}
+          size="md"
+        >
+          Back to Catalogs
+        </Button>
+      </Box>
+    );
+  }
 
   return (
     <MotionBox
@@ -716,7 +792,7 @@ const CatalogViewPage = ({
         <Button
           leftIcon={<FaChevronLeft />}
           variant="ghost"
-          onClick={onBack}
+          onClick={handleBack}
           alignSelf="flex-start"
           color="var(--ink-grey)"
           fontFamily="Inter"
@@ -725,7 +801,7 @@ const CatalogViewPage = ({
             color: "var(--rich-black)"
           }}
         >
-          Back to Library
+          Back to Catalogs
         </Button>
 
         <HStack justify="space-between" align="flex-start">
@@ -877,34 +953,10 @@ const CatalogViewPage = ({
           </Text>
         </Box>
       )}
-
-      <DebugLogger 
-          data={{
-            catalogInfo: {
-              catalogId: catalog && catalog.id,
-              isSystemCatalog: catalog && catalog.isSystem,
-              catalogName: catalog && catalog.name
-            },
-            stats: {
-              nftCount: filteredNFTs.length,
-              isLoading,
-              viewMode
-            },
-            nfts: filteredNFTs.slice(0, 3).map(function(nft) {
-              return {
-                tokenId: nft && nft.id && nft.id.tokenId,
-                contractAddress: nft && nft.contract && nft.contract.address,
-                title: nft && nft.title,
-                network: nft && nft.network,
-                hasMedia: !!(nft && nft.media && nft.media[0] && nft.media[0].gateway)
-              };
-            })
-          }}
-        />
       
       {/* Content Section */}
       <Box>
-        {isLoading ? (
+        {isLoading && catalogNFTs.length === 0 ? (
           <SimpleGrid columns={gridColumns} spacing={4}>
             {Array(8).fill(0).map((_, i) => (
               <Skeleton

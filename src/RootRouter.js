@@ -27,6 +27,7 @@ import OrganizePage from './app/components/OrganizePage';
 import ServiceTestComponent from './app/components/ServiceTestComponent';
 import CatalogsPage from './app/components/CatalogsPage';
 import { useServices, ServiceProvider } from './services/service-provider';
+import CatalogViewPage from './app/components/CatalogViewPage';
 
 
 const PrivateRoute = ({ children }) => {
@@ -77,6 +78,7 @@ const RootRouter = () => {
           <Route path="organize" element={<PrivateRoute><OrganizePage /></PrivateRoute>} />
           <Route path="service-test" element={<PrivateRoute><ServiceTestComponent/></PrivateRoute>} />
           <Route path="catalogs" element={<PrivateRoute><CatalogsPage /></PrivateRoute>} />
+          <Route path="catalogs/:catalogId" element={<PrivateRoute><CatalogViewPage /></PrivateRoute>} />
         </Route>
       </Routes>
     </ServiceProvider>

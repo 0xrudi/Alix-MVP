@@ -70,7 +70,7 @@ const MenuModal = () => {
       </Text>
       <VStack spacing={iconSpacing} align="stretch">
         {menuItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
           return (
             <Tooltip
               key={item.path}
@@ -149,7 +149,7 @@ const MenuModal = () => {
         px={2}
       >
         {menuItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
           return (
             <Tooltip 
               key={item.path} 

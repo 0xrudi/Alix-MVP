@@ -11,15 +11,17 @@ import { FaBook, FaEdit, FaTrash } from 'react-icons/fa';
 import { StyledCard } from '../styles/commonStyles';
 import { cardSizes } from '../constants/sizes';
 import { logger } from '../../utils/logger';
+import { useNavigate } from 'react-router-dom';
 
 const CatalogCard = ({ 
   catalog, 
-  onView, 
   onEdit, 
   onDelete, 
   cardSize = "md",
   isSystem = false 
 }) => {
+  const navigate = useNavigate();
+
   const handleEdit = (e) => {
     e.stopPropagation();
     if (!isSystem && onEdit && typeof onEdit === 'function') {
@@ -37,10 +39,16 @@ const CatalogCard = ({
   };
 
   const handleView = () => {
-    if (onView && typeof onView === 'function') {
-      logger.log('Viewing catalog:', { catalogId: catalog.id });
-      onView(catalog);
-    }
+    logger.log('Viewing catalog:', { catalogId: catalog.id });
+    
+    // Format the catalog name for the URL
+    const formattedName = catalog.name
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '') // Remove special characters
+      .replace(/\s+/g, '-'); // Replace spaces with hyphens
+    
+    // Navigate to the catalog view page
+    navigate(`/app/catalogs/${catalog.id}`);
   };
 
   const nftCount = catalog.nftIds?.length || 0;
