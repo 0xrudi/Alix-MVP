@@ -9,6 +9,7 @@ import {
   Checkbox, 
   Skeleton,
   Flex,
+  IconButton,
 } from "@chakra-ui/react";
 import { 
   FaTrash, 
