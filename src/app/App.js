@@ -17,10 +17,8 @@ import { AppProvider } from './context/AppContext';
 import { Analytics } from "@vercel/analytics/react";
 import { AuthProvider, useAuth } from './context/auth/AuthContext';
 import LoginPage from './website/pages/auth/LoginPage';
-import { ServiceProvider, useServices } from './services/service-provider'; // Import the ServiceProvider and hook
+import { ServiceProvider, useServices } from './services/service-provider';
 import ReduxStoreProvider from './redux/ReduxStoreProvider';
-import CatalogsPage from './components/CatalogsPage';
-import CatalogViewPage from './components/CatalogViewPage';
 
 // Create a PrivateRoute component
 const PrivateRoute = ({ children }) => {
@@ -66,14 +64,15 @@ function AppContent() {
             <Route path="/home" element={<PrivateRoute><HomePage /></PrivateRoute>} />
             <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
             <Route path="/library" element={<PrivateRoute><LibraryPage /></PrivateRoute>} />
+            
+            {/* Profile routes */}
             <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+            <Route path="/profile/account-manager" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+            <Route path="/profile/stats" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+            
+            {/* Other routes */}
             <Route path="/artifact" element={<PrivateRoute><ArtifactDetailPage /></PrivateRoute>} />
             <Route path="/service-test" element={<PrivateRoute><ServiceTestComponent /></PrivateRoute>} />
-            
-            {/* Catalog routes */}
-            <Route path="/app/catalogs" element={<PrivateRoute><CatalogsPage /></PrivateRoute>} />
-            <Route path="/app/catalogs/:catalogId" element={<PrivateRoute><CatalogViewPage /></PrivateRoute>} />
-            
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
         </Box>

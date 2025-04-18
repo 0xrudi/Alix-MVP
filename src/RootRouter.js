@@ -73,7 +73,13 @@ const RootRouter = () => {
           <Route index element={<PrivateRoute><HomePage /></PrivateRoute>} />
           <Route path="admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
           <Route path="library" element={<PrivateRoute><LibraryPage /></PrivateRoute>} />
+          
+          {/* Profile Routes - All use the same ProfilePage component */}
           <Route path="profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          <Route path="profile/account-manager" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          <Route path="profile/stats" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          
+          {/* Other App Routes */}
           <Route path="artifact" element={<PrivateRoute><ArtifactDetailPage /></PrivateRoute>} />
           <Route path="organize" element={<PrivateRoute><OrganizePage /></PrivateRoute>} />
           <Route path="service-test" element={<PrivateRoute><ServiceTestComponent/></PrivateRoute>} />
