@@ -23,11 +23,9 @@ const MenuModal = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
 
   const menuItems = [
-    { name: 'Library', icon: FaBookOpen, path: '/app/library' },
     { name: 'Catalogs', icon: FaLayerGroup, path: '/app/catalogs' },
     { name: 'Organize', icon: FaSitemap, path: '/app/organize' },
     { name: 'Profile', icon: FaUser, path: '/app/profile' },
-    { name: 'Service Test', icon: FaTools, path: '/app/service-test' },
   ];
 
   const handleNavigate = (path) => {
