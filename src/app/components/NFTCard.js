@@ -8,7 +8,6 @@ import {
   AspectRatio, 
   Checkbox, 
   Skeleton,
-  IconButton,
   Flex,
 } from "@chakra-ui/react";
 import { 
@@ -39,7 +38,8 @@ const NFTCard = ({
   isSearchResult = false,
   onAddToCatalog,
   size = "medium",
-  catalogType = 'default'
+  catalogType = 'default',
+  renderActions = null // Custom render function for card actions
 }) => {
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
   const [isLoading, setIsLoading] = useState(true);
@@ -308,50 +308,56 @@ const NFTCard = ({
           zIndex={4}
           pointerEvents="none"
         >
-          {/* Container for action buttons at the bottom - with pointer events enabled */}
-          <Box 
-            position="absolute" 
-            bottom={2} 
-            left={0} 
-            right={0} 
-            px={2}
-            pointerEvents="auto"
-          >
-            <Flex justify="space-between">
-              {/* Trash/Spam button bottom left */}
-              {!isSelectMode && shouldShowSpamButton() && (
+          {/* Custom actions or default actions */}
+          {renderActions ? (
+            renderActions()
+          ) : (
+            // Container for action buttons at the bottom - with pointer events enabled
+            <Box 
+              position="absolute" 
+              bottom={2} 
+              left={0} 
+              right={0} 
+              px={2}
+              pointerEvents="auto"
+            >
+              <Flex justify="space-between">
+                {/* Trash/Spam button bottom left */}
+                {!isSelectMode && shouldShowSpamButton() && (
+                  <IconButton
+                    icon={isSpamFolder ? <FaCheck size={14} /> : <FaTrash size={14} />}
+                    aria-label={isSpamFolder ? "Unmark spam" : "Mark as spam"}
+                    size="sm"
+                    variant="solid"
+                    onClick={handleSpamClick}
+                    color="white"
+                    bg={isSpamFolder ? "green.500" : "red.500"}
+                    _hover={{
+                      bg: isSpamFolder ? "green.600" : "red.600"
+                    }}
+                    boxShadow="0 2px 4px rgba(0, 0, 0, 0.2)"
+                    borderRadius="full"
+                  />
+                )}
+                
+                {/* Add to catalog button bottom right */}
                 <IconButton
-                  icon={isSpamFolder ? <FaCheck size={14} /> : <FaTrash size={14} />}
-                  aria-label={isSpamFolder ? "Unmark spam" : "Mark as spam"}
+                  icon={<FaPlus size={14} />}
+                  aria-label="Add to catalog"
                   size="sm"
                   variant="solid"
-                  onClick={handleSpamClick}
                   color="white"
-                  bg={isSpamFolder ? "green.500" : "red.500"}
+                  bg="green.500"
+                  onClick={handleAddToCatalog}
                   _hover={{
-                    bg: isSpamFolder ? "green.600" : "red.600"
+                    bg: "green.600"
                   }}
                   boxShadow="0 2px 4px rgba(0, 0, 0, 0.2)"
                   borderRadius="full"
                 />
-              )}
-              
-              {/* More Options button bottom right */}
-              <IconButton
-                icon={<FaEllipsisH size={14} />}
-                aria-label="More options"
-                size="sm"
-                variant="solid"
-                color="white"
-                bg="rgba(0,0,0,0.5)"
-                _hover={{
-                  bg: "rgba(0,0,0,0.7)"
-                }}
-                boxShadow="0 2px 4px rgba(0, 0, 0, 0.2)"
-                borderRadius="full"
-              />
-            </Flex>
-          </Box>
+              </Flex>
+            </Box>
+          )}
         </Box>
       </Box>
 

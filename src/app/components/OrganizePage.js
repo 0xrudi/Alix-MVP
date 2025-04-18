@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Box,
   VStack,
@@ -11,11 +11,40 @@ import {
   Progress,
   Spinner,
   HStack,
-  useBreakpointValue
+  useBreakpointValue,
+  IconButton,
+  Icon,
+  Tooltip,
+  useDisclosure,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverBody,
+  PopoverArrow,
+  SimpleGrid,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  Input,
+  Checkbox,
+  CheckboxGroup,
+  Stack,
+  Divider
 } from "@chakra-ui/react";
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { FaSync, FaPlus } from 'react-icons/fa';
+import { 
+  FaSync, 
+  FaPlus, 
+  FaInfoCircle, 
+  FaSearch,
+  FaCheckSquare,
+  FaTrash
+} from 'react-icons/fa';
 
 // Import components
 import NFTGrid from './NFTGrid';
@@ -32,7 +61,7 @@ import { StyledContainer } from '../styles/commonStyles';
 // Import Redux actions and selectors
 import { selectNFTsNotInCatalog } from '../redux/slices/nftSlice';
 import { toggleArtifactSpam } from '../redux/thunks/artifactThunks';
-import { selectUserCatalogs } from '../redux/slices/catalogSlice';
+import { selectUserCatalogs, selectAllCatalogs } from '../redux/slices/catalogSlice';
 import { addNFTToCatalogWithStatus } from '../redux/slices/catalogSlice';
 import { supabase } from '../../utils/supabase';
 import { useServices } from '../../services/service-provider';
@@ -40,6 +69,226 @@ import { useServices } from '../../services/service-provider';
 const VIEW_MODES = {
   LIST: 'list',
   GRID: 'grid'
+};
+
+// Enhanced NFTCard hover actions
+const NFTCardActions = ({ nft, onSpamToggle, onAddToCatalog }) => {
+  return (
+    <Box 
+      position="absolute" 
+      bottom={2} 
+      left={0} 
+      right={0} 
+      px={2}
+      pointerEvents="auto"
+    >
+      <Flex justify="space-between">
+        {/* Trash/Spam button bottom left */}
+        <IconButton
+          icon={<FaTrash size={14} />}
+          aria-label="Mark as spam"
+          size="sm"
+          variant="solid"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSpamToggle(nft);
+          }}
+          color="white"
+          bg="red.500"
+          _hover={{
+            bg: "red.600"
+          }}
+          boxShadow="0 2px 4px rgba(0, 0, 0, 0.2)"
+          borderRadius="full"
+        />
+        
+        {/* Add to catalog button bottom right */}
+        <IconButton
+          icon={<FaPlus size={14} />}
+          aria-label="Add to catalog"
+          size="sm"
+          variant="solid"
+          color="white"
+          bg="green.500"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddToCatalog(nft);
+          }}
+          _hover={{
+            bg: "green.600"
+          }}
+          boxShadow="0 2px 4px rgba(0, 0, 0, 0.2)"
+          borderRadius="full"
+        />
+      </Flex>
+    </Box>
+  );
+};
+
+// New AddToCatalogModal component
+const AddToCatalogModal = ({ isOpen, onClose, nft, catalogs, onAddToCatalogs }) => {
+  const [selectedCatalogs, setSelectedCatalogs] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const { showSuccessToast, showErrorToast } = useCustomToast();
+
+  // Reset selections when modal opens with a new NFT
+  useEffect(() => {
+    if (isOpen && nft) {
+      setSelectedCatalogs([]);
+      setSearchTerm('');
+    }
+  }, [isOpen, nft]);
+
+  // Filter catalogs based on search term
+  const filteredCatalogs = useMemo(() => {
+    if (!catalogs) return [];
+    
+    return catalogs.filter(catalog => 
+      !catalog.isSystem && // Exclude system catalogs
+      catalog.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [catalogs, searchTerm]);
+
+  const handleAddToCatalogs = async () => {
+    if (selectedCatalogs.length === 0) {
+      showErrorToast("Selection Required", "Please select at least one catalog.");
+      return;
+    }
+
+    try {
+      await onAddToCatalogs(nft, selectedCatalogs);
+      showSuccessToast(
+        "Added to Catalogs", 
+        `Artifact added to ${selectedCatalogs.length} catalog${selectedCatalogs.length > 1 ? 's' : ''}.`
+      );
+      onClose();
+    } catch (error) {
+      showErrorToast("Error", "Failed to add to catalogs. Please try again.");
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} isCentered>
+      <ModalOverlay bg="rgba(0, 0, 0, 0.4)" backdropFilter="blur(8px)" />
+      <ModalContent 
+        borderRadius="lg" 
+        bg="white" 
+        boxShadow="0 4px 20px rgba(0, 0, 0, 0.1)"
+        mx={4}
+      >
+        <ModalHeader 
+          fontFamily="Space Grotesk" 
+          fontSize="xl" 
+          color="var(--rich-black)"
+        >
+          Add to Catalogs
+        </ModalHeader>
+        <ModalCloseButton color="var(--ink-grey)" />
+        
+        <ModalBody>
+          <VStack spacing={4} align="stretch">
+            <Box>
+              <Text 
+                fontSize="sm" 
+                mb={2} 
+                fontFamily="Inter" 
+                color="var(--ink-grey)"
+              >
+                Select catalogs for this artifact:
+              </Text>
+              
+              {/* Search Input */}
+              <Box position="relative" mb={4}>
+                <Box 
+                  position="absolute" 
+                  left={0} 
+                  top={0} 
+                  bottom={0} 
+                  display="flex" 
+                  alignItems="center" 
+                  justifyContent="center" 
+                  width="40px" 
+                  pointerEvents="none"
+                >
+                  <FaSearch color="var(--ink-grey)" />
+                </Box>
+                <Input
+                  placeholder="Search catalogs..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  bg="white"
+                  borderColor="var(--shadow)"
+                  pl={10}
+                />
+              </Box>
+              
+              {/* Catalog Selection */}
+              <Box 
+                maxH="200px" 
+                overflowY="auto"
+                borderWidth="1px"
+                borderColor="var(--shadow)"
+                borderRadius="md"
+                p={2}
+              >
+                {filteredCatalogs.length > 0 ? (
+                  <CheckboxGroup 
+                    colorScheme="green" 
+                    value={selectedCatalogs}
+                    onChange={(values) => setSelectedCatalogs(values)}
+                  >
+                    <Stack spacing={2}>
+                      {filteredCatalogs.map(catalog => (
+                        <Checkbox 
+                          key={catalog.id} 
+                          value={catalog.id}
+                          fontFamily="Inter"
+                          size="md"
+                        >
+                          {catalog.name}
+                        </Checkbox>
+                      ))}
+                    </Stack>
+                  </CheckboxGroup>
+                ) : (
+                  <Text 
+                    textAlign="center" 
+                    py={4} 
+                    color="var(--ink-grey)"
+                    fontSize="sm"
+                  >
+                    {searchTerm ? "No matching catalogs found" : "No catalogs available"}
+                  </Text>
+                )}
+              </Box>
+            </Box>
+          </VStack>
+        </ModalBody>
+
+        <ModalFooter>
+          <Button 
+            variant="ghost" 
+            mr={3} 
+            onClick={onClose}
+            color="var(--ink-grey)"
+            fontFamily="Inter"
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleAddToCatalogs}
+            bg="var(--warm-brown)"
+            color="white"
+            fontFamily="Inter"
+            _hover={{ bg: "var(--deep-brown)" }}
+            isDisabled={selectedCatalogs.length === 0}
+          >
+            Add to Catalogs
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
 };
 
 const OrganizePage = () => {
@@ -52,7 +301,8 @@ const OrganizePage = () => {
   
   // Redux selectors
   const unorganizedNFTs = useSelector(selectNFTsNotInCatalog);
-  const catalogs = useSelector(selectUserCatalogs);
+  const userCatalogs = useSelector(selectUserCatalogs);
+  const allCatalogs = useSelector(selectAllCatalogs);
   
   // Local state
   const [selectedNFTs, setSelectedNFTs] = useState([]);
@@ -64,6 +314,10 @@ const OrganizePage = () => {
   const [isNewCatalogModalOpen, setIsNewCatalogModalOpen] = useState(false);
   const [error, setError] = useState(null);
   const [artifactsData, setArtifactsData] = useState([]);
+  const [selectedNFTForCatalog, setSelectedNFTForCatalog] = useState(null);
+  
+  // Modals
+  const { isOpen: isAddToCatalogOpen, onOpen: openAddToCatalog, onClose: closeAddToCatalog } = useDisclosure();
   
   // Controlled filter state
   const [activeFilters, setActiveFilters] = useState({});
@@ -141,7 +395,8 @@ const OrganizePage = () => {
           isInCatalog: false,
           cover_image_url: artifact.cover_image_url,
           media_url: artifact.media_url,
-          media_type: artifact.media_type
+          media_type: artifact.media_type,
+          artifactId: artifact.id // Store the actual artifact ID for easier operations
         };
       });
       
@@ -180,45 +435,102 @@ const OrganizePage = () => {
     fetchUnorganizedArtifacts(false);
   }, [isRefreshing, isLoading, fetchUnorganizedArtifacts]);
   
-  // Handler for marking an NFT as spam
-  const handleSpamToggle = useCallback(async (nft) => {
+  // Handle adding an NFT to selected catalogs
+  const handleAddToCatalogs = useCallback(async (nft, catalogIds) => {
+    if (!nft || !catalogIds || catalogIds.length === 0) return;
+    
+    setIsRefreshing(true);
+    let successCount = 0;
+    
     try {
-      setIsRefreshing(true);
+      for (const catalogId of catalogIds) {
+        try {
+          // Add to catalog in Supabase
+          const { error: relError } = await supabase
+            .from('catalog_artifacts')
+            .insert({
+              catalog_id: catalogId,
+              artifact_id: nft.artifactId
+            });
+          
+          if (relError) throw relError;
+          
+          // Update is_in_catalog flag
+          const { error: updateError } = await supabase
+            .from('artifacts')
+            .update({ is_in_catalog: true })
+            .eq('id', nft.artifactId);
+          
+          if (updateError) throw updateError;
+          
+          // Also dispatch Redux action
+          await dispatch(addNFTToCatalogWithStatus({
+            catalogId,
+            nft,
+            artifactId: nft.artifactId
+          })).unwrap();
+          
+          successCount++;
+        } catch (error) {
+          logger.error('Error adding NFT to catalog:', error);
+        }
+      }
       
-      // Get the artifact ID from Supabase
-      const { data: artifact, error: findError } = await supabase
-        .from('artifacts')
-        .select('id')
-        .eq('token_id', nft.id.tokenId)
-        .eq('contract_address', nft.contract.address)
-        .eq('wallet_id', nft.walletId)
-        .maybeSingle();
-      
-      if (findError) throw findError;
-      
-      if (artifact) {
-        // Update is_spam flag in Supabase
-        const { error: updateError } = await supabase
-          .from('artifacts')
-          .update({ is_spam: true })
-          .eq('id', artifact.id);
-        
-        if (updateError) throw updateError;
-        
-        // Also update Redux
-        await dispatch(toggleArtifactSpam(nft)).unwrap();
-        
-        showInfoToast(
-          "Marked as Spam",
-          "The artifact has been moved to your spam folder."
-        );
-        
+      if (successCount > 0) {
         // Remove from local state
         setArtifactsData(prev => prev.filter(item => 
           item.id.tokenId !== nft.id.tokenId || 
           item.contract.address !== nft.contract.address
         ));
+        
+        return true;
+      } else {
+        showErrorToast(
+          "Update Failed",
+          "Failed to add artifact to catalogs. Please try again."
+        );
+        return false;
       }
+    } catch (error) {
+      handleError(error, 'adding artifact to catalogs');
+      return false;
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [dispatch, showErrorToast, handleError]);
+  
+  // Handler for showing the add to catalog modal
+  const handleShowAddToCatalog = useCallback((nft) => {
+    setSelectedNFTForCatalog(nft);
+    openAddToCatalog();
+  }, [openAddToCatalog]);
+  
+  // Handler for marking an NFT as spam
+  const handleSpamToggle = useCallback(async (nft) => {
+    try {
+      setIsRefreshing(true);
+      
+      // Update is_spam flag in Supabase
+      const { error: updateError } = await supabase
+        .from('artifacts')
+        .update({ is_spam: true })
+        .eq('id', nft.artifactId);
+      
+      if (updateError) throw updateError;
+      
+      // Also update Redux
+      await dispatch(toggleArtifactSpam(nft)).unwrap();
+      
+      showInfoToast(
+        "Marked as Spam",
+        "The artifact has been moved to your spam folder."
+      );
+      
+      // Remove from local state
+      setArtifactsData(prev => prev.filter(item => 
+        item.id.tokenId !== nft.id.tokenId || 
+        item.contract.address !== nft.contract.address
+      ));
     } catch (error) {
       logger.error('Error toggling spam status:', error);
       showErrorToast(
@@ -263,88 +575,6 @@ const OrganizePage = () => {
     verifyAndRepairCatalogStatuses();
   }, [verifyAndRepairCatalogStatuses]);
   
-  // Handler for adding an NFT to a catalog
-  const handleAddToCatalog = useCallback(async (catalogId) => {
-    if (selectedNFTs.length === 0) return;
-    
-    setIsRefreshing(true);
-    let successCount = 0;
-    
-    try {
-      for (const nft of selectedNFTs) {
-        try {
-          // First, get the artifact ID from Supabase
-          const { data: artifact, error: findError } = await supabase
-            .from('artifacts')
-            .select('id')
-            .eq('token_id', nft.id.tokenId)
-            .eq('contract_address', nft.contract.address)
-            .eq('wallet_id', nft.walletId)
-            .maybeSingle();
-          
-          if (findError) throw findError;
-          
-          if (artifact) {
-            // Add to catalog in Supabase
-            const { error: relError } = await supabase
-              .from('catalog_artifacts')
-              .insert({
-                catalog_id: catalogId,
-                artifact_id: artifact.id
-              });
-            
-            if (relError) throw relError;
-            
-            // Update is_in_catalog flag
-            const { error: updateError } = await supabase
-              .from('artifacts')
-              .update({ is_in_catalog: true })
-              .eq('id', artifact.id);
-            
-            if (updateError) throw updateError;
-            
-            // Also dispatch Redux action
-            await dispatch(addNFTToCatalogWithStatus({
-              catalogId,
-              nft,
-              artifactId: artifact.id
-            })).unwrap();
-            
-            successCount++;
-            
-            // Remove from local state
-            setArtifactsData(prev => prev.filter(item => 
-              item.id.tokenId !== nft.id.tokenId || 
-              item.contract.address !== nft.contract.address
-            ));
-          }
-        } catch (error) {
-          logger.error('Error adding NFT to catalog:', error);
-        }
-      }
-      
-      if (successCount > 0) {
-        showSuccessToast(
-          "Added to Catalog",
-          `${successCount} artifacts added to catalog.`
-        );
-        
-        // Clear selection
-        setSelectedNFTs([]);
-        setIsSelectMode(false);
-      } else {
-        showErrorToast(
-          "Update Failed",
-          "Failed to add artifacts to catalog. Please try again."
-        );
-      }
-    } catch (error) {
-      handleError(error, 'adding artifacts to catalog');
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [selectedNFTs, dispatch, showSuccessToast, showErrorToast, handleError]);
-  
   // Handler for marking selected NFTs as spam
   const handleMarkSelectedAsSpam = useCallback(async () => {
     if (selectedNFTs.length === 0) return;
@@ -355,37 +585,24 @@ const OrganizePage = () => {
     try {
       for (const nft of selectedNFTs) {
         try {
-          // Get the artifact ID from Supabase
-          const { data: artifact, error: findError } = await supabase
+          // Update is_spam flag in Supabase
+          const { error: updateError } = await supabase
             .from('artifacts')
-            .select('id')
-            .eq('token_id', nft.id.tokenId)
-            .eq('contract_address', nft.contract.address)
-            .eq('wallet_id', nft.walletId)
-            .maybeSingle();
+            .update({ is_spam: true })
+            .eq('id', nft.artifactId);
           
-          if (findError) throw findError;
+          if (updateError) throw updateError;
           
-          if (artifact) {
-            // Update is_spam flag in Supabase
-            const { error: updateError } = await supabase
-              .from('artifacts')
-              .update({ is_spam: true })
-              .eq('id', artifact.id);
-            
-            if (updateError) throw updateError;
-            
-            // Also update Redux
-            await dispatch(toggleArtifactSpam(nft)).unwrap();
-            
-            successCount++;
-            
-            // Remove from local state
-            setArtifactsData(prev => prev.filter(item => 
-              item.id.tokenId !== nft.id.tokenId || 
-              item.contract.address !== nft.contract.address
-            ));
-          }
+          // Also update Redux
+          await dispatch(toggleArtifactSpam(nft)).unwrap();
+          
+          successCount++;
+          
+          // Remove from local state
+          setArtifactsData(prev => prev.filter(item => 
+            item.id.tokenId !== nft.id.tokenId || 
+            item.contract.address !== nft.contract.address
+          ));
         } catch (error) {
           logger.error('Error marking NFT as spam:', error);
         }
@@ -542,50 +759,87 @@ const OrganizePage = () => {
       )
     );
   }, []);
+
+  // Custom rendering for NFT card actions
+  const renderNFTCardActions = useCallback((nft) => {
+    return (
+      <NFTCardActions 
+        nft={nft} 
+        onSpamToggle={handleSpamToggle}
+        onAddToCatalog={handleShowAddToCatalog}
+      />
+    );
+  }, [handleSpamToggle, handleShowAddToCatalog]);
+  
+  // Grid columns configuration (1 column on mobile)
+  const gridColumns = useMemo(() => ({
+    base: 1,
+    sm: 2,
+    md: 3,
+    lg: 4,
+    xl: 5
+  }), []);
   
   return (
     <StyledContainer>
       <VStack spacing="1.5rem" align="stretch">
-        {/* Header */}
+        {/* Header with small icon buttons */}
         <Flex justify="space-between" align="center">
-          <Text
-            as="h1"
-            fontSize={{ base: "24px", md: "32px" }}
-            fontFamily="Space Grotesk"
-            letterSpacing="-0.02em"
-            color="var(--rich-black)"
-          >
-            Organize Artifacts
-          </Text>
-          <HStack spacing={2}>
-            <Button
-              leftIcon={<FaSync />}
+          <HStack spacing={2} align="center">
+            <Text
+              as="h1"
+              fontSize={{ base: "24px", md: "32px" }}
+              fontFamily="Space Grotesk"
+              letterSpacing="-0.02em"
+              color="var(--rich-black)"
+            >
+              Organize Artifacts
+            </Text>
+            
+            {/* Info tooltip button */}
+            <Popover trigger="hover" placement="bottom-start">
+              <PopoverTrigger>
+                <IconButton
+                  icon={<FaInfoCircle />}
+                  aria-label="Information"
+                  variant="ghost"
+                  size="sm"
+                  color="var(--ink-grey)"
+                  opacity={0.7}
+                  _hover={{ color: "var(--warm-brown)", opacity: 1 }}
+                />
+              </PopoverTrigger>
+              <PopoverContent 
+                bg="white" 
+                p={3} 
+                boxShadow="md" 
+                maxW="300px"
+                border="1px solid"
+                borderColor="var(--shadow)"
+              >
+                <PopoverArrow bg="white" />
+                <PopoverBody>
+                  <Text fontSize="sm" color="var(--ink-grey)">
+                    This page shows artifacts that are not yet organized into any catalog. 
+                    You can add them to catalogs or mark them as spam to organize your library.
+                  </Text>
+                </PopoverBody>
+              </PopoverContent>
+            </Popover>
+            
+            {/* Small refresh icon */}
+            <IconButton
+              icon={<FaSync />}
+              aria-label="Refresh artifacts"
               onClick={handleRefresh}
               isLoading={isRefreshing}
-              loadingText="Refreshing..."
-              size={isMobile ? "sm" : "md"}
-              colorScheme="blue"
-              variant="outline"
-            >
-              Refresh
-            </Button>
-            <Button
-              leftIcon={<FaPlus />}
-              onClick={() => setIsNewCatalogModalOpen(true)}
-              size={isMobile ? "sm" : "md"}
-              colorScheme="green"
-              isDisabled={selectedNFTs.length === 0}
-            >
-              New Catalog
-            </Button>
+              size="sm"
+              color="var(--ink-grey)"
+              variant="ghost"
+              _hover={{ color: "var(--warm-brown)" }}
+            />
           </HStack>
         </Flex>
-        
-        {/* Description */}
-        <Text color="var(--ink-grey)" fontSize="md">
-          This page shows artifacts that are not yet organized into any catalog. You can add them to 
-          catalogs or mark them as spam to organize your library.
-        </Text>
         
         {/* Error Alert */}
         {error && (
@@ -642,6 +896,8 @@ const OrganizePage = () => {
                 onNFTClick={handleNFTClick}
                 viewMode={viewMode}
                 showControls={true}
+                gridColumns={gridColumns} // Pass custom grid columns for mobile view
+                renderActions={renderNFTCardActions} // Pass custom render function for card actions
               />
             ) : (
               <Box textAlign="center" py={12}>
@@ -680,6 +936,15 @@ const OrganizePage = () => {
         selectedArtifacts={selectedNFTs}
       />
       
+      {/* Add to Catalog Modal */}
+      <AddToCatalogModal
+        isOpen={isAddToCatalogOpen}
+        onClose={closeAddToCatalog}
+        nft={selectedNFTForCatalog}
+        catalogs={userCatalogs}
+        onAddToCatalogs={handleAddToCatalogs}
+      />
+      
       {/* Selected Artifacts Overlay */}
       {isSelectMode && selectedNFTs.length > 0 && (
         <SelectedArtifactsOverlay
@@ -687,9 +952,9 @@ const OrganizePage = () => {
           onRemoveArtifact={handleRemoveFromSelection}
           onAddToSpam={handleMarkSelectedAsSpam}
           onCreateCatalog={() => setIsNewCatalogModalOpen(true)}
-          onAddToExistingCatalog={handleAddToCatalog}
+          onAddToExistingCatalog={handleAddToCatalogs}
           onClearSelections={handleClearSelections}
-          catalogs={catalogs}
+          catalogs={userCatalogs}
         />
       )}
     </StyledContainer>
