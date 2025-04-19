@@ -1,4 +1,3 @@
-// src/app/components/NFTCard.js
 import React, { useState, useEffect } from 'react';
 import { 
   Box, 
@@ -9,18 +8,23 @@ import {
   AspectRatio, 
   Checkbox, 
   Skeleton,
-  IconButton,
   Flex,
+  IconButton,
 } from "@chakra-ui/react";
 import { 
   FaTrash, 
   FaPlus, 
   FaCheck,
-  FaEllipsisH 
+  FaEllipsisH,
+  FaMusic,
+  FaVideo,
+  FaFileAlt,
+  FaCube 
 } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { getImageUrl } from './../../utils/web3Utils';
 import { isERC1155 } from './../../utils/nftUtils';
+import { logger } from './../../utils/logger';
 
 const MotionBox = motion(Box);
 
@@ -35,7 +39,8 @@ const NFTCard = ({
   isSearchResult = false,
   onAddToCatalog,
   size = "medium",
-  catalogType = 'default'
+  catalogType = 'default',
+  renderActions = null // Custom render function for card actions
 }) => {
   const [imageUrl, setImageUrl] = useState('https://via.placeholder.com/400?text=Loading...');
   const [isLoading, setIsLoading] = useState(true);
@@ -92,22 +97,79 @@ const NFTCard = ({
     }
   };
 
+  // Get the media type icon based on media_type field
+  const getMediaTypeIcon = () => {
+    if (!nft.media_type) return null;
+
+    switch (nft.media_type) {
+      case 'audio':
+        return <FaMusic size={16} />;
+      case 'video':
+        return <FaVideo size={16} />;
+      case 'article':
+        return <FaFileAlt size={16} />;
+      case '3d':
+        return <FaCube size={16} />;
+      default:
+        return null;
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     const loadImage = async () => {
       try {
         setIsLoading(true);
-        const url = await getImageUrl(nft);
+        
+        // Log NFT data to help debug media issues
+        logger.debug('NFTCard loading image for:', {
+          tokenId: nft.id?.tokenId,
+          contractAddress: nft.contract?.address,
+          hasMedia: !!nft.media,
+          mediaCount: nft.media?.length,
+          mediaUrl: nft.media?.[0]?.gateway,
+          directMediaUrl: nft.media_url,
+          coverImageUrl: nft.cover_image_url,
+          metadataImage: nft.metadata?.image
+        });
+
+        let url;
+        
+        // First, try the media array which is standard format
+        if (nft.media && nft.media.length > 0 && nft.media[0].gateway) {
+          url = nft.media[0].gateway;
+        } 
+        // Then try specific media_url from database
+        else if (nft.media_url) {
+          url = nft.media_url;
+        }
+        // Then try cover_image_url from database
+        else if (nft.cover_image_url) {
+          url = nft.cover_image_url;
+        }
+        // Then try metadata.image
+        else if (nft.metadata?.image) {
+          url = nft.metadata.image;
+        }
+        // If still nothing, get a standard image URL using utility
+        else {
+          url = await getImageUrl(nft);
+        }
+        
         if (mounted) {
           setImageUrl(url || 'https://via.placeholder.com/400?text=No+Image');
+          setIsLoading(false);
         }
+        
+        // Log final image URL
+        logger.debug('NFTCard final image URL:', {
+          tokenId: nft.id?.tokenId, 
+          imageUrl: url
+        });
       } catch (error) {
         console.error('Error loading NFT image:', error);
         if (mounted) {
           setImageUrl('https://via.placeholder.com/400?text=Error+Loading+Image');
-        }
-      } finally {
-        if (mounted) {
           setIsLoading(false);
         }
       }
@@ -116,6 +178,19 @@ const NFTCard = ({
     loadImage();
     return () => { mounted = false; };
   }, [nft]);
+
+  // Transform IPFS URLs to HTTP URLs
+  const transformIpfsUrl = (url) => {
+    if (!url) return url;
+    
+    // Handle ipfs:// protocol
+    if (url.startsWith('ipfs://')) {
+      const ipfsHash = url.replace('ipfs://', '');
+      return `https://ipfs.io/ipfs/${ipfsHash}`;
+    }
+    
+    return url;
+  };
 
   return (
     <MotionBox
@@ -164,6 +239,25 @@ const NFTCard = ({
           </Box>
         )}
 
+        {/* Media Type Badge */}
+        {nft.media_type && nft.media_type !== 'image' && (
+          <Box
+            position="absolute"
+            top={2}
+            left={isSelectMode ? 10 : 2}
+            zIndex={5}
+            bg="rgba(0, 0, 0, 0.7)"
+            color="white"
+            borderRadius="full"
+            p={1}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+          >
+            {getMediaTypeIcon()}
+          </Box>
+        )}
+
         {/* Upper right corner badge for spam or ERC-1155 */}
         {(nft.isSpam || isERC1155(nft)) && (
           <Badge
@@ -187,12 +281,16 @@ const NFTCard = ({
         <AspectRatio ratio={1} width="100%">
           <Skeleton isLoaded={!isLoading} height="100%" width="100%">
             <Image
-              src={imageUrl}
+              src={transformIpfsUrl(imageUrl)}
               alt={sortableData.name}
               objectFit="cover"
               width="100%"
               height="100%"
               fallbackSrc="https://via.placeholder.com/400?text=Error+Loading+Image"
+              onError={(e) => {
+                logger.warn('Image failed to load:', imageUrl);
+                e.target.src = "https://via.placeholder.com/400?text=Error+Loading+Image";
+              }}
             />
           </Skeleton>
         </AspectRatio>
@@ -211,50 +309,56 @@ const NFTCard = ({
           zIndex={4}
           pointerEvents="none"
         >
-          {/* Container for action buttons at the bottom - with pointer events enabled */}
-          <Box 
-            position="absolute" 
-            bottom={2} 
-            left={0} 
-            right={0} 
-            px={2}
-            pointerEvents="auto"
-          >
-            <Flex justify="space-between">
-              {/* Trash/Spam button bottom left */}
-              {!isSelectMode && shouldShowSpamButton() && (
+          {/* Custom actions or default actions */}
+          {renderActions ? (
+            renderActions()
+          ) : (
+            // Container for action buttons at the bottom - with pointer events enabled
+            <Box 
+              position="absolute" 
+              bottom={2} 
+              left={0} 
+              right={0} 
+              px={2}
+              pointerEvents="auto"
+            >
+              <Flex justify="space-between">
+                {/* Trash/Spam button bottom left */}
+                {!isSelectMode && shouldShowSpamButton() && (
+                  <IconButton
+                    icon={isSpamFolder ? <FaCheck size={14} /> : <FaTrash size={14} />}
+                    aria-label={isSpamFolder ? "Unmark spam" : "Mark as spam"}
+                    size="sm"
+                    variant="solid"
+                    onClick={handleSpamClick}
+                    color="white"
+                    bg={isSpamFolder ? "green.500" : "red.500"}
+                    _hover={{
+                      bg: isSpamFolder ? "green.600" : "red.600"
+                    }}
+                    boxShadow="0 2px 4px rgba(0, 0, 0, 0.2)"
+                    borderRadius="full"
+                  />
+                )}
+                
+                {/* Add to catalog button bottom right */}
                 <IconButton
-                  icon={isSpamFolder ? <FaCheck size={14} /> : <FaTrash size={14} />}
-                  aria-label={isSpamFolder ? "Unmark spam" : "Mark as spam"}
+                  icon={<FaPlus size={14} />}
+                  aria-label="Add to catalog"
                   size="sm"
                   variant="solid"
-                  onClick={handleSpamClick}
                   color="white"
-                  bg={isSpamFolder ? "green.500" : "red.500"}
+                  bg="green.500"
+                  onClick={handleAddToCatalog}
                   _hover={{
-                    bg: isSpamFolder ? "green.600" : "red.600"
+                    bg: "green.600"
                   }}
                   boxShadow="0 2px 4px rgba(0, 0, 0, 0.2)"
                   borderRadius="full"
                 />
-              )}
-              
-              {/* More Options button bottom right */}
-              <IconButton
-                icon={<FaEllipsisH size={14} />}
-                aria-label="More options"
-                size="sm"
-                variant="solid"
-                color="white"
-                bg="rgba(0,0,0,0.5)"
-                _hover={{
-                  bg: "rgba(0,0,0,0.7)"
-                }}
-                boxShadow="0 2px 4px rgba(0, 0, 0, 0.2)"
-                borderRadius="full"
-              />
-            </Flex>
-          </Box>
+              </Flex>
+            </Box>
+          )}
         </Box>
       </Box>
 

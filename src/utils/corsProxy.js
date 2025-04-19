@@ -17,20 +17,26 @@ const CORS_RESTRICTED_DOMAINS = [
   'gateway.ipfs.io',
   'cloudflare-ipfs.com',
   'app.unlock-protocol.com',
-  'ipfs.nftstorage.link'
+  'ipfs.nftstorage.link',
+  'metadata.ens.domains'
 ];
 
-// Public CORS proxies that can be used (in order of preference)
-// Replaced cors-anywhere with more reliable alternatives
-const CORS_PROXIES = [
+// Get CORS.sh API key from environment variables
+const CORS_SH_API_KEY = process.env.REACT_APP_CORS_API_KEY;
+
+// Primary CORS proxy endpoints
+const CORS_SH_PROXY = 'https://proxy.cors.sh/';
+
+// Public CORS proxies that can be used as fallbacks
+const FALLBACK_PROXIES = [
   'https://corsproxy.io/?',
-  'https://proxy.cors.sh/',
   'https://api.allorigins.win/raw?url=',
-  'https://api.codetabs.com/v1/proxy?quest=',
+  'https://api.codetabs.com/v1/proxy?quest='
 ];
 
 // Cache successful proxy results to improve performance
 const proxyCache = new Map();
+const failureCache = new Map();
 
 /**
  * Determines if a URL is from a domain that typically has CORS issues
@@ -41,8 +47,8 @@ export const needsCorsProxy = (url) => {
   if (!url || typeof url !== 'string') return false;
   
   try {
-    // Handle ipfs:// protocol directly
-    if (url.startsWith('ipfs://')) return true;
+    // Handle protocol schemes that require proxying
+    if (url.startsWith('ipfs://') || url.startsWith('ar://')) return true;
     
     const urlObj = new URL(url);
     return CORS_RESTRICTED_DOMAINS.some(domain => urlObj.hostname.includes(domain));
@@ -53,16 +59,99 @@ export const needsCorsProxy = (url) => {
 };
 
 /**
- * Applies a CORS proxy to a URL if needed
+ * Logs rate limit information from CORS proxy response headers
+ * @param {Response} response - The fetch response
+ */
+const logRateLimitInfo = (response) => {
+  try {
+    // Check cors.sh specific rate limit headers
+    const remaining = response.headers.get('x-ratelimit-remaining');
+    const limit = response.headers.get('x-ratelimit-limit');
+    const reset = response.headers.get('x-ratelimit-reset');
+    
+    if (remaining !== null && limit !== null) {
+      logger.info('CORS.sh rate limit status:', { 
+        remaining,
+        limit,
+        resetTime: reset ? new Date(parseInt(reset) * 1000).toISOString() : 'unknown'
+      });
+      
+      // Log a warning if we're getting close to the limit
+      if (parseInt(remaining) < parseInt(limit) * 0.1) {
+        logger.warn('CORS.sh rate limit running low!', { remaining, limit });
+      }
+    }
+  } catch (error) {
+    logger.debug('Error parsing rate limit headers:', error);
+  }
+};
+
+/**
+ * Applies the CORS.sh proxy with authentication to a URL
+ * @param {string} url - The URL to proxy
+ * @returns {Object} An object with the proxied URL and headers
+ */
+export const applyCorsShProxy = (url) => {
+  if (!url || typeof url !== 'string') {
+    return { url, headers: {} };
+  }
+  
+  // Skip if no API key
+  if (!CORS_SH_API_KEY) {
+    logger.warn('No CORS.sh API key found, falling back to regular proxy');
+    return { url: applyCorsProxy(url), headers: {} };
+  }
+  
+  // Check cache
+  const cacheKey = `corssh-${url}`;
+  if (proxyCache.has(cacheKey)) {
+    return proxyCache.get(cacheKey);
+  }
+  
+  try {
+    let finalUrl = url;
+    
+    // Handle protocol conversions 
+    if (url.startsWith('ipfs://')) {
+      const ipfsHash = url.replace('ipfs://', '');
+      finalUrl = `https://ipfs.io/ipfs/${ipfsHash}`;
+    } else if (url.startsWith('ar://')) {
+      const arweaveHash = url.replace('ar://', '');
+      finalUrl = `https://arweave.net/${arweaveHash}`;
+    }
+    
+    // Apply the CORS.sh proxy
+    const proxiedUrl = `${CORS_SH_PROXY}${finalUrl}`;
+    
+    // Create result including auth headers
+    const result = {
+      url: proxiedUrl,
+      headers: {
+        'x-cors-api-key': CORS_SH_API_KEY
+      }
+    };
+    
+    // Cache the result
+    proxyCache.set(cacheKey, result);
+    
+    return result;
+  } catch (error) {
+    logger.error('Error applying CORS.sh proxy:', { url, error: error.message });
+    return { url, headers: {} };
+  }
+};
+
+/**
+ * Applies a generic CORS proxy to a URL (fallback when CORS.sh not available)
  * @param {string} url - The original URL
  * @param {number} proxyIndex - Index of the proxy to use (for fallback logic)
- * @returns {string} URL with proxy applied if needed
+ * @returns {string} URL with proxy applied
  */
 export const applyCorsProxy = (url, proxyIndex = 0) => {
   if (!url || typeof url !== 'string') return url;
   
-  // Check cache first to avoid redundant proxy requests
-  const cacheKey = `${url}-${proxyIndex}`;
+  // Check cache first
+  const cacheKey = `corsproxy-${url}-${proxyIndex}`;
   if (proxyCache.has(cacheKey)) {
     return proxyCache.get(cacheKey);
   }
@@ -73,25 +162,33 @@ export const applyCorsProxy = (url, proxyIndex = 0) => {
       return url;
     }
     
-    // Handle ipfs:// protocol
+    // If CORS.sh API key is available, use it as the first choice 
+    if (CORS_SH_API_KEY) {
+      // We defer to the dedicated applyCorsShProxy function
+      // which returns both URL and headers
+      const { url: proxiedUrl } = applyCorsShProxy(url);
+      return proxiedUrl; 
+    }
+    
+    // Handle protocol conversions for fallback proxies
+    let finalUrl = url;
     if (url.startsWith('ipfs://')) {
       const ipfsHash = url.replace('ipfs://', '');
-      // Return directly from IPFS gateway without proxy first
-      const directGatewayUrl = `https://ipfs.io/ipfs/${ipfsHash}`;
-      // Apply proxy
-      const proxiedUrl = `${CORS_PROXIES[proxyIndex % CORS_PROXIES.length]}${directGatewayUrl}`;
+      finalUrl = `https://ipfs.io/ipfs/${ipfsHash}`;
+    } else if (url.startsWith('ar://')) {
+      const arweaveHash = url.replace('ar://', '');
+      finalUrl = `https://arweave.net/${arweaveHash}`;
+    }
+    
+    // Use fallback proxy
+    if (needsCorsProxy(finalUrl)) {
+      const fallbackProxy = FALLBACK_PROXIES[proxyIndex % FALLBACK_PROXIES.length];
+      const proxiedUrl = `${fallbackProxy}${finalUrl}`;
       proxyCache.set(cacheKey, proxiedUrl);
       return proxiedUrl;
     }
     
-    // Handle normal http/https URLs
-    if (needsCorsProxy(url)) {
-      const proxiedUrl = `${CORS_PROXIES[proxyIndex % CORS_PROXIES.length]}${url}`;
-      proxyCache.set(cacheKey, proxiedUrl);
-      return proxiedUrl;
-    }
-    
-    return url;
+    return finalUrl;
   } catch (error) {
     logger.error('Error applying CORS proxy:', { url, error: error.message });
     return url;
@@ -130,165 +227,108 @@ export const createDirectIpfsUrl = (url) => {
   }
 };
 
+// Add alias for backward compatibility
+export const createDirectGatewayUrl = createDirectIpfsUrl;
+
 /**
- * Enhanced fetch function for Arweave content with direct URL fallback
- * @param {string} url - Arweave URL to fetch
- * @returns {Promise<Object>} - Parsed JSON data or null
+ * Fetches content through a CORS proxy with robust error handling and fallbacks
+ * @param {string} url - The original URL to fetch
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Response>} Fetch response
  */
-export const fetchArweaveContent = async (url, options = {}) => {
-    // First, ensure URL is properly formatted
-    if (url.startsWith('ar://')) {
-      const hash = url.replace('ar://', '');
-      url = `https://arweave.net/${hash}`;
-    }
-    
-    logger.debug('Fetching Arweave content:', url);
-    
-    // Try traditional fetch first
+export const fetchWithCorsProxy = async (url, options = {}) => {
+  if (!url) throw new Error('URL is required');
+  
+  // Try without proxy first if it's not a known CORS-restricted domain
+  if (!needsCorsProxy(url)) {
     try {
+      logger.debug('Attempting direct fetch without proxy:', url);
       const response = await fetch(url, {
         ...options,
-        method: 'GET',
+        mode: 'cors',
         headers: {
-          'Accept': 'application/json',
-          ...options.headers
-        },
-        timeout: options.timeout || 8000
+          ...options.headers,
+          'Accept': 'application/json, image/*, */*'
+        }
       });
       
       if (response.ok) {
-        const data = await response.json();
-        logger.debug('Successfully fetched Arweave content directly');
-        return data;
+        logger.debug('Direct fetch successful:', url);
+        return response;
       }
-    } catch (directError) {
-      logger.debug('Direct Arweave fetch failed, trying alternatives:', directError.message);
-      // Continue to alternatives
+    } catch (error) {
+      logger.debug('Direct fetch failed, trying with proxy:', { 
+        url, 
+        error: error.message 
+      });
     }
-    
-    // Try with each proxy
-    for (const proxy of CORS_PROXIES) {
-      try {
-        const proxiedUrl = `${proxy}${url}`;
-        logger.debug(`Trying Arweave fetch with proxy: ${proxy}`);
-        
-        const response = await fetch(proxiedUrl, {
-          ...options,
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            ...options.headers
-          },
-          timeout: options.timeout || 8000
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          logger.debug('Successfully fetched Arweave content with proxy:', proxy);
-          return data;
-        }
-      } catch (proxyError) {
-        logger.debug(`Proxy fetch failed with ${proxy}:`, proxyError.message);
-        // Try next proxy
-      }
-    }
-    
-    // If all methods fail, log an error
-    logger.error('All methods to fetch Arweave content failed:', url);
-    return null;
-  };
-
-
-/**
- * Fetches content through a CORS proxy with fallback logic
- * @param {string} url - The original URL to fetch
- * @param {Object} options - Fetch options
- * @param {number} retryCount - Number of retries (internal use)
- * @param {number} backoffMs - Backoff time in ms (internal use)
- * @returns {Promise<Response>} Fetch response
- */
-export const fetchWithCorsProxy = async (
-    url, 
-    options = {}, 
-    retryCount = 0, 
-    backoffMs = 1000
-  ) => {
-    if (!url) throw new Error('URL is required');
-    const maxRetries = options.maxRetries || 3;
-    
-    // List of alternate proxies to try if main ones fail
-    const ALTERNATE_PROXIES = [
-      'https://api.allorigins.win/raw?url=',
-      'https://api.codetabs.com/v1/proxy?quest=',
-      'https://thingproxy.freeboard.io/fetch/'
-    ];
-    
-    // Try without proxy first if it's not a known CORS-restricted domain
-    if (retryCount === 0 && !needsCorsProxy(url)) {
-      try {
-        const response = await fetch(url, {
-          ...options,
-          mode: 'cors',
-          headers: {
-            ...options.headers,
-            'Accept': 'application/json, image/*, */*'
-          }
-        });
-        if (response.ok) return response;
-      } catch (error) {
-        logger.debug('Direct fetch failed, trying with proxy:', { 
-          url, 
-          error: error.message 
-        });
-        // Continue to proxy attempts
-      }
-    }
-    
-    // If we've exceeded retries, try the direct IPFS/Arweave gateway as last resort
-    if (retryCount >= maxRetries) {
-      if (url.includes('ipfs') || url.startsWith('ipfs://')) {
-        try {
-          const directUrl = createDirectIpfsUrl(url);
-          logger.debug('Final retry with direct IPFS gateway:', directUrl);
-          
-          return fetch(directUrl, {
-            ...options,
-            mode: 'no-cors', // Last resort attempt
-            headers: {
-              ...options.headers,
-              'Accept': 'application/json, image/*, */*'
-            }
-          });
-        } catch (ipfsError) {
-          logger.error('Direct IPFS gateway fallback failed:', ipfsError);
-        }
-      } else if (url.includes('arweave.net') || url.startsWith('ar://')) {
-        // For Arweave, simply return the URL itself so the client can handle it
-        logger.warn('All proxies failed, returning Arweave URL for direct client handling:', url);
-        
-        // Create a mock Response object to avoid errors
-        return new Response(JSON.stringify({ 
-          error: 'proxy_failed', 
-          directUrl: url 
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-      
-      throw new Error(`All proxies failed for URL after ${maxRetries} retries: ${url}`);
-    }
-    
-    // Use different proxy sets based on retry count
-    const proxyList = retryCount === 0 ? CORS_PROXIES : ALTERNATE_PROXIES;
-    const proxyIndex = retryCount % proxyList.length;
-    const proxyUrl = proxyList[proxyIndex];
-    
+  }
+  
+  // First try with CORS.sh if we have an API key
+  if (CORS_SH_API_KEY) {
     try {
-      const proxiedUrl = `${proxyUrl}${url}`;
-      logger.debug(`Proxy attempt ${retryCount+1}/${maxRetries}:`, { 
-        proxy: proxyUrl, 
-        url 
+      const { url: proxiedUrl, headers } = applyCorsShProxy(url);
+      logger.debug('Trying CORS.sh proxy with API key:', { originalUrl: url, proxiedUrl });
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), options.timeout || 10000);
+      
+      const response = await fetch(proxiedUrl, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          ...options.headers,
+          ...headers,
+          'Accept': 'application/json, image/*, */*'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // Check and log rate limit information
+      logRateLimitInfo(response);
+      
+      if (response.ok) {
+        logger.debug('CORS.sh proxy successful:', { url });
+        return response;
+      } else {
+        // Add to failure cache if there's a problem with the response
+        failureCache.set(url, { 
+          timestamp: Date.now(), 
+          reason: `Status: ${response.status}` 
+        });
+        
+        // Check for rate limiting
+        if (response.status === 429) {
+          logger.warn('CORS.sh rate limit exceeded!', { url });
+          // Continue to fallback proxies
+        } else {
+          logger.error('CORS.sh proxy returned error status:', { 
+            url, 
+            status: response.status 
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn('CORS.sh proxy failed:', { url, error: error.message });
+      
+      // Add to failure cache
+      failureCache.set(url, { 
+        timestamp: Date.now(), 
+        reason: error.message 
+      });
+    }
+  }
+  
+  // Try with each fallback proxy if CORS.sh fails
+  let lastError = null;
+  
+  for (let i = 0; i < FALLBACK_PROXIES.length; i++) {
+    try {
+      const proxiedUrl = applyCorsProxy(url, i);
+      logger.debug(`Trying fallback proxy ${i+1}/${FALLBACK_PROXIES.length}:`, { 
+        originalUrl: url, 
+        proxiedUrl 
       });
       
       const controller = new AbortController();
@@ -306,41 +346,45 @@ export const fetchWithCorsProxy = async (
       clearTimeout(timeoutId);
       
       if (response.ok) {
-        logger.debug(`Proxy attempt ${retryCount+1} successful:`, { 
-          url, 
-          proxy: proxyUrl 
-        });
+        logger.debug(`Fallback proxy ${i+1} successful:`, { url });
         return response;
       }
-      
-      // If we get rate limited (429), add exponential backoff
-      if (response.status === 429) {
-        logger.warn(`Proxy rate limited:`, { url, proxy: proxyUrl });
-        const waitTime = backoffMs * Math.pow(2, retryCount);
-        
-        // Wait with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        
-        // Retry with next proxy
-        return fetchWithCorsProxy(url, options, retryCount + 1, backoffMs);
-      }
-      
-      // For other status codes, try next proxy immediately
-      throw new Error(`Proxy returned status ${response.status}`);
     } catch (error) {
-      logger.warn(`Proxy attempt ${retryCount+1} failed:`, { 
+      logger.warn(`Fallback proxy ${i+1} failed:`, { 
         url, 
-        proxy: proxyUrl, 
+        proxy: FALLBACK_PROXIES[i], 
         error: error.message 
       });
-      
-      // Wait briefly before trying the next proxy
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Retry with next proxy
-      return fetchWithCorsProxy(url, options, retryCount + 1, backoffMs);
+      lastError = error;
+      // Continue to the next proxy
     }
-  };
+  }
+  
+  // If IPFS URL, try direct gateway as a last resort
+  if (url.includes('ipfs') || url.startsWith('ipfs://')) {
+    try {
+      const directUrl = createDirectIpfsUrl(url);
+      logger.debug('Trying direct IPFS gateway as final fallback:', directUrl);
+      
+      const response = await fetch(directUrl, {
+        ...options,
+        mode: 'no-cors', // Last resort attempt
+        headers: {
+          ...options.headers,
+          'Accept': 'application/json, image/*, */*'
+        }
+      });
+      
+      // With no-cors, we can't check response.ok, but we can return what we get
+      return response;
+    } catch (ipfsError) {
+      logger.error('Direct IPFS gateway fallback failed:', ipfsError);
+    }
+  }
+  
+  // If all proxies fail, throw the last error
+  throw lastError || new Error(`All CORS proxies failed for URL: ${url}`);
+};
 
 /**
  * Simplified image URL validation that's less likely to trigger CORS errors
@@ -369,4 +413,22 @@ export const validateImageUrl = async (url) => {
   // For all other URLs, we'll trust them without validation
   // This reduces CORS errors at the expense of potentially showing broken images
   return url;
+};
+
+/**
+ * An alias for fetchWithCorsProxy for backward compatibility
+ * @deprecated Use fetchWithCorsProxy instead
+ */
+export const fetchWithProxy = fetchWithCorsProxy;
+
+/**
+ * For backwards compatibility
+ * @deprecated Use applyCorsProxy or applyCorsShProxy instead
+ */
+export const getCorsProxyUrl = (url) => {
+  // Check if we have a CORS.sh API key
+  if (process.env.REACT_APP_CORS_API_KEY) {
+    return applyCorsShProxy(url).url;
+  }
+  return applyCorsProxy(url);
 };

@@ -24,7 +24,7 @@ import { FaSync } from 'react-icons/fa';
 import { useSelector, useDispatch } from 'react-redux';
 import { useCustomToast } from '../../../utils/toastUtils';
 import { logger } from '../../../utils/logger';
-import { refreshWalletMetadata } from '../../redux/thunks/walletThunks';
+// import { refreshWalletMetadata } from '../../redux/thunks/walletThunks';
 
 const RefreshMetadataButton = ({ buttonSize = "md", variant = "solid" }) => {
   const { isOpen, onOpen, onClose } = useDisclosure();

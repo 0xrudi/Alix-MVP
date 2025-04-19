@@ -6,6 +6,11 @@ import {
   FaBook, 
   FaTrash, 
   FaExternalLinkAlt,
+  FaMusic,
+  FaVideo,
+  FaFileAlt,
+  FaCube,
+  FaImage
 } from 'react-icons/fa';
 
 import {
@@ -60,7 +65,7 @@ import { updateNFT } from '../../redux/slices/nftSlice.js';
 import MediaTabPanel from './MediaTabPanel.js';
 import { supabase } from '../../../utils/supabase';
 import AttributesPanel from './AttributesPanel';
-
+import { extractMediaInfo } from '../../../utils/metadataProcessor.js';
 
 const MetadataDisplay = ({ data, level = 0 }) => {
   const bgColor = useColorModeValue('gray.50', 'gray.700');
@@ -147,6 +152,25 @@ const ArtifactDetailPage = () => {
   const tabPanelPadding = useBreakpointValue({ base: 2, md: 4 });
   const contentFontSize = useBreakpointValue({ base: "md", md: "lg" });
   const tableSize = useBreakpointValue({ base: "sm", md: "md" });
+  
+  // Get media type icon
+  const getMediaTypeIcon = () => {
+    if (!nft || !nft.media_type) return <FaImage />;
+
+    switch (nft.media_type) {
+      case 'audio':
+        return <FaMusic />;
+      case 'video':
+        return <FaVideo />;
+      case 'article':
+        return <FaFileAlt />;
+      case '3d':
+      case 'animation':
+        return <FaCube />;
+      default:
+        return <FaImage />;
+    }
+  };
 
   // All existing useEffects remain the same
   useEffect(() => {
@@ -219,7 +243,10 @@ const ArtifactDetailPage = () => {
         if (existingArtifact) {
           artifactId = existingArtifact.id;
         } else {
-          // Create new artifact record
+          // Extract media info from metadata
+          const mediaInfo = extractMediaInfo(nft.metadata);
+          
+          // Create new artifact record with enhanced media fields
           const { data: newArtifact, error: insertError } = await supabase
             .from('artifacts')
             .insert([{
@@ -230,7 +257,11 @@ const ArtifactDetailPage = () => {
               is_spam: nft.isSpam || false,
               title: nft.title || '',
               description: nft.description || '',
-              metadata: nft.metadata || {}
+              metadata: nft.metadata || {},
+              media_url: mediaInfo.media_url || nft.media?.[0]?.gateway || '',
+              cover_image_url: mediaInfo.cover_image_url || '',
+              media_type: mediaInfo.media_type || null,
+              additional_media: mediaInfo.additional_media || null
             }])
             .select('id')
             .single();
@@ -303,6 +334,9 @@ const ArtifactDetailPage = () => {
           
         if (updateError) throw updateError;
       } else {
+        // Extract media info from metadata
+        const mediaInfo = extractMediaInfo(nft.metadata);
+        
         // Insert new artifact record with spam status
         const { error: insertError } = await supabase
           .from('artifacts')
@@ -314,7 +348,11 @@ const ArtifactDetailPage = () => {
             is_spam: !nft.isSpam,
             title: nft.title || '',
             description: nft.description || '',
-            metadata: nft.metadata || {}
+            metadata: nft.metadata || {},
+            media_url: mediaInfo.media_url || nft.media?.[0]?.gateway || '',
+            cover_image_url: mediaInfo.cover_image_url || '',
+            media_type: mediaInfo.media_type || null,
+            additional_media: mediaInfo.additional_media || null
           }]);
           
         if (insertError) throw insertError;
@@ -416,10 +454,30 @@ const ArtifactDetailPage = () => {
           >
             {nft.title || `Token ID: ${nft.id?.tokenId}`}
           </Heading>
-          <HStack spacing={2}>
+          <HStack spacing={2} flexWrap="wrap">
             <Badge bg={designTokens.libraryBrown} color={designTokens.warmWhite}>
               {nft.network || 'Unknown Network'}
             </Badge>
+            
+            {/* Media Type Badge */}
+            {nft.media_type && (
+              <Badge 
+                display="flex" 
+                alignItems="center" 
+                bg={
+                  nft.media_type === 'audio' ? 'green.500' :
+                  nft.media_type === 'video' ? 'blue.500' :
+                  nft.media_type === 'article' ? 'purple.500' :
+                  nft.media_type === '3d' || nft.media_type === 'animation' ? 'orange.500' :
+                  'gray.500'
+                }
+                color="white"
+              >
+                <Box as="span" mr={1}>{getMediaTypeIcon()}</Box>
+                {nft.media_type.toUpperCase()}
+              </Badge>
+            )}
+            
             {nft.isSpam && (
               <Badge colorScheme="red">Spam</Badge>
             )}
@@ -457,7 +515,6 @@ const ArtifactDetailPage = () => {
             >
               Information
             </Tab>
-            {/* Add this new Tab */}
             <Tab 
               _selected={{ 
                 color: designTokens.libraryBrown,
@@ -502,7 +559,75 @@ const ArtifactDetailPage = () => {
             <TabPanel>
               <VStack align="stretch" spacing={4}>
                 <Accordion allowMultiple>
-                  {/* Existing accordion items */}
+                  <AccordionItem>
+                    <AccordionButton 
+                      _expanded={{ 
+                        color: designTokens.libraryBrown,
+                        bg: designTokens.warmWhite 
+                      }}
+                    >
+                      <Box flex="1" textAlign="left">Details</Box>
+                      <AccordionIcon />
+                    </AccordionButton>
+                    <AccordionPanel>
+                      <Table variant="simple" size={tableSize}>
+                        <Tbody>
+                          <Tr>
+                            <Th color={designTokens.softCharcoal}>Contract Name</Th>
+                            <Td>{nft.contract?.name || 'N/A'}</Td>
+                          </Tr>
+                          <Tr>
+                            <Th color={designTokens.softCharcoal}>Contract Address</Th>
+                            <Td>{nft.contract?.address || 'N/A'}</Td>
+                          </Tr>
+                          <Tr>
+                            <Th color={designTokens.softCharcoal}>Token ID</Th>
+                            <Td>{nft.id?.tokenId || 'N/A'}</Td>
+                          </Tr>
+                          <Tr>
+                            <Th color={designTokens.softCharcoal}>Media Type</Th>
+                            <Td>{nft.media_type?.toUpperCase() || 'N/A'}</Td>
+                          </Tr>
+                          <Tr>
+                            <Th color={designTokens.softCharcoal}>Creator/Artist</Th>
+                            <Td>{nft.creator || nft.artist || nft.metadata?.artist || 'N/A'}</Td>
+                          </Tr>
+                        </Tbody>
+                      </Table>
+                    </AccordionPanel>
+                  </AccordionItem>
+
+                  {nft.attributes && (
+                    <AccordionItem>
+                      <AccordionButton
+                        _expanded={{ 
+                          color: designTokens.libraryBrown,
+                          bg: designTokens.warmWhite 
+                        }}
+                      >
+                        <Box flex="1" textAlign="left">Traits</Box>
+                        <AccordionIcon />
+                      </AccordionButton>
+                      <AccordionPanel>
+                        <Table variant="simple" size={tableSize}>
+                          <Thead>
+                            <Tr>
+                              <Th color={designTokens.softCharcoal}>Trait Type</Th>
+                              <Th color={designTokens.softCharcoal}>Value</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {nft.attributes.map((attr, index) => (
+                              <Tr key={index}>
+                                <Td>{attr.trait_type}</Td>
+                                <Td>{attr.value}</Td>
+                              </Tr>
+                            ))}
+                          </Tbody>
+                        </Table>
+                      </AccordionPanel>
+                    </AccordionItem>
+                  )}
                 </Accordion>
 
                 {nft.externalUrl && (

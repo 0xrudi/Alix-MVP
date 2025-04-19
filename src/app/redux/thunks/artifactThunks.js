@@ -1,7 +1,7 @@
 // src/redux/thunks/artifactThunks.js
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import { logger } from '../../../utils/logger';
-import { updateNFT, clearWalletNFTs } from '../slices/nftSlice';
+import { updateNFT, updateNFTCatalogStatus, clearWalletNFTs } from '../slices/nftSlice';
 import { getImageUrl } from '../../../utils/web3Utils';
 import { updateSpamCatalog } from '../slices/catalogSlice';
 import { createSelector } from '@reduxjs/toolkit';
@@ -39,6 +39,9 @@ export const addArtifactToSupabase = createAsyncThunk(
         logger.warn('Error resolving image URL:', imgError);
       }
       
+      // Determine if the NFT is already in a catalog or is spam
+      const isInCatalog = nft.isInCatalog || nft.isSpam || false;
+      
       // Add to Supabase artifacts table
       const artifact = await artifactService.addArtifact(
         nft.walletId,
@@ -48,7 +51,9 @@ export const addArtifactToSupabase = createAsyncThunk(
         nft.metadata || {},
         nft.title || '',
         nft.description || '',
-        mediaUrl
+        mediaUrl,
+        nft.isSpam || false,
+        isInCatalog
       );
       
       return {
@@ -97,6 +102,9 @@ export const batchAddArtifactsToSupabase = createAsyncThunk(
             logger.warn('Error resolving image URL:', imgError);
           }
           
+          // Determine if the NFT is already in a catalog or is spam
+          const isInCatalog = nft.isInCatalog || nft.isSpam || false;
+          
           // Add to artifacts array
           artifacts.push({
             wallet_id: nft.walletId,
@@ -107,7 +115,8 @@ export const batchAddArtifactsToSupabase = createAsyncThunk(
             title: nft.title || null,
             description: nft.description || null,
             media_url: mediaUrl,
-            is_spam: !!nft.isSpam
+            is_spam: !!nft.isSpam,
+            is_in_catalog: isInCatalog
           });
         } catch (nftError) {
           logger.error('Error processing NFT for batch insert:', nftError, nft);
@@ -139,7 +148,20 @@ export const toggleArtifactSpam = createAsyncThunk(
       // First, update Redux state
       dispatch(updateNFT({
         walletId: nft.walletId,
-        nft: { ...nft, isSpam: newSpamStatus }
+        nft: { 
+          ...nft, 
+          isSpam: newSpamStatus,
+          isInCatalog: newSpamStatus // If marked as spam, it's in a catalog
+        }
+      }));
+      
+      // Also update the catalog status in Redux
+      dispatch(updateNFTCatalogStatus({
+        walletId: nft.walletId,
+        contractAddress: nft.contract.address,
+        tokenId: nft.id.tokenId,
+        network: nft.network,
+        isInCatalog: newSpamStatus
       }));
       
       // Update the spam catalog in Redux
@@ -184,19 +206,78 @@ export const toggleArtifactSpam = createAsyncThunk(
           
           logger.log('Updating artifact spam status in Supabase:', { 
             artifactId, 
-            isSpam: newSpamStatus 
+            isSpam: newSpamStatus,
+            isInCatalog: newSpamStatus
           });
           
-          await artifactService.updateSpamStatus(artifactId, newSpamStatus);
+          // Update both is_spam and is_in_catalog fields
+          await artifactService.updateSpamStatus(artifactId, newSpamStatus, newSpamStatus);
         } else {
           // Artifact doesn't exist yet, add it
-          await dispatch(addArtifactToSupabase(nft));
+          await dispatch(addArtifactToSupabase({
+            ...nft,
+            isSpam: newSpamStatus,
+            isInCatalog: newSpamStatus
+          }));
         }
       }
       
       return { nft, isSpam: newSpamStatus };
     } catch (error) {
       logger.error('Error toggling artifact spam status:', error);
+      throw error;
+    }
+  }
+);
+
+/**
+ * Update the is_in_catalog status for an artifact
+ */
+export const updateArtifactCatalogStatus = createAsyncThunk(
+  'artifacts/updateArtifactCatalogStatus',
+  async ({ artifactId, isInCatalog }, { dispatch }) => {
+    try {
+      const { services } = window;
+      
+      // Check if we have services and user
+      if (!services || !services.user) {
+        throw new Error('User not authenticated or services not available');
+      }
+      
+      const { supabase } = services;
+      
+      logger.log('Updating artifact catalog status in Supabase:', { 
+        artifactId, 
+        isInCatalog 
+      });
+      
+      // Update the is_in_catalog field in Supabase
+      const { data, error } = await supabase
+        .from('artifacts')
+        .update({ is_in_catalog: isInCatalog })
+        .eq('id', artifactId)
+        .select('wallet_id,token_id,contract_address,network');
+        
+      if (error) {
+        throw error;
+      }
+      
+      if (data && data.length > 0) {
+        const artifact = data[0];
+        
+        // Also update the Redux state
+        dispatch(updateNFTCatalogStatus({
+          walletId: artifact.wallet_id,
+          contractAddress: artifact.contract_address,
+          tokenId: artifact.token_id,
+          network: artifact.network,
+          isInCatalog
+        }));
+      }
+      
+      return { artifactId, isInCatalog };
+    } catch (error) {
+      logger.error('Error updating artifact catalog status:', error);
       throw error;
     }
   }
@@ -227,6 +308,75 @@ export const fetchWalletArtifacts = createAsyncThunk(
       };
     } catch (error) {
       logger.error('Error fetching wallet artifacts:', error);
+      throw error;
+    }
+  }
+);
+
+/**
+ * Fetch all artifacts not in any catalog for the current user
+ */
+export const fetchArtifactsNotInCatalog = createAsyncThunk(
+  'artifacts/fetchArtifactsNotInCatalog',
+  async (_, { getState, dispatch }) => {
+    try {
+      const { services } = window;
+      
+      // Check if we have services and user
+      if (!services || !services.user) {
+        throw new Error('User not authenticated or services not available');
+      }
+      
+      const { supabase, user } = services;
+      
+      logger.log('Fetching artifacts not in any catalog');
+      
+      // First get all wallets for the current user
+      const { data: wallets, error: walletError } = await supabase
+        .from('wallets')
+        .select('id')
+        .eq('user_id', user.id);
+        
+      if (walletError) {
+        throw walletError;
+      }
+      
+      if (!wallets || wallets.length === 0) {
+        return { artifacts: [] };
+      }
+      
+      const walletIds = wallets.map(wallet => wallet.id);
+      
+      // Then get all artifacts that are not in any catalog
+      const { data: artifacts, error } = await supabase
+        .from('artifacts')
+        .select('*')
+        .in('wallet_id', walletIds)
+        .eq('is_in_catalog', false)
+        .eq('is_spam', false);
+        
+      if (error) {
+        throw error;
+      }
+      
+      logger.log(`Found ${artifacts?.length || 0} artifacts not in any catalog`);
+      
+      // Update Redux state for each artifact
+      if (artifacts && artifacts.length > 0) {
+        artifacts.forEach(artifact => {
+          dispatch(updateNFTCatalogStatus({
+            walletId: artifact.wallet_id,
+            contractAddress: artifact.contract_address,
+            tokenId: artifact.token_id,
+            network: artifact.network,
+            isInCatalog: false
+          }));
+        });
+      }
+      
+      return { artifacts: artifacts || [] };
+    } catch (error) {
+      logger.error('Error fetching artifacts not in catalog:', error);
       throw error;
     }
   }
@@ -310,18 +460,46 @@ export const fetchSpamArtifacts = createAsyncThunk(
   'artifacts/fetchSpamArtifacts',
   async (_, { getState, dispatch }) => {
     try {
-      const { services } = window;
-      
-      // Check if we have services and user
-      if (!services || !services.user) {
-        throw new Error('User not authenticated or services not available');
+      // Check if we're in a browser environment
+      if (typeof window === 'undefined') {
+        throw new Error('Not in browser environment');
       }
       
-      const { artifactService, user } = services;
+      // Access services from the window object with more robust checking
+      const services = window.services || {};
+      const user = services.user;
+      const supabase = services.supabase;
       
-      logger.log('Fetching spam artifacts from Supabase');
-      const spamArtifacts = await artifactService.getSpamArtifacts(user.id);
+      if (!supabase) {
+        throw new Error('Supabase client not available');
+      }
+
+      // If user is not available through services, try to get it directly from Supabase
+      let userId;
+      if (user?.id) {
+        userId = user.id;
+      } else {
+        logger.warn('User ID not available, checking for auth session');
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData?.user) {
+          throw new Error('User not authenticated');
+        }
+        userId = authData.user.id;
+      }
       
+      logger.log('Fetching spam artifacts from Supabase for user:', userId);
+      
+      // Query spam artifacts
+      const { data: spamArtifacts, error } = await supabase
+        .from('artifacts')
+        .select('*')
+        .eq('is_spam', true)
+        .eq('user_id', userId);
+      
+      if (error) {
+        throw error;
+      }
+
       // Transform artifacts to NFT format and update spam catalog
       const spamNFTs = spamArtifacts.map(artifact => ({
         id: { tokenId: artifact.token_id },

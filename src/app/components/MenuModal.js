@@ -9,7 +9,7 @@ import {
   Tooltip,
   useBreakpointValue,
 } from "@chakra-ui/react";
-import { FaBookOpen, FaUser, FaTools } from 'react-icons/fa';
+import { FaBookOpen, FaUser, FaTools, FaSitemap, FaLayerGroup } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const MenuModal = () => {
@@ -23,9 +23,9 @@ const MenuModal = () => {
   const isMobile = useBreakpointValue({ base: true, md: false });
 
   const menuItems = [
-    { name: 'Library', icon: FaBookOpen, path: '/app/library' },
+    { name: 'Catalogs', icon: FaLayerGroup, path: '/app/catalogs' },
+    { name: 'Organize', icon: FaSitemap, path: '/app/organize' },
     { name: 'Profile', icon: FaUser, path: '/app/profile' },
-    { name: 'Service Test', icon: FaTools, path: '/app/service-test' },
   ];
 
   const handleNavigate = (path) => {
@@ -68,7 +68,7 @@ const MenuModal = () => {
       </Text>
       <VStack spacing={iconSpacing} align="stretch">
         {menuItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
           return (
             <Tooltip
               key={item.path}
@@ -147,7 +147,7 @@ const MenuModal = () => {
         px={2}
       >
         {menuItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
           return (
             <Tooltip 
               key={item.path} 

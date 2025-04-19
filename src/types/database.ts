@@ -69,7 +69,11 @@ export interface Database {
           title: string | null
           description: string | null
           media_url: string | null
+          cover_image_url: string | null
+          media_type: string | null
+          additional_media: Json | null
           is_spam: boolean
+          is_in_catalog: boolean;
           created_at: string
           updated_at: string
         }
@@ -83,6 +87,9 @@ export interface Database {
           title?: string | null
           description?: string | null
           media_url?: string | null
+          cover_image_url?: string | null
+          media_type?: string | null
+          additional_media?: Json | null
           is_spam?: boolean
           created_at?: string
           updated_at?: string
@@ -97,6 +104,9 @@ export interface Database {
           title?: string | null
           description?: string | null
           media_url?: string | null
+          cover_image_url?: string | null
+          media_type?: string | null
+          additional_media?: Json | null
           is_spam?: boolean
           created_at?: string
           updated_at?: string

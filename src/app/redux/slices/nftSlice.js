@@ -2,6 +2,9 @@ import { createSlice } from '@reduxjs/toolkit';
 import { serializeNFT, serializeAddress } from '../../../utils/serializationUtils';
 import { logger } from '../../../utils/logger';
 
+/**
+ * Helper function to safely compare addresses
+ */
 const safeCompareAddresses = (addr1, addr2) => {
   try {
     const serialized1 = serializeAddress(addr1);
@@ -13,6 +16,9 @@ const safeCompareAddresses = (addr1, addr2) => {
   }
 };
 
+/**
+ * Helper function to check if two NFTs are the same
+ */
 const isSameNFT = (nft1, nft2) => {
   try {
     if (!nft1 || !nft2) return false;
@@ -29,6 +35,10 @@ const isSameNFT = (nft1, nft2) => {
   }
 };
 
+/**
+ * Helper function to merge NFT arrays, preserving existing data
+ * and updating with new data
+ */
 const mergeNFTArrays = (existing = [], incoming = []) => {
   const merged = [...existing];
   let addedCount = 0;
@@ -50,6 +60,7 @@ const mergeNFTArrays = (existing = [], incoming = []) => {
           ...merged[existingIndex],
           ...serializedNewNFT,
           isSpam: merged[existingIndex].isSpam || serializedNewNFT.isSpam,
+          isInCatalog: merged[existingIndex].isInCatalog || serializedNewNFT.isInCatalog || serializedNewNFT.isSpam,
         };
         updatedCount++;
       }
@@ -62,6 +73,9 @@ const mergeNFTArrays = (existing = [], incoming = []) => {
   return merged;
 };
 
+/**
+ * NFT slice for storing and managing NFT data
+ */
 const nftSlice = createSlice({
   name: 'nfts',
   initialState: {
@@ -71,8 +85,10 @@ const nftSlice = createSlice({
     isLoading: false,
     error: null,
     balances: {}, // { walletId: { tokenId: { contractAddress: quantity } } }
+    lastUpdated: null, // Time when NFTs were last fetched
   },
   reducers: {
+    // Add NFTs to the store
     addNFTs: (state, action) => {
       const { walletId, nfts } = action.payload;
       
@@ -94,6 +110,10 @@ const nftSlice = createSlice({
 
         // Add to appropriate array based on token standard
         const serializedNft = serializeNFT(nft);
+        
+        // Initialize isInCatalog property based on isSpam flag
+        serializedNft.isInCatalog = nft.isInCatalog || nft.isSpam || false;
+        
         state.byWallet[walletId][network][tokenStandard].push(serializedNft);
 
         // Handle ERC1155 balances
@@ -110,8 +130,10 @@ const nftSlice = createSlice({
       });
 
       state.allIds = [...new Set([...state.allIds, ...nfts.map(nft => nft.id)])];
+      state.lastUpdated = new Date().toISOString();
     },
 
+    // Update a single NFT
     updateNFT: (state, action) => {
       const { walletId, nft } = action.payload;
       const network = nft.network;
@@ -132,12 +154,55 @@ const nftSlice = createSlice({
             network,
             type,
             nftId: nft.id?.tokenId,
-            isSpam: nft.isSpam
+            isSpam: nft.isSpam,
+            isInCatalog: nft.isInCatalog
           });
         }
       }
+      
+      state.lastUpdated = new Date().toISOString();
     },
 
+    // Update NFT catalog status
+    updateNFTCatalogStatus: (state, action) => {
+      const { walletId, contractAddress, tokenId, network, isInCatalog } = action.payload;
+      const type = 'ERC721'; // Assume ERC721 for simplicity, update as needed
+      
+      if (state.byWallet[walletId]?.[network]?.[type]) {
+        const index = state.byWallet[walletId][network][type]
+          .findIndex(n => 
+            n.id?.tokenId === tokenId && 
+            safeCompareAddresses(n.contract?.address, contractAddress)
+          );
+        
+        if (index !== -1) {
+          state.byWallet[walletId][network][type][index].isInCatalog = isInCatalog;
+          
+          logger.log('Updated NFT catalog status:', {
+            walletId,
+            network,
+            tokenId,
+            contractAddress,
+            isInCatalog
+          });
+        }
+        
+        // Also check ERC1155 tokens
+        const indexERC1155 = state.byWallet[walletId][network]['ERC1155']
+          .findIndex(n => 
+            n.id?.tokenId === tokenId && 
+            safeCompareAddresses(n.contract?.address, contractAddress)
+          );
+        
+        if (indexERC1155 !== -1) {
+          state.byWallet[walletId][network]['ERC1155'][indexERC1155].isInCatalog = isInCatalog;
+        }
+      }
+      
+      state.lastUpdated = new Date().toISOString();
+    },
+
+    // Remove an NFT
     removeNFT: (state, action) => {
       const { walletId, nftId, network, contractAddress } = action.payload;
       
@@ -157,13 +222,16 @@ const nftSlice = createSlice({
       }
 
       state.allIds = state.allIds.filter(id => id !== nftId);
+      state.lastUpdated = new Date().toISOString();
     },
 
+    // Signal the start of NFT fetching
     fetchNFTsStart: (state) => {
       state.isLoading = true;
       state.error = null;
     },
 
+    // Handle successful NFT fetch
     fetchNFTsSuccess: (state, action) => {
       const { walletId, networkValue, nfts } = action.payload;
       
@@ -192,7 +260,8 @@ const nftSlice = createSlice({
         if (nfts.ERC721?.length > 0) {
           const processedERC721 = nfts.ERC721.map(nft => ({
             ...serializeNFT(nft),
-            network: networkValue
+            network: networkValue,
+            isInCatalog: nft.isInCatalog || nft.isSpam || false // Initialize with appropriate value
           })).filter(Boolean);
 
           state.byWallet[walletId][networkValue].ERC721 = 
@@ -203,11 +272,24 @@ const nftSlice = createSlice({
         if (nfts.ERC1155?.length > 0) {
           const processedERC1155 = nfts.ERC1155.map(nft => ({
             ...serializeNFT(nft),
-            network: networkValue
+            network: networkValue,
+            isInCatalog: nft.isInCatalog || nft.isSpam || false // Initialize with appropriate value
           })).filter(Boolean);
 
           state.byWallet[walletId][networkValue].ERC1155 = 
             mergeNFTArrays(state.byWallet[walletId][networkValue].ERC1155, processedERC1155);
+            
+          // Update balances for ERC1155 tokens
+          processedERC1155.forEach(nft => {
+            if (!state.balances[walletId]) {
+              state.balances[walletId] = {};
+            }
+            if (!state.balances[walletId][nft.id.tokenId]) {
+              state.balances[walletId][nft.id.tokenId] = {};
+            }
+            state.balances[walletId][nft.id.tokenId][nft.contract.address] = 
+              parseInt(nft.balance || '1');
+          });
         }
 
         // Update network tracking
@@ -220,6 +302,7 @@ const nftSlice = createSlice({
 
         state.isLoading = false;
         state.error = null;
+        state.lastUpdated = new Date().toISOString();
 
       } catch (error) {
         logger.error('Error processing NFTs:', error);
@@ -227,28 +310,29 @@ const nftSlice = createSlice({
       }
     },
 
+    // Handle failed NFT fetch
     fetchNFTsFailure: (state, action) => {
       state.isLoading = false;
       state.error = action.payload.error;
     },
 
+    // Clear all NFTs for a wallet
     clearWalletNFTs: (state, action) => {
       const { walletId } = action.payload;
       delete state.byWallet[walletId];
       delete state.networksByWallet[walletId];
       delete state.balances[walletId];
     },
+    
+    // Update the total count from external source
+    updateTotalNFTs: (state, action) => {
+      state.totalCount = action.payload;
+      logger.log('Updated total NFT count:', action.payload);
+    },
   },
-
-  updateTotalNFTs: (state, action) => {
-    // This action will directly set the total count from Supabase data
-    state.totalCount = action.payload;
-    logger.log('Updated total NFT count:', action.payload);
-  },
-
 });
 
-// Selectors
+// Selectors for accessing NFT data
 export const selectNFTsByWallet = (state, walletId) => 
   state.nfts.byWallet[walletId] || {};
 
@@ -286,7 +370,45 @@ export const selectTotalSpamNFTs = (state) => {
   }, 0);
 };
 
-// Add this debug selector to help with development
+// NEW SELECTOR: Select NFTs that are not in any catalog
+export const selectNFTsNotInCatalog = (state) => {
+  const result = [];
+  
+  try {
+    // Loop through all wallets and networks to find NFTs not in catalogs
+    Object.entries(state.nfts.byWallet).forEach(([walletId, walletNfts]) => {
+      Object.entries(walletNfts).forEach(([network, networkNfts]) => {
+        // Check ERC721 tokens
+        networkNfts.ERC721?.forEach(nft => {
+          if (!nft.isInCatalog && !nft.isSpam) {
+            result.push({
+              ...nft,
+              walletId,
+              network
+            });
+          }
+        });
+        
+        // Check ERC1155 tokens
+        networkNfts.ERC1155?.forEach(nft => {
+          if (!nft.isInCatalog && !nft.isSpam) {
+            result.push({
+              ...nft,
+              walletId,
+              network
+            });
+          }
+        });
+      });
+    });
+  } catch (error) {
+    logger.error('Error in selectNFTsNotInCatalog:', error);
+  }
+  
+  return result;
+};
+
+// Debug selector for development
 export const selectNFTStructure = (state) => {
   return Object.entries(state.nfts.byWallet).reduce((acc, [walletId, walletNfts]) => {
     acc[walletId] = Object.entries(walletNfts).reduce((networkAcc, [network, networkNfts]) => {
@@ -301,6 +423,7 @@ export const selectNFTStructure = (state) => {
   }, {});
 };
 
+// Select all NFTs for a wallet in a flattened array
 export const selectFlattenedWalletNFTs = (state, walletId) => {
     const walletNfts = state.nfts.byWallet[walletId] || {};
     const flattened = [];
@@ -328,6 +451,7 @@ export const selectFlattenedWalletNFTs = (state, walletId) => {
     return flattened;
 };
 
+// Select all spam NFTs
 export const selectSpamNFTs = (state) => {
     if (!state.nfts?.byWallet) {
       return [];
@@ -363,9 +487,17 @@ export const selectSpamNFTs = (state) => {
     return allNFTs;
 };
 
+// Select all NFTs for a specific wallet and network
 export const selectNFTsByWalletAndNetwork = (state, walletId, network) => {
   return state.nfts.byWallet[walletId]?.[network] || { ERC721: [], ERC1155: [] };
 };
+
+// Select the loading state
+export const selectNFTsLoadingState = (state) => ({
+  isLoading: state.nfts.isLoading,
+  error: state.nfts.error,
+  lastUpdated: state.nfts.lastUpdated
+});
 
 export const { 
   fetchNFTsStart,
@@ -374,6 +506,7 @@ export const {
   clearWalletNFTs,
   addNFTs,
   updateNFT,
+  updateNFTCatalogStatus, // New action for updating catalog status
   removeNFT,
   updateTotalNFTs
 } = nftSlice.actions;

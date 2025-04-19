@@ -23,8 +23,11 @@ import AdminPage from './app/components/AdminPage';
 import LibraryPage from './app/components/LibraryPage';
 import ProfilePage from './app/components/ProfilePage';
 import ArtifactDetailPage from './app/components/ArtifactDetailPage/ArtifactDetailPage';
+import OrganizePage from './app/components/OrganizePage';
 import ServiceTestComponent from './app/components/ServiceTestComponent';
+import CatalogsPage from './app/components/CatalogsPage';
 import { useServices, ServiceProvider } from './services/service-provider';
+import CatalogViewPage from './app/components/CatalogViewPage';
 
 
 const PrivateRoute = ({ children }) => {
@@ -65,14 +68,23 @@ const RootRouter = () => {
           <Route path="roadmap" element={<RoadmapPage />} />
         </Route>
 
-        {/* App Routes - No longer protected */}
+        {/* App Routes - Protected */}
         <Route path="app" element={<AppLayout />}>
           <Route index element={<PrivateRoute><HomePage /></PrivateRoute>} />
           <Route path="admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
           <Route path="library" element={<PrivateRoute><LibraryPage /></PrivateRoute>} />
+          
+          {/* Profile Routes - All use the same ProfilePage component */}
           <Route path="profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          <Route path="profile/account-manager" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          <Route path="profile/stats" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          
+          {/* Other App Routes */}
           <Route path="artifact" element={<PrivateRoute><ArtifactDetailPage /></PrivateRoute>} />
+          <Route path="organize" element={<PrivateRoute><OrganizePage /></PrivateRoute>} />
           <Route path="service-test" element={<PrivateRoute><ServiceTestComponent/></PrivateRoute>} />
+          <Route path="catalogs" element={<PrivateRoute><CatalogsPage /></PrivateRoute>} />
+          <Route path="catalogs/:catalogId" element={<PrivateRoute><CatalogViewPage /></PrivateRoute>} />
         </Route>
       </Routes>
     </ServiceProvider>

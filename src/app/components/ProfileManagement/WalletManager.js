@@ -10,10 +10,11 @@ import {
   useToast,
   Spinner,
   Text,
+  Progress,
 } from "@chakra-ui/react";
 import { FaPlus, FaTimes } from 'react-icons/fa';
 import { addWallet, removeWallet, updateWallet } from '../../redux/slices/walletSlice';
-import { fetchWalletNFTs } from '../../redux/thunks/walletThunks';
+import { addWalletAndFetchNFTs } from '../../redux/thunks/walletThunks'; // Updated import
 import { resolveENS, resolveUnstoppableDomain, isValidAddress, networks } from '../../../utils/web3Utils';
 import { logger } from '../../../utils/logger';
 import { useErrorHandler } from '../../../utils/errorUtils';
@@ -28,7 +29,7 @@ const WalletManager = () => {
   const { user, walletService } = useServices();
 
   // State for managing multiple wallet inputs
-  const [walletInputs, setWalletInputs] = useState([{ id: Date.now(), value: '', isLoading: false }]);
+  const [walletInputs, setWalletInputs] = useState([{ id: Date.now(), value: '', isLoading: false, progress: 0 }]);
   
   // Keep track of wallets being processed
   const [processingWallets, setProcessingWallets] = useState(new Set());
@@ -94,7 +95,7 @@ const WalletManager = () => {
       return;
     }
 
-    setWalletInputs(prev => [...prev, { id: Date.now(), value: '', isLoading: false }]);
+    setWalletInputs(prev => [...prev, { id: Date.now(), value: '', isLoading: false, progress: 0 }]);
   };
 
   // Remove an input field
@@ -110,13 +111,14 @@ const WalletManager = () => {
     );
   };
 
-  // Process a single wallet
+  // Process a single wallet - Updated to use the new thunk
   const processWallet = async (input) => {
     let address = input.value;
     let walletType = '';
     let walletNickname = '';
 
     try {
+      // First, resolve the address or domain name
       const addressCheck = isValidAddress(input.value);
       if (addressCheck.isValid) {
         address = input.value;
@@ -167,47 +169,37 @@ const WalletManager = () => {
         }
       }
 
-      // First add wallet to Supabase if we have a user
-      let newWalletId;
-      if (user) {
-        const supabaseWallet = await walletService.addWallet(
-          user.id,
-          address,
-          walletType,
-          walletNickname || null
-        );
-        newWalletId = supabaseWallet.id;
-        logger.log('Added wallet to Supabase:', { id: newWalletId, address });
-      } else {
-        // Generate a local ID if not connected to Supabase
-        newWalletId = Date.now().toString();
-      }
-
-      // Then add to Redux
-      const newWallet = {
-        id: newWalletId,
+      // Prepare wallet data
+      const walletData = {
         address,
         nickname: walletNickname,
-        type: walletType,
-        networks: [],
+        type: walletType
       };
 
-      dispatch(addWallet(newWallet));
-
-      // Start fetching NFTs for the new wallet
+      // Determine networks based on wallet type
       const relevantNetworks = walletType === 'evm' 
         ? networks.filter(n => n.type === 'evm').map(n => n.value)
         : ['solana'];
 
-      await dispatch(fetchWalletNFTs({ 
-        walletId: newWallet.id, 
-        address: newWallet.address, 
-        networks: relevantNetworks 
+      // Track progress updates
+      const updateProgress = (progress) => {
+        setWalletInputs(prev => 
+          prev.map(inp => 
+            inp.id === input.id ? { ...inp, progress: progress.overallProgress || 0 } : inp
+          )
+        );
+      };
+
+      // Use the improved thunk to both add the wallet and fetch NFTs in one operation
+      const result = await dispatch(addWalletAndFetchNFTs({
+        walletData,
+        networks: relevantNetworks,
+        progressCallback: updateProgress
       })).unwrap();
 
       toast({
         title: "Wallet Added",
-        description: `Successfully added wallet ${walletNickname || address}`,
+        description: `Successfully added wallet ${walletNickname || address} with ${result.nftResults.totalNewNFTs} NFTs`,
         status: "success",
         duration: 3000,
         isClosable: true,
@@ -242,7 +234,8 @@ const WalletManager = () => {
         setWalletInputs(prev => 
           prev.map(inp => ({
             ...inp,
-            isLoading: inp.id === input.id
+            isLoading: inp.id === input.id,
+            progress: inp.id === input.id ? 1 : inp.progress // Start with 1% to show progress
           }))
         );
 
@@ -258,7 +251,8 @@ const WalletManager = () => {
           setWalletInputs(prev => 
             prev.map(inp => ({
               ...inp,
-              isLoading: false
+              isLoading: false,
+              progress: 0
             }))
           );
           
@@ -277,14 +271,15 @@ const WalletManager = () => {
       }
 
       // If all wallets were added successfully, ensure there's one empty input
-      setWalletInputs([{ id: Date.now(), value: '', isLoading: false }]);
+      setWalletInputs([{ id: Date.now(), value: '', isLoading: false, progress: 0 }]);
 
     } catch (error) {
       // Clear all loading states on unexpected error
       setWalletInputs(prev => 
         prev.map(input => ({
           ...input,
-          isLoading: false
+          isLoading: false,
+          progress: 0
         }))
       );
       
@@ -328,43 +323,58 @@ const WalletManager = () => {
 
         <VStack spacing={4}>
           {walletInputs.map((input, index) => (
-            <HStack key={input.id} width="100%" spacing={2}>
-              <Input
-                value={input.value}
-                onChange={(e) => handleInputChange(input.id, e.target.value)}
-                placeholder="Enter wallet address, ENS, or Unstoppable Domain"
-                isDisabled={input.isLoading}
-                onKeyPress={(e) => handleKeyPress(e, input)}
-                bg={input.isLoading ? "gray.50" : "white"}
-                _placeholder={{ color: 'var(--ink-grey)' }}
-              />
-              {input.isLoading && (
-                <Box px={2}>
-                  <Spinner size="sm" color="var(--warm-brown)" />
-                </Box>
-              )}
-              {index === walletInputs.length - 1 ? (
-                <IconButton
-                  icon={<FaPlus />}
-                  onClick={addInputField}
-                  aria-label="Add another wallet"
-                  isDisabled={!input.value.trim() || input.isLoading}
-                  color="var(--ink-grey)"
-                  _hover={{ color: "var(--warm-brown)" }}
-                  variant="ghost"
-                />
-              ) : (
-                <IconButton
-                  icon={<FaTimes />}
-                  onClick={() => removeInputField(input.id)}
-                  aria-label="Remove wallet input"
+            <VStack key={input.id} width="100%" spacing={2}>
+              <HStack width="100%" spacing={2}>
+                <Input
+                  value={input.value}
+                  onChange={(e) => handleInputChange(input.id, e.target.value)}
+                  placeholder="Enter wallet address, ENS, or Unstoppable Domain"
                   isDisabled={input.isLoading}
-                  color="var(--ink-grey)"
-                  _hover={{ color: "red.500" }}
-                  variant="ghost"
+                  onKeyPress={(e) => handleKeyPress(e, input)}
+                  bg={input.isLoading ? "gray.50" : "white"}
+                  _placeholder={{ color: 'var(--ink-grey)' }}
+                />
+                {input.isLoading && (
+                  <Box px={2}>
+                    <Spinner size="sm" color="var(--warm-brown)" />
+                  </Box>
+                )}
+                {index === walletInputs.length - 1 ? (
+                  <IconButton
+                    icon={<FaPlus />}
+                    onClick={addInputField}
+                    aria-label="Add another wallet"
+                    isDisabled={!input.value.trim() || input.isLoading}
+                    color="var(--ink-grey)"
+                    _hover={{ color: "var(--warm-brown)" }}
+                    variant="ghost"
+                  />
+                ) : (
+                  <IconButton
+                    icon={<FaTimes />}
+                    onClick={() => removeInputField(input.id)}
+                    aria-label="Remove wallet input"
+                    isDisabled={input.isLoading}
+                    color="var(--ink-grey)"
+                    _hover={{ color: "red.500" }}
+                    variant="ghost"
+                  />
+                )}
+              </HStack>
+              
+              {/* Progress bar for NFT loading */}
+              {input.isLoading && (
+                <Progress 
+                  value={input.progress} 
+                  size="xs" 
+                  width="100%" 
+                  colorScheme="brown" 
+                  hasStripe
+                  isAnimated
+                  borderRadius="full"
                 />
               )}
-            </HStack>
+            </VStack>
           ))}
 
           <Button
@@ -375,7 +385,7 @@ const WalletManager = () => {
             _hover={{
               bg: "var(--deep-brown)"
             }}
-            isDisabled={walletInputs.every(input => !input.value.trim())}
+            isDisabled={walletInputs.every(input => !input.value.trim()) || walletInputs.some(input => input.isLoading)}
           >
             Add Wallet{walletInputs.filter(i => i.value.trim()).length > 1 ? 's' : ''}
           </Button>

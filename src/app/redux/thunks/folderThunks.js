@@ -17,21 +17,48 @@ export const fetchUserFolders = createAsyncThunk(
   'folders/fetchUserFolders',
   async (_, { getState, dispatch }) => {
     try {
-      const { services } = window;
-      
-      // Check if we have services and user
-      if (!services || !services.user) {
-        throw new Error('User not authenticated or services not available');
+      // Check if we're in a browser environment
+      if (typeof window === 'undefined') {
+        throw new Error('Not in browser environment');
       }
       
-      const { folderService, user } = services;
+      // Access services from the window object with more robust checking
+      const services = window.services || {};
+      const user = services.user;
+      const supabase = services.supabase;
       
-      logger.log('Fetching user folders from Supabase');
-      const folders = await folderService.getUserFolders(user.id);
+      if (!supabase) {
+        throw new Error('Supabase client not available');
+      }
+
+      // If user is not available through services, try to get it directly from Supabase
+      let userId;
+      if (user?.id) {
+        userId = user.id;
+      } else {
+        logger.warn('User ID not available, checking for auth session');
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData?.user) {
+          throw new Error('User not authenticated');
+        }
+        userId = authData.user.id;
+      }
       
-      // For each folder, fetch its catalogs
-      for (const folder of folders) {
-        // Transform folder from Supabase format to Redux format
+      logger.log('Fetching user folders from Supabase for user:', userId);
+      
+      // Proceed with the folder fetch
+      const { data: folders, error } = await supabase
+        .from('folders')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      // Process folders and dispatch actions
+      folders.forEach(folder => {
         dispatch(addFolder({
           id: folder.id,
           name: folder.name,
@@ -40,24 +67,10 @@ export const fetchUserFolders = createAsyncThunk(
           updatedAt: folder.updated_at
         }));
         
-        // Fetch catalogs for this folder
-        try {
-          const catalogs = await folderService.getFolderCatalogs(folder.id);
-          
-          // Add each catalog to the folder
-          for (const catalog of catalogs) {
-            dispatch(addCatalogToFolder({
-              folderId: folder.id,
-              catalogId: catalog.id
-            }));
-          }
-        } catch (catalogError) {
-          logger.error(`Error fetching catalogs for folder ${folder.id}:`, catalogError);
-          // Continue with next folder even if we fail to fetch catalogs for one
-        }
-      }
+        // You may need to fetch relationships separately if needed
+      });
       
-      return folders;
+      return folders || [];
     } catch (error) {
       logger.error('Error fetching user folders:', error);
       throw error;
