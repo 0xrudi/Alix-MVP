@@ -7,22 +7,42 @@ import {
   Heading,
   Button,
   SimpleGrid,
-  Accordion,
-  AccordionItem,
-  AccordionButton,
-  AccordionPanel,
-  AccordionIcon,
   HStack,
   Progress,
   Skeleton,
   Alert,
   AlertIcon,
+  Tooltip,
+  Icon,
+  Flex,
+  Input,
+  InputGroup,
+  IconButton,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverArrow,
+  PopoverBody,
+  Editable,
+  EditableInput,
+  EditablePreview,
+  ButtonGroup,
+  useEditableControls,
+  useDisclosure,
 } from "@chakra-ui/react";
-import { FaChevronLeft, FaSync } from 'react-icons/fa';
+import { 
+  FaChevronLeft, 
+  FaSync, 
+  FaInfoCircle, 
+  FaEdit, 
+  FaPencilAlt, 
+  FaCheck, 
+  FaTimes 
+} from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { supabase } from '../../utils/supabase';
-import { selectCatalogById } from '../redux/slices/catalogSlice';
+import { selectCatalogById, updateCatalog } from '../redux/slices/catalogSlice';
 import { updateSpamCatalog } from '../redux/slices/catalogSlice';
 
 import NFTCard from './NFTCard';
@@ -52,6 +72,20 @@ const transformIpfsUrl = (url) => {
   return url;
 };
 
+// Custom editable controls component
+function EditableControls({ onCancel }) {
+  const { isEditing, getSubmitButtonProps, getCancelButtonProps, getEditButtonProps } = useEditableControls();
+
+  return isEditing ? (
+    <ButtonGroup size="sm" spacing={2} ml={2}>
+      <IconButton icon={<FaCheck />} {...getSubmitButtonProps()} aria-label="Save" 
+        color="green.500" variant="ghost" size="xs" />
+      <IconButton icon={<FaTimes />} onClick={onCancel} aria-label="Cancel" 
+        color="red.500" variant="ghost" size="xs" {...getCancelButtonProps()} />
+    </ButtonGroup>
+  ) : null;
+}
+
 const CatalogViewPage = () => {
   // Get catalogId from URL parameters
   const { catalogId } = useParams();
@@ -74,6 +108,16 @@ const CatalogViewPage = () => {
   const [catalogNFTs, setCatalogNFTs] = useState([]);
   const [error, setError] = useState(null);
   const { showSuccessToast, showErrorToast, showInfoToast } = useCustomToast();
+
+  // Catalog name state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(catalog?.name || '');
+  const [originalName, setOriginalName] = useState(catalog?.name || '');
+  
+  // Description state
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [descriptionValue, setDescriptionValue] = useState(catalog?.description || '');
+  const [originalDescription, setOriginalDescription] = useState(catalog?.description || '');
 
   // Refs for preventing excessive fetches
   const processingBatch = useRef(false);
@@ -142,6 +186,22 @@ const CatalogViewPage = () => {
       processingBatch.current = false;
     };
   }, []);
+
+  // Effect to update name value when catalog changes
+  useEffect(() => {
+    if (catalog) {
+      setNameValue(catalog.name || '');
+      setOriginalName(catalog.name || '');
+    }
+  }, [catalog]);
+  
+  // Effect to update description value when catalog changes
+  useEffect(() => {
+    if (catalog) {
+      setDescriptionValue(catalog.description || '');
+      setOriginalDescription(catalog.description || '');
+    }
+  }, [catalog]);
   
   // Function to find NFT in Redux store
   const findNFTInReduxStore = useCallback((nftId) => {
@@ -684,6 +744,84 @@ const CatalogViewPage = () => {
     navigate('/app/catalogs');
   }, [navigate]);
 
+  // Handle name update
+  const handleUpdateName = useCallback(async (newName) => {
+    if (!catalog || catalog.isSystem || !newName.trim()) return;
+    
+    try {
+      // Update name in Supabase
+      const { error } = await supabase
+        .from('catalogs')
+        .update({ name: newName })
+        .eq('id', catalog.id);
+        
+      if (error) throw error;
+      
+      // Update name in Redux
+      dispatch(updateCatalog({
+        id: catalog.id,
+        name: newName
+      }));
+      
+      setNameValue(newName);
+      setOriginalName(newName);
+      showSuccessToast('Name Updated', 'Catalog name has been updated');
+    } catch (error) {
+      logger.error('Error updating catalog name:', error);
+      showErrorToast('Update Failed', 'Failed to update catalog name');
+      
+      // Reset to original value
+      setNameValue(originalName);
+    }
+    
+    setIsEditingName(false);
+  }, [catalog, originalName, dispatch, showSuccessToast, showErrorToast]);
+
+// Handle name edit cancel
+const handleCancelNameEdit = useCallback(() => {
+  setNameValue(originalName);
+  setIsEditingName(false);
+}, [originalName]);
+
+  // Handle description update
+  const handleUpdateDescription = useCallback(async (newDescription) => {
+    if (!catalog || catalog.isSystem) return;
+    
+    try {
+      // Update description in Supabase
+      const { error } = await supabase
+        .from('catalogs')
+        .update({ description: newDescription })
+        .eq('id', catalog.id);
+        
+      if (error) throw error;
+      
+      // Update description in Redux
+      dispatch(updateCatalog({
+        id: catalog.id,
+        description: newDescription
+      }));
+      
+      setDescriptionValue(newDescription);
+      setOriginalDescription(newDescription);
+      showSuccessToast('Description Updated', 'Catalog description has been updated');
+    } catch (error) {
+      logger.error('Error updating catalog description:', error);
+      showErrorToast('Update Failed', 'Failed to update catalog description');
+      
+      // Reset to original value
+      setDescriptionValue(originalDescription);
+    }
+    
+    setIsEditingDescription(false);
+  }, [catalog, originalDescription, dispatch, showSuccessToast, showErrorToast]);
+
+  // Handle description edit cancel
+  const handleCancelDescriptionEdit = useCallback(() => {
+    setDescriptionValue(originalDescription);
+    setIsEditingDescription(false);
+  }, [originalDescription]);
+
   // Get list of wallets and networks for filters
   const availableWallets = useMemo(() => {
     const walletSet = new Set();
@@ -709,9 +847,6 @@ const CatalogViewPage = () => {
     });
     return Array.from(contractSet);
   }, [catalogNFTs]);
-
-  // This function ensures proper relationship between NFTs and catalogs
-  // It should be added to any component that needs to add NFTs to catalogs
 
   /**
    * Add an NFT to a catalog - ensures proper database relationships
@@ -981,6 +1116,12 @@ const CatalogViewPage = () => {
     );
   }
 
+  // Format dates for the information tooltip
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString();
+  };
+
   return (
     <MotionBox
       initial={{ opacity: 0, y: 20 }}
@@ -1009,85 +1150,188 @@ const CatalogViewPage = () => {
           Back to Catalogs
         </Button>
 
-        <HStack justify="space-between" align="flex-start">
-          <Box>
-            <Heading 
-              as="h1" 
-              fontSize={{ base: "2xl", md: "3xl" }}
-              fontFamily="Space Grotesk"
-              color="var(--rich-black)"
-              mb={3}
-            >
-              {catalog.name}
-            </Heading>
-            {catalog.description && (
-              <Text 
-                fontSize="lg"
-                fontFamily="Fraunces"
-                color="var(--ink-grey)"
-                mb={4}
+        {/* Header with Editable Title, Info Icon, and Refresh Icon */}
+        <Box>
+          <Flex align="center" mb={1}>
+            {!catalog.isSystem ? (
+              <Editable
+                value={nameValue}
+                onChange={(value) => setNameValue(value)}
+                onSubmit={handleUpdateName}
+                onCancel={handleCancelNameEdit}
+                placeholder="Catalog Name"
+                isPreviewFocusable={true}
+                submitOnBlur={false}
+                fontSize={{ base: "2xl", md: "3xl" }}
+                fontFamily="Space Grotesk"
+                color="var(--rich-black)"
+                mr={3}
               >
-                {catalog.description}
-              </Text>
+                <HStack>
+                  <EditablePreview 
+                    _hover={{
+                      bg: "var(--highlight)",
+                      borderRadius: "md",
+                      px: 2
+                    }}
+                  />
+                  <EditableInput />
+                  <EditableControls onCancel={handleCancelNameEdit} />
+                </HStack>
+              </Editable>
+            ) : (
+              <Heading 
+                as="h1" 
+                fontSize={{ base: "2xl", md: "3xl" }}
+                fontFamily="Space Grotesk"
+                color="var(--rich-black)"
+                mr={3}
+              >
+                {catalog.name}
+              </Heading>
             )}
-          </Box>
+            
+            {/* Info Icon with Tooltip */}
+            <Popover trigger="hover" placement="bottom" strategy="fixed" offset={[0, 8]}>
+              <PopoverTrigger>
+                <IconButton
+                  icon={<FaInfoCircle />}
+                  color="var(--ink-grey)" 
+                  boxSize={5}
+                  cursor="pointer"
+                  mx={2}
+                  variant="ghost"
+                  aria-label="Catalog information"
+                  size="sm"
+                  _hover={{ color: "var(--warm-brown)" }}
+                />
+              </PopoverTrigger>
+              <PopoverContent 
+                width="220px" 
+                p={3} 
+                bg="rgba(255, 255, 255, 0.95)"
+                backdropFilter="blur(5px)"
+                boxShadow="md"
+                border="1px solid var(--shadow)"
+                zIndex={4}
+              >
+                <PopoverArrow bg="white" />
+                <PopoverBody p={0}>
+                  <VStack align="stretch" spacing={2}>
+                    <Flex justify="space-between">
+                      <Text fontFamily="Inter" fontSize="sm" color="var(--ink-grey)">Items:</Text>
+                      <Text fontFamily="Space Grotesk" fontSize="sm" fontWeight="medium">{catalogNFTs.length} artifacts</Text>
+                    </Flex>
+                    <Flex justify="space-between">
+                      <Text fontFamily="Inter" fontSize="sm" color="var(--ink-grey)">Created:</Text>
+                      <Text fontFamily="Space Grotesk" fontSize="sm" fontWeight="medium">{formatDate(catalog.createdAt)}</Text>
+                    </Flex>
+                    <Flex justify="space-between">
+                      <Text fontFamily="Inter" fontSize="sm" color="var(--ink-grey)">Last Updated:</Text>
+                      <Text fontFamily="Space Grotesk" fontSize="sm" fontWeight="medium">{formatDate(catalog.updatedAt)}</Text>
+                    </Flex>
+                  </VStack>
+                </PopoverBody>
+              </PopoverContent>
+            </Popover>
+            
+            {/* Refresh Icon */}
+            <IconButton
+              icon={<FaSync />}
+              isLoading={isRefreshing || isLoading}
+              onClick={handleRefresh}
+              size="sm"
+              aria-label="Refresh catalog"
+              variant="ghost"
+              color="var(--ink-grey)"
+              _hover={{ color: "var(--warm-brown)" }}
+            />
+          </Flex>
           
-          <Button
-            leftIcon={<FaSync />}
-            isLoading={isRefreshing || isLoading}
-            loadingText="Refreshing"
-            onClick={handleRefresh}
-            size="sm"
-            aria-label="Refresh catalog"
-            colorScheme="blue"
-            variant="outline"
-          >
-            Refresh
-          </Button>
-        </HStack>
-
-        {/* Collection Details */}
-        <Accordion allowToggle>
-          <AccordionItem 
-            border="1px solid"
-            borderColor="var(--shadow)"
-            borderRadius="md"
-            bg="var(--paper-white)"
-          >
-            <AccordionButton py={3}>
-              <Box flex="1" textAlign="left">
-                <Text 
-                  fontFamily="Space Grotesk"
-                  fontSize="md"
-                  color="var(--rich-black)"
+          {/* Editable Description Section */}
+          {!catalog.isSystem && (
+            <Box 
+              mt={2} 
+              ml={1}
+              onMouseEnter={() => !isEditingDescription && setIsEditingDescription(true)}
+              onMouseLeave={() => !isEditingDescription && setIsEditingDescription(false)}
+            >
+              {descriptionValue ? (
+                <Editable
+                  value={descriptionValue}
+                  onChange={(value) => setDescriptionValue(value)}
+                  onSubmit={handleUpdateDescription}
+                  placeholder="Add description..."
+                  isPreviewFocusable={true}
+                  width="100%"
                 >
-                  Collection Details
-                </Text>
-              </Box>
-              <AccordionIcon />
-            </AccordionButton>
-            <AccordionPanel pb={4}>
-              <VStack align="stretch" spacing={2}>
-                <HStack justify="space-between">
-                  <Text fontFamily="Inter" color="var(--ink-grey)">Items</Text>
-                  <Text fontFamily="Fraunces">{catalogNFTs.length} artifacts</Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text fontFamily="Inter" color="var(--ink-grey)">Created</Text>
-                  <Text fontFamily="Fraunces">
-                    {new Date(catalog.createdAt || Date.now()).toLocaleDateString()}
-                  </Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text fontFamily="Inter" color="var(--ink-grey)">Last Updated</Text>
-                  <Text fontFamily="Fraunces">
-                    {new Date(catalog.updatedAt || Date.now()).toLocaleDateString()}
-                  </Text>
-                </HStack>
-              </VStack>
-            </AccordionPanel>
-          </AccordionItem>
-        </Accordion>
+                  <Flex align="center">
+                    <EditablePreview
+                      fontSize="md"
+                      fontFamily="Fraunces"
+                      color="var(--ink-grey)"
+                      py={2}
+                      minH="32px"
+                      width="100%"
+                      _hover={{
+                        bg: "var(--highlight)",
+                        borderRadius: "md",
+                        px: 2,
+                        mx: -2
+                      }}
+                    />
+                    <EditableInput
+                      fontSize="md"
+                      fontFamily="Fraunces"
+                      px={2}
+                    />
+                    <EditableControls onCancel={handleCancelDescriptionEdit} />
+                    
+                    {isEditingDescription && !descriptionValue && (
+                      <HStack ml={2} opacity={0.7}>
+                        <Icon as={FaPencilAlt} boxSize={3} color="var(--ink-grey)" />
+                        <Text fontSize="sm" color="var(--ink-grey)" fontFamily="Inter">
+                          Add Description
+                        </Text>
+                      </HStack>
+                    )}
+                  </Flex>
+                </Editable>
+              ) : (
+                <Editable
+                  placeholder="Add description..."
+                  onSubmit={handleUpdateDescription}
+                  onChange={(value) => setDescriptionValue(value)}
+                  isPreviewFocusable={true}
+                  width="100%"
+                >
+                  <Flex 
+                    align="center"
+                    minH="32px"
+                    py={2}
+                    opacity={isEditingDescription ? 1 : 0}
+                    transition="opacity 0.2s"
+                    _hover={{ opacity: 1 }}
+                  >
+                    <EditablePreview
+                      fontSize="md"
+                      fontFamily="Fraunces"
+                      color="var(--ink-grey)"
+                      opacity={0.7}
+                      width="auto"
+                    />
+                    <EditableInput
+                      fontSize="md"
+                      fontFamily="Fraunces"
+                      px={2}
+                    />
+                    <EditableControls onCancel={handleCancelDescriptionEdit} />
+                  </Flex>
+                </Editable>
+              )}
+            </Box>
+          )}
+        </Box>
 
         {/* Library Controls */}
         <LibraryControls
