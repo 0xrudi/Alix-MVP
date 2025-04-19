@@ -64,6 +64,7 @@ import {
 import { 
   FaUser, 
   FaCog, 
+  FaCopy,
   FaLink, 
   FaChartBar, 
   FaChevronRight,
@@ -73,6 +74,7 @@ import {
   FaLayerGroup,
   FaFolderOpen,
   FaTrash,
+  FaCheck,
   FaTags,
   FaCubes,
   FaEthereum,
@@ -298,32 +300,32 @@ const ProfilePage = () => {
     setNewWalletNickname(wallet.nickname || '');
   };
   
-  /**
-   * Handle wallet nickname update submission
-   */
-  const handleWalletNicknameSubmit = async (walletId) => {
-    if (!newWalletNickname.trim()) {
-      // If nickname is empty, we can use a default value
-      setNewWalletNickname(formatAddress(wallets.find(w => w.id === walletId)?.address || ''));
-    }
+/**
+ * Handle wallet nickname update submission
+ */
+const handleWalletNicknameSubmit = async (walletId) => {
+  if (!newWalletNickname.trim()) {
+    // If nickname is empty, we can use a default value
+    setNewWalletNickname(formatAddress(wallets.find(w => w.id === walletId)?.address || ''));
+  }
+  
+  try {
+    // Update wallet in Supabase - use the correct function name
+    await walletService.updateWalletNickname(walletId, newWalletNickname);
     
-    try {
-      // Update wallet in Supabase
-      await walletService.updateWallet(walletId, { nickname: newWalletNickname });
-      
-      // Update Redux state
-      dispatch({
-        type: 'wallets/updateWallet',
-        payload: { id: walletId, nickname: newWalletNickname }
-      });
-      
-      setIsEditingWalletNickname(null);
-      showSuccessToast('Success', 'Wallet nickname updated');
-    } catch (error) {
-      logger.error('Error updating wallet nickname:', error);
-      showErrorToast('Error', 'Failed to update wallet nickname');
-    }
-  };
+    // Update Redux state
+    dispatch({
+      type: 'wallets/updateWallet',
+      payload: { id: walletId, nickname: newWalletNickname }
+    });
+    
+    setIsEditingWalletNickname(null);
+    showSuccessToast('Success', 'Wallet nickname updated');
+  } catch (error) {
+    logger.error('Error updating wallet nickname:', error);
+    showErrorToast('Error', 'Failed to update wallet nickname');
+  }
+};
 
   /**
    * Prepare for wallet deletion
@@ -953,7 +955,7 @@ const ProfilePage = () => {
                           {wallet.nickname || formatAddress(wallet.address)}
                         </Text>
                         <Tooltip
-                          label="View address"
+                          label={formatAddress(wallet.address)}
                           placement="top"
                           hasArrow
                         >
@@ -964,8 +966,8 @@ const ProfilePage = () => {
                             variant="ghost"
                             color="var(--ink-grey)"
                             onClick={(e) => {
-                              e.stopPropagation();
-                              toggleWalletDetails(wallet.id);
+                              e.stopPropagation(); // Prevent row expansion
+                              // No further action needed
                             }}
                           />
                         </Tooltip>
@@ -1010,16 +1012,42 @@ const ProfilePage = () => {
                         <VStack align="start" spacing={3}>
                           <Box>
                             <Text fontWeight="medium" mb={1}>Full Address:</Text>
-                            <Box 
+                            <Flex
                               p={2}
                               bg="white"
                               borderRadius="md"
                               fontSize="sm"
                               fontFamily="monospace"
                               overflowX="auto"
+                              alignItems="center"
                             >
-                              {wallet.address}
-                            </Box>
+                              <Text flex="1" mr={2}>{wallet.address}</Text>
+                              <Tooltip label="Copy to clipboard" placement="top">
+                                <IconButton
+                                  icon={<FaCopy />}
+                                  aria-label="Copy address"
+                                  size="sm"
+                                  variant="ghost"
+                                  color="var(--ink-grey)"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(wallet.address);
+                                    
+                                    // Show a toast right near the button
+                                    showSuccessToast(
+                                      "Copied!",
+                                      "",
+                                      {
+                                        duration: 1000,
+                                        position: "top-right",
+                                        isClosable: false
+                                      }
+                                    );
+                                  }}
+                                  _hover={{ color: "var(--warm-brown)" }}
+                                />
+                              </Tooltip>
+                            </Flex>
                           </Box>
                           
                           <Box width="100%">
