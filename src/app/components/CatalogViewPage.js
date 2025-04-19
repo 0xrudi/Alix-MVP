@@ -357,105 +357,165 @@ const CatalogViewPage = () => {
         return;
       }
       
-      // For regular catalogs, find NFTs in Redux first
-      
-      // Get unique nftIds to avoid duplicates
-      const uniqueNftIds = Array.from(
-        new Map(
-          catalog.nftIds.map(nft => [
-            `${nft.tokenId}-${nft.contractAddress}-${nft.walletId}`, 
-            nft
-          ])
-        ).values()
-      );
-      
-      // Set loading progress
-      setLoadingProgress(20);
-      
-      // First fill with data from Redux store - this is fast
-      const initialNFTs = uniqueNftIds.map(nftId => {
-        // Try to find in Redux store
-        const reduxNFT = findNFTInReduxStore(nftId);
-        return reduxNFT || createPlaceholderNFT(nftId);
-      });
-      
-      // Update state with initial data
-      setCatalogNFTs(initialNFTs);
-      setLoadingProgress(40);
-      
-      // If we have placeholders, try to fetch them from Supabase
-      const missingNFTs = initialNFTs.filter(nft => nft.isPlaceholder);
-      
-      if (missingNFTs.length > 0) {
-        // Fetch in smaller batches to avoid overwhelming the API
-        const batchSize = 10;
-        const totalBatches = Math.ceil(missingNFTs.length / batchSize);
+      // User-generated catalogs - new direct approach using catalog_artifacts junction table
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('No authenticated user');
+
+        setLoadingProgress(20);
         
-        // Create a map to store fetched NFTs by their unique identifier
-        const fetchedNFTsMap = new Map();
+        // First, query the catalog_artifacts junction table to get all artifact IDs for this catalog
+        const { data: catalogArtifacts, error: junctionError } = await supabase
+          .from('catalog_artifacts')
+          .select('artifact_id')
+          .eq('catalog_id', catalog.id);
+          
+        if (junctionError) throw junctionError;
         
-        for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-          // If component unmounted, exit early
-          if (!isMounted.current) break;
+        if (!catalogArtifacts || catalogArtifacts.length === 0) {
+          // No artifacts in this catalog
+          setCatalogNFTs([]);
+          setIsLoading(false);
+          processingBatch.current = false;
+          logger.log(`No artifacts found for catalog ${catalog.name} in junction table`);
+          return;
+        }
+        
+        // Extract artifact IDs
+        const artifactIds = catalogArtifacts.map(item => item.artifact_id);
+        setLoadingProgress(40);
+        
+        // Fetch all artifacts by their IDs
+        const { data: artifacts, error: artifactsError } = await supabase
+          .from('artifacts')
+          .select('*')
+          .in('id', artifactIds);
           
-          const batchStart = batchIndex * batchSize;
-          const batchEnd = Math.min((batchIndex + 1) * batchSize, missingNFTs.length);
-          const batch = missingNFTs.slice(batchStart, batchEnd);
+        if (artifactsError) throw artifactsError;
+        
+        if (!artifacts || artifacts.length === 0) {
+          setCatalogNFTs([]);
+          setIsLoading(false);
+          processingBatch.current = false;
+          logger.log(`No artifacts found for catalog ${catalog.name} by IDs`);
+          return;
+        }
+        
+        setLoadingProgress(80);
+        
+        // Convert artifacts to NFT format
+        const nfts = artifacts.map(artifact => convertArtifactToNFT(artifact, artifact.wallet_id));
+        
+        logger.log(`Found ${nfts.length} artifacts for user catalog ${catalog.name}`);
+        setCatalogNFTs(nfts);
+      } catch (userCatalogError) {
+        logger.error('Error fetching user catalog artifacts:', userCatalogError);
+        
+        // Fallback to old method if the junction table approach fails
+        logger.log('Falling back to nftIds approach for backward compatibility');
+        
+        // For regular catalogs, try to find NFTs in Redux first
+        if (!catalog.nftIds || catalog.nftIds.length === 0) {
+          setCatalogNFTs([]);
+          setIsLoading(false);
+          processingBatch.current = false;
+          return;
+        }
+        
+        // Get unique nftIds to avoid duplicates
+        const uniqueNftIds = Array.from(
+          new Map(
+            catalog.nftIds.map(nft => [
+              `${nft.tokenId}-${nft.contractAddress}-${nft.walletId}`, 
+              nft
+            ])
+          ).values()
+        );
+        
+        // Set loading progress
+        setLoadingProgress(20);
+        
+        // First fill with data from Redux store - this is fast
+        const initialNFTs = uniqueNftIds.map(nftId => {
+          // Try to find in Redux store
+          const reduxNFT = findNFTInReduxStore(nftId);
+          return reduxNFT || createPlaceholderNFT(nftId);
+        });
+        
+        // Update state with initial data
+        setCatalogNFTs(initialNFTs);
+        setLoadingProgress(40);
+        
+        // If we have placeholders, try to fetch them from Supabase
+        const missingNFTs = initialNFTs.filter(nft => nft.isPlaceholder);
+        
+        if (missingNFTs.length > 0) {
+          // Fetch in smaller batches to avoid overwhelming the API
+          const batchSize = 10;
+          const totalBatches = Math.ceil(missingNFTs.length / batchSize);
           
-          // Update progress
-          setLoadingProgress(40 + Math.floor((batchIndex / totalBatches) * 50));
+          // Create a map to store fetched NFTs by their unique identifier
+          const fetchedNFTsMap = new Map();
           
-          // Process batch
-          const batchPromises = batch.map(async (nft) => {
-            try {
-              const { data: artifacts, error } = await supabase
-                .from('artifacts')
-                .select('*')
-                .eq('wallet_id', nft.walletId)
-                .eq('token_id', nft.id.tokenId)
-                .eq('contract_address', nft.contract.address)
-                .limit(1);
+          for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+            // If component unmounted, exit early
+            if (!isMounted.current) break;
+            
+            const batchStart = batchIndex * batchSize;
+            const batchEnd = Math.min((batchIndex + 1) * batchSize, missingNFTs.length);
+            const batch = missingNFTs.slice(batchStart, batchEnd);
+            
+            // Update progress
+            setLoadingProgress(40 + Math.floor((batchIndex / totalBatches) * 50));
+            
+            // Process batch
+            const batchPromises = batch.map(async (nft) => {
+              try {
+                const { data: artifacts, error } = await supabase
+                  .from('artifacts')
+                  .select('*')
+                  .eq('wallet_id', nft.walletId)
+                  .eq('token_id', nft.id.tokenId)
+                  .eq('contract_address', nft.contract.address)
+                  .limit(1);
+                  
+                if (error) throw error;
                 
-              if (error) throw error;
-              
-              if (artifacts && artifacts.length > 0) {
-                const convertedNft = convertArtifactToNFT(artifacts[0], nft.walletId);
-                const key = `${convertedNft.id.tokenId}-${convertedNft.contract.address}-${convertedNft.walletId}`;
-                fetchedNFTsMap.set(key, convertedNft);
-                return convertedNft;
+                if (artifacts && artifacts.length > 0) {
+                  const convertedNft = convertArtifactToNFT(artifacts[0], nft.walletId);
+                  const key = `${convertedNft.id.tokenId}-${convertedNft.contract.address}-${convertedNft.walletId}`;
+                  fetchedNFTsMap.set(key, convertedNft);
+                  return convertedNft;
+                }
+                
+                return nft; // Keep placeholder if not found
+              } catch (error) {
+                logger.error('Error fetching NFT details:', error);
+                return nft; // Keep placeholder if error
               }
-              
-              return nft; // Keep placeholder if not found
-            } catch (error) {
-              logger.error('Error fetching NFT details:', error);
-              return nft; // Keep placeholder if error
+            });
+            
+            // Wait for all promises in this batch
+            await Promise.all(batchPromises);
+            
+            // Small delay between batches to avoid rate limiting
+            if (batchIndex < totalBatches - 1) {
+              await new Promise(resolve => setTimeout(resolve, 200));
             }
-          });
+          }
           
-          // Wait for all promises in this batch
-          await Promise.all(batchPromises);
-          
-          // Small delay between batches to avoid rate limiting
-          if (batchIndex < totalBatches - 1) {
-            await new Promise(resolve => setTimeout(resolve, 200));
+          // Only update state if component is still mounted
+          if (isMounted.current) {
+            // Replace placeholders with actual data
+            setCatalogNFTs(prevNFTs => {
+              return prevNFTs.map(prevNFT => {
+                const key = `${prevNFT.id.tokenId}-${prevNFT.contract.address}-${prevNFT.walletId}`;
+                return fetchedNFTsMap.get(key) || prevNFT;
+              });
+            });
           }
         }
-        
-        // Only update state if component is still mounted
-        if (isMounted.current) {
-          // Replace placeholders with actual data
-          setCatalogNFTs(prevNFTs => {
-            return prevNFTs.map(prevNFT => {
-              const key = `${prevNFT.id.tokenId}-${prevNFT.contract.address}-${prevNFT.walletId}`;
-              return fetchedNFTsMap.get(key) || prevNFT;
-            });
-          });
-        }
       }
-      
-      // Mark initial load as complete
-      initialLoadComplete.current = true;
-      
     } catch (error) {
       logger.error('Error fetching NFTs for catalog:', {
         error: error.message,
@@ -649,6 +709,151 @@ const CatalogViewPage = () => {
     });
     return Array.from(contractSet);
   }, [catalogNFTs]);
+
+  // This function ensures proper relationship between NFTs and catalogs
+  // It should be added to any component that needs to add NFTs to catalogs
+
+  /**
+   * Add an NFT to a catalog - ensures proper database relationships
+   * @param {string} catalogId - The ID of the catalog
+   * @param {Object} nft - The NFT object to add
+   * @returns {Promise<boolean>} - Success status
+   */
+  const addNFTToCatalog = async (catalogId, nft) => {
+    try {
+      // Step 1: Find or create the artifact in the artifacts table
+      let artifactId;
+
+      // First check if artifact already exists
+      const { data: existingArtifact, error: findError } = await supabase
+        .from('artifacts')
+        .select('id')
+        .eq('wallet_id', nft.walletId)
+        .eq('token_id', nft.id.tokenId)
+        .eq('contract_address', nft.contract.address)
+        .eq('network', nft.network || 'unknown')
+        .maybeSingle();
+      
+      if (findError) {
+        logger.error('Error finding artifact:', findError);
+        throw findError;
+      }
+      
+      if (existingArtifact) {
+        // Use existing artifact
+        artifactId = existingArtifact.id;
+        
+        // Update is_in_catalog flag to true
+        const { error: updateError } = await supabase
+          .from('artifacts')
+          .update({ is_in_catalog: true })
+          .eq('id', artifactId);
+          
+        if (updateError) {
+          logger.error('Error updating artifact catalog status:', updateError);
+          throw updateError;
+        }
+      } else {
+        // Create new artifact
+        let mediaUrl = null;
+        try {
+          // Attempt to get image URL
+          if (nft.media && nft.media.length > 0) {
+            mediaUrl = nft.media[0].gateway;
+          } else if (nft.metadata?.image) {
+            mediaUrl = nft.metadata.image;
+          }
+        } catch (imgError) {
+          logger.warn('Error processing image URL:', imgError);
+        }
+        
+        const { data: newArtifact, error: createError } = await supabase
+          .from('artifacts')
+          .insert([{
+            wallet_id: nft.walletId,
+            token_id: nft.id.tokenId,
+            contract_address: nft.contract.address,
+            network: nft.network || 'unknown',
+            title: nft.title || `Token ID: ${nft.id.tokenId}`,
+            description: nft.description || '',
+            metadata: nft.metadata || {},
+            media_url: mediaUrl,
+            is_spam: nft.isSpam || false,
+            is_in_catalog: true // Mark as in catalog
+          }])
+          .select('id')
+          .single();
+        
+        if (createError) {
+          logger.error('Error creating artifact:', createError);
+          throw createError;
+        }
+        
+        artifactId = newArtifact.id;
+      }
+      
+      // Step 2: Add relationship to catalog_artifacts junction table
+      // First check if relationship already exists
+      const { data: existingRelationship, error: relCheckError } = await supabase
+        .from('catalog_artifacts')
+        .select('*')
+        .eq('catalog_id', catalogId)
+        .eq('artifact_id', artifactId)
+        .maybeSingle();
+        
+      if (relCheckError) {
+        logger.error('Error checking catalog-artifact relationship:', relCheckError);
+        throw relCheckError;
+      }
+      
+      // Only add if relationship doesn't exist
+      if (!existingRelationship) {
+        const { error: relError } = await supabase
+          .from('catalog_artifacts')
+          .insert([{
+            catalog_id: catalogId,
+            artifact_id: artifactId,
+            created_at: new Date().toISOString()
+          }]);
+          
+        if (relError) {
+          logger.error('Error creating catalog-artifact relationship:', relError);
+          throw relError;
+        }
+      }
+      
+      // Step 3: Update local state (Redux)
+      // This part depends on your state management approach
+      dispatch({
+        type: 'catalogs/addNFTToCatalog',
+        payload: { catalogId, nft }
+      });
+      
+      // Also update NFT catalog status
+      dispatch({
+        type: 'nfts/updateNFTCatalogStatus',
+        payload: {
+          walletId: nft.walletId,
+          contractAddress: nft.contract.address,
+          tokenId: nft.id.tokenId,
+          network: nft.network,
+          isInCatalog: true
+        }
+      });
+      
+      logger.log('NFT added to catalog successfully:', { 
+        catalogId, 
+        artifactId,
+        tokenId: nft.id.tokenId
+      });
+      
+      return true;
+    } catch (error) {
+      logger.error('Error adding NFT to catalog:', error);
+      showErrorToast('Error', 'Failed to add NFT to catalog');
+      return false;
+    }
+  };
 
   // Handle spam toggle
   const handleSpamToggle = useCallback(async (nft) => {
