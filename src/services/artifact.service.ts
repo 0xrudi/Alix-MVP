@@ -9,7 +9,7 @@ type Json = Database['public']['Tables']['artifacts']['Row']['metadata'];
 
 export class ArtifactService extends BaseService {
   /**
-   * Add a new artifact
+   * Add a new artifact with enhanced fields
    */
   async addArtifact(
     walletId: string,
@@ -17,14 +17,13 @@ export class ArtifactService extends BaseService {
     contractAddress: string,
     network: string,
     metadata: Json = {},
-    title?: string,
-    description?: string,
-    mediaUrl?: string,
-    coverImageUrl?: string,
-    mediaType?: string,
-    additionalMedia?: Json,
+    title?: string | null,
+    description?: string | null,
+    mediaUrl?: string | null,
     isSpam: boolean = false,
     isInCatalog: boolean = false,
+    creator?: string | null,
+    contractName?: string | null
   ): Promise<Artifact> {
     try {
       // Check if artifact already exists
@@ -38,11 +37,17 @@ export class ArtifactService extends BaseService {
         .maybeSingle();
 
       if (existing) {
-        // Update is_in_catalog field if needed
-        if (existing.is_in_catalog !== isInCatalog) {
+        // Update existing artifact with new fields if needed
+        const updates: {[key: string]: any} = { is_in_catalog: isInCatalog };
+        
+        // Only update fields that need to be updated and are not null
+        if (creator !== undefined) updates.creator = creator;
+        if (contractName !== undefined) updates.contract_name = contractName;
+        
+        if (Object.keys(updates).length > 1) { // Not just is_in_catalog
           const { data: updated, error } = await this.supabase
             .from('artifacts')
-            .update({ is_in_catalog: isInCatalog })
+            .update(updates)
             .eq('id', existing.id)
             .select()
             .single();
@@ -50,25 +55,39 @@ export class ArtifactService extends BaseService {
           if (error) throw error;
           if (updated) return updated;
         }
+        
         return existing;
       }
 
       // Extract media data from metadata if not provided
+      let coverImageUrl: string | null = null;
+      let mediaType: string | null = null;
+      let additionalMedia: Json | null = null;
+      
       if (!coverImageUrl) {
         const mediaInfo = this.extractMediaInfo(metadata);
-        // Use type assertions or nullish coalescing to fix these type errors
-        coverImageUrl = mediaInfo.cover_image_url as string | undefined;
-        if (!mediaUrl) mediaUrl = mediaInfo.media_url as string | undefined;
-        if (!mediaType) mediaType = mediaInfo.media_type as string | undefined;
-        if (!additionalMedia) additionalMedia = mediaInfo.additional_media as Json | undefined;
+        coverImageUrl = mediaInfo.cover_image_url;
+        if (!mediaUrl) mediaUrl = mediaInfo.media_url;
+        if (!mediaType) mediaType = mediaInfo.media_type;
+        if (!additionalMedia) additionalMedia = mediaInfo.additional_media;
       }
 
       // Set is_in_catalog to true if it's spam
       if (isSpam) {
         isInCatalog = true;
       }
+      
+      // Extract creator from metadata if not provided
+      if (creator === undefined && metadata) {
+        creator = this.extractCreator(metadata);
+      }
+      
+      // Extract contract name from metadata if not provided
+      if (contractName === undefined && metadata) {
+        contractName = this.extractContractName(metadata);
+      }
 
-      // Create new artifact
+      // Create new artifact with new fields
       const { data, error } = await this.supabase
         .from('artifacts')
         .insert([{
@@ -80,11 +99,13 @@ export class ArtifactService extends BaseService {
           title: title || null,
           description: description || null,
           media_url: mediaUrl || null,
-          cover_image_url: coverImageUrl || null,
-          media_type: mediaType || null,
-          additional_media: additionalMedia || null,
+          cover_image_url: coverImageUrl,
+          media_type: mediaType,
+          additional_media: additionalMedia,
           is_spam: isSpam,
-          is_in_catalog: isInCatalog
+          is_in_catalog: isInCatalog,
+          creator: creator || null,
+          contract_name: contractName || null
         }])
         .select()
         .single();
@@ -96,21 +117,26 @@ export class ArtifactService extends BaseService {
       return data;
     } catch (error) {
       this.handleError(error, 'addArtifact');
+      throw error; // Re-throw for thunks to catch
     }
   }
 
   /**
-   * Add multiple artifacts in batch
+   * Add multiple artifacts in batch with enhanced fields
    */
-  async addArtifacts(artifacts: Omit<Artifact, 'id' | 'created_at' | 'updated_at'>[]): Promise<number> {
+  async addArtifacts(artifacts: Array<Omit<Artifact, 'id' | 'created_at' | 'updated_at'>>): Promise<number> {
     try {
-      // Process each artifact to ensure media fields are properly populated
+      // Process each artifact to ensure all fields are properly populated
       const processedArtifacts = artifacts.map(artifact => {
         const { metadata } = artifact;
         
         // Extract media data if needed
         if (!artifact.cover_image_url || !artifact.media_type) {
           const mediaInfo = this.extractMediaInfo(metadata);
+          
+          // Extract creator and contract name from metadata if not provided
+          const creator = artifact.creator !== undefined ? artifact.creator : this.extractCreator(metadata);
+          const contractName = artifact.contract_name !== undefined ? artifact.contract_name : this.extractContractName(metadata);
           
           return {
             ...artifact,
@@ -119,13 +145,17 @@ export class ArtifactService extends BaseService {
             media_type: artifact.media_type || mediaInfo.media_type,
             additional_media: artifact.additional_media || mediaInfo.additional_media,
             // Set is_in_catalog to true if it's spam
-            is_in_catalog: artifact.is_in_catalog || artifact.is_spam || false
+            is_in_catalog: artifact.is_in_catalog || artifact.is_spam || false,
+            creator,
+            contract_name: contractName
           };
         }
         
         return {
           ...artifact,
-          is_in_catalog: artifact.is_in_catalog || artifact.is_spam || false
+          is_in_catalog: artifact.is_in_catalog || artifact.is_spam || false,
+          creator: artifact.creator !== undefined ? artifact.creator : this.extractCreator(metadata),
+          contract_name: artifact.contract_name !== undefined ? artifact.contract_name : this.extractContractName(metadata)
         };
       });
 
@@ -142,6 +172,7 @@ export class ArtifactService extends BaseService {
       return artifacts.length;
     } catch (error) {
       this.handleError(error, 'addArtifacts');
+      throw error;
     }
   }
 
@@ -159,6 +190,7 @@ export class ArtifactService extends BaseService {
       return data || [];
     } catch (error) {
       this.handleError(error, 'getWalletArtifacts');
+      throw error;
     }
   }
 
@@ -177,20 +209,27 @@ export class ArtifactService extends BaseService {
       return data || [];
     } catch (error) {
       this.handleError(error, 'getNetworkArtifacts');
+      throw error;
     }
   }
 
   /**
    * Update artifact spam status
    */
-  async updateSpamStatus(artifactId: string, isSpam: boolean): Promise<Artifact> {
+  async updateSpamStatus(artifactId: string, isSpam: boolean, isInCatalog?: boolean): Promise<Artifact> {
     try {
-      // If marking as spam, also set is_in_catalog to true
-      const updates = { 
-        is_spam: isSpam,
-        // Spam artifacts are always considered to be in a catalog
-        is_in_catalog: isSpam ? true : undefined
+      // If isInCatalog is not specified, use isSpam value
+      const catalogStatus = isInCatalog !== undefined ? isInCatalog : isSpam;
+      
+      // Set up updates
+      const updates: { is_spam: boolean; is_in_catalog?: boolean } = { 
+        is_spam: isSpam
       };
+      
+      // Only include is_in_catalog if specified or if marking as spam
+      if (isInCatalog !== undefined || isSpam) {
+        updates.is_in_catalog = catalogStatus;
+      }
 
       const { data, error } = await this.supabase
         .from('artifacts')
@@ -206,6 +245,7 @@ export class ArtifactService extends BaseService {
       return data;
     } catch (error) {
       this.handleError(error, 'updateSpamStatus');
+      throw error;
     }
   }
 
@@ -228,6 +268,7 @@ export class ArtifactService extends BaseService {
       return data;
     } catch (error) {
       this.handleError(error, 'updateCatalogStatus');
+      throw error;
     }
   }
 
@@ -245,6 +286,7 @@ export class ArtifactService extends BaseService {
       logger.log('Artifact deleted:', { artifactId });
     } catch (error) {
       this.handleError(error, 'deleteArtifact');
+      throw error;
     }
   }
 
@@ -263,6 +305,7 @@ export class ArtifactService extends BaseService {
       return data || [];
     } catch (error) {
       this.handleError(error, 'getSpamArtifacts');
+      throw error;
     }
   }
 
@@ -284,20 +327,25 @@ export class ArtifactService extends BaseService {
       return data || [];
     } catch (error) {
       this.handleError(error, 'getUnorganizedArtifacts');
-      return [];
+      throw error;
     }
   }
 
   /**
-   * Update artifact media information
+   * Update artifact media and metadata information
    */
-  async updateArtifactMedia(
+  async updateArtifactInfo(
     artifactId: string, 
     updates: {
-      media_url?: string;
-      cover_image_url?: string;
-      media_type?: string;
-      additional_media?: Json;
+      title?: string | null;
+      description?: string | null;
+      media_url?: string | null;
+      cover_image_url?: string | null;
+      media_type?: string | null;
+      additional_media?: Json | null;
+      creator?: string | null;
+      contract_name?: string | null;
+      metadata?: Json | null;
     }
   ): Promise<Artifact> {
     try {
@@ -311,28 +359,49 @@ export class ArtifactService extends BaseService {
       if (error) throw error;
       if (!data) throw new Error('Artifact not found');
 
-      logger.log('Artifact media updated:', { artifactId });
+      logger.log('Artifact information updated:', { artifactId });
       return data;
     } catch (error) {
-      this.handleError(error, 'updateArtifactMedia');
+      this.handleError(error, 'updateArtifactInfo');
+      throw error;
     }
   }
 
   /**
-   * Get artifacts by media type
+   * Get artifacts by creator
    */
-  async getArtifactsByMediaType(userId: string, mediaType: string): Promise<Artifact[]> {
+  async getArtifactsByCreator(userId: string, creator: string): Promise<Artifact[]> {
     try {
       const { data, error } = await this.supabase
         .from('artifacts')
         .select('*, wallets!inner(user_id)')
         .eq('wallets.user_id', userId)
-        .eq('media_type', mediaType);
+        .ilike('creator', `%${creator}%`);
 
       if (error) throw error;
       return data || [];
     } catch (error) {
-      this.handleError(error, 'getArtifactsByMediaType');
+      this.handleError(error, 'getArtifactsByCreator');
+      throw error;
+    }
+  }
+
+  /**
+   * Get artifacts by contract name
+   */
+  async getArtifactsByContractName(userId: string, contractName: string): Promise<Artifact[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('artifacts')
+        .select('*, wallets!inner(user_id)')
+        .eq('wallets.user_id', userId)
+        .ilike('contract_name', `%${contractName}%`);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      this.handleError(error, 'getArtifactsByContractName');
+      throw error;
     }
   }
 
@@ -342,10 +411,12 @@ export class ArtifactService extends BaseService {
    */
   async bulkUpdateArtifactMedia(updates: Array<{
     id: string;
-    media_url?: string;
-    cover_image_url?: string;
-    media_type?: string;
-    additional_media?: Json;
+    media_url?: string | null;
+    cover_image_url?: string | null;
+    media_type?: string | null;
+    additional_media?: Json | null;
+    creator?: string | null;
+    contract_name?: string | null;
   }>): Promise<number> {
     try {
       // Group updates in batches of 50 to avoid API limits
@@ -381,6 +452,7 @@ export class ArtifactService extends BaseService {
       return updatedCount;
     } catch (error) {
       this.handleError(error, 'bulkUpdateArtifactMedia');
+      throw error;
     }
   }
 
@@ -451,6 +523,123 @@ export class ArtifactService extends BaseService {
     } catch (error) {
       this.handleError(error, 'fixCatalogStatuses');
       return { updated: 0, errors: 0 };
+    }
+  }
+
+
+  /**
+   * Extract creator from NFT metadata
+   */
+  extractCreator(metadata: Json | null | undefined): string | null {
+    try {
+      if (!metadata) return null;
+      
+      // Check various potential locations for creator info
+      if (typeof metadata === 'object' && metadata !== null) {
+        // Check common creator fields
+        if ('creator' in metadata && metadata.creator) {
+          if (typeof metadata.creator === 'string') {
+            return metadata.creator;
+          } else if (typeof metadata.creator === 'object' && metadata.creator !== null) {
+            if ('name' in metadata.creator && metadata.creator.name) {
+              return typeof metadata.creator.name === 'string' 
+                ? metadata.creator.name 
+                : String(metadata.creator.name);
+            }
+          }
+          return null;
+        }
+        
+        // Check artist field
+        if ('artist' in metadata && metadata.artist) {
+          return typeof metadata.artist === 'string' 
+            ? metadata.artist 
+            : typeof metadata.artist === 'object' ? String(metadata.artist) : null;
+        }
+        
+        // Check authors field
+        if ('authors' in metadata && Array.isArray(metadata.authors) && metadata.authors.length > 0) {
+          const firstAuthor = metadata.authors[0];
+          if (typeof firstAuthor === 'string') {
+            return firstAuthor;
+          } else if (typeof firstAuthor === 'object' && firstAuthor !== null) {
+            if ('name' in firstAuthor && firstAuthor.name) {
+              return typeof firstAuthor.name === 'string'
+                ? firstAuthor.name
+                : String(firstAuthor.name);
+            }
+          }
+          return null;
+        }
+        
+        // Check properties field
+        if ('properties' in metadata && metadata.properties && typeof metadata.properties === 'object' && metadata.properties !== null) {
+          const props = metadata.properties as Record<string, any>;
+          
+          if ('artist' in props && props.artist) {
+            return typeof props.artist === 'string' ? props.artist : String(props.artist);
+          }
+          if ('creator' in props && props.creator) {
+            return typeof props.creator === 'string' ? props.creator : String(props.creator);
+          }
+          if ('author' in props && props.author) {
+            return typeof props.author === 'string' ? props.author : String(props.author);
+          }
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      logger.error('Error extracting creator from metadata:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Extract contract name from NFT metadata
+   */
+  extractContractName(metadata: Json): string | null {
+    try {
+      if (!metadata) return null;
+      
+      // Check various potential locations for contract info
+      if (typeof metadata === 'object' && metadata !== null) {
+        // Check collection field
+        if ('collection' in metadata && metadata.collection) {
+          if (typeof metadata.collection === 'string') {
+            return metadata.collection;
+          } else if (typeof metadata.collection === 'object' && metadata.collection !== null) {
+            if ('name' in metadata.collection) return metadata.collection.name;
+            if ('title' in metadata.collection) return metadata.collection.title;
+          }
+        }
+        
+        // Check contract_name field
+        if ('contract_name' in metadata) {
+          return typeof metadata.contract_name === 'string' ? metadata.contract_name : null;
+        }
+        
+        // Check nft_contract field
+        if ('nft_contract' in metadata) {
+          const contract = metadata.nft_contract;
+          if (typeof contract === 'object' && contract !== null && 'name' in contract) {
+            return contract.name;
+          }
+        }
+        
+        // Check properties field
+        if ('properties' in metadata && metadata.properties && typeof metadata.properties === 'object') {
+          const props = metadata.properties;
+          
+          if ('collection' in props) return props.collection;
+          if ('contract_name' in props) return props.contract_name;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      logger.error('Error extracting contract name from metadata:', error);
+      return null;
     }
   }
 

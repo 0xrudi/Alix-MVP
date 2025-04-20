@@ -17,6 +17,77 @@ export const MediaType = {
 };
 
 /**
+ * Extract creator information from NFT metadata
+ */
+export const extractCreatorFromMetadata = (metadata) => {
+  if (!metadata) return null;
+  
+  try {
+    // Similar logic to the ArtifactService function
+    if (metadata.creator) {
+      return typeof metadata.creator === 'string' 
+        ? metadata.creator 
+        : typeof metadata.creator === 'object' && metadata.creator.name
+          ? metadata.creator.name
+          : null;
+    }
+    
+    if (metadata.artist) {
+      return typeof metadata.artist === 'string' ? metadata.artist : null;
+    }
+    
+    if (metadata.authors && Array.isArray(metadata.authors) && metadata.authors.length > 0) {
+      const firstAuthor = metadata.authors[0];
+      return typeof firstAuthor === 'string' 
+        ? firstAuthor 
+        : typeof firstAuthor === 'object' && firstAuthor?.name
+          ? firstAuthor.name
+          : null;
+    }
+    
+    if (metadata.properties) {
+      const props = metadata.properties;
+      return props.artist || props.creator || props.author || null;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error extracting creator from metadata:', error);
+    return null;
+  }
+};
+
+/**
+ * Extract contract name from NFT metadata
+ */
+export const extractContractNameFromMetadata = (metadata) => {
+  if (!metadata) return null;
+  
+  try {
+    if (metadata.collection) {
+      return typeof metadata.collection === 'string' 
+        ? metadata.collection 
+        : typeof metadata.collection === 'object'
+          ? metadata.collection.name || metadata.collection.title
+          : null;
+    }
+    
+    if (metadata.contract_name) {
+      return metadata.contract_name;
+    }
+    
+    if (metadata.properties && metadata.properties.collection) {
+      return metadata.properties.collection;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error extracting contract name from metadata:', error);
+    return null;
+  }
+};
+
+/**
  * Process and get additional metadata for NFTs from IPFS/Arweave gateways
  * @param {Object} nft - The NFT object from Moralis or other sources
  * @param {string} walletId - The wallet ID associated with this NFT
@@ -39,7 +110,16 @@ export const processNFTMetadata = async (nft, walletId) => {
       tokenId: nft.id?.tokenId,
       contractAddress: nft.contract?.address
     });
-    return nft;
+    
+    // Even if we skip, extract creator and contract name
+    const creator = extractCreatorFromMetadata(nft.metadata);
+    const contractName = extractContractNameFromMetadata(nft.metadata) || nft.contract?.name;
+    
+    return {
+      ...nft,
+      creator,
+      contractName
+    };
   }
   
   logger.log('Processing metadata for NFT:', {
@@ -89,7 +169,16 @@ export const processNFTMetadata = async (nft, walletId) => {
       tokenId: nft.id?.tokenId,
       contractAddress: nft.contract?.address
     });
-    return nft;
+    
+    // Even without metadata URLs, try to extract creator and contract name from existing metadata
+    const creator = extractCreatorFromMetadata(nft.metadata);
+    const contractName = extractContractNameFromMetadata(nft.metadata) || nft.contract?.name;
+    
+    return {
+      ...nft,
+      creator,
+      contractName
+    };
   }
   
   // Try each URL until we find valid metadata
@@ -166,6 +255,10 @@ export const processNFTMetadata = async (nft, walletId) => {
         dataKeys: Object.keys(data) 
       });
       
+      // Extract creator and contract name from the newly fetched metadata
+      const creator = extractCreatorFromMetadata(data);
+      const contractName = extractContractNameFromMetadata(data) || nft.contract?.name;
+      
       // Extract metadata fields we're interested in
       const additionalMetadata = {
         ...nft.metadata,
@@ -176,7 +269,9 @@ export const processNFTMetadata = async (nft, walletId) => {
         external_url: data.external_url || nft.metadata?.external_url,
         animation_url: data.animation_url || nft.metadata?.animation_url,
         background_color: data.background_color || nft.metadata?.background_color,
-        // Add any other fields of interest here
+        // Add creator and contract name to metadata
+        creator: creator || nft.metadata?.creator,
+        contract_name: contractName || nft.metadata?.contract_name,
         
         // Store additional processing metadata for debugging
         _processingInfo: {
@@ -194,7 +289,9 @@ export const processNFTMetadata = async (nft, walletId) => {
         ...nft,
         title: additionalMetadata.name || nft.title,
         description: additionalMetadata.description || nft.description,
-        metadata: additionalMetadata
+        metadata: additionalMetadata,
+        creator,
+        contractName
       };
       
       // If we have a wallet ID, update the metadata in Supabase
@@ -212,7 +309,9 @@ export const processNFTMetadata = async (nft, walletId) => {
           ? additionalMetadata.attributes.length 
           : typeof additionalMetadata.attributes === 'object'
             ? Object.keys(additionalMetadata.attributes).length
-            : 0
+            : 0,
+        creator,
+        contractName
       });
       
       return updatedNFT;
@@ -233,9 +332,19 @@ export const processNFTMetadata = async (nft, walletId) => {
     processingTimeMs: Date.now() - processingStart
   });
   
-  // Return the original NFT
-  return nft;
+  // Even if we failed to fetch new metadata, try to extract creator and contract name from existing metadata
+  const creator = extractCreatorFromMetadata(nft.metadata);
+  const contractName = extractContractNameFromMetadata(nft.metadata) || nft.contract?.name;
+  
+  // Return the original NFT with any creator/contract name we could find
+  return {
+    ...nft,
+    creator,
+    contractName
+  };
 };
+
+
 
 /**
  * Extract media-specific information from NFT metadata

@@ -80,6 +80,9 @@ export const serializeNFT = (nft) => {
       },
       contract: serializedContract,
       balance: nft.balance?.toString() || '1',
+      // Add the new fields
+      creator: nft.creator || null,
+      contractName: nft.contractName || nft.contract?.name || null,
       // Generate a stable unique identifier
       uniqueId: `${serializedContract?.address || ''}-${tokenId}-${nft.network || ''}`
     };
@@ -92,6 +95,6 @@ export const serializeNFT = (nft) => {
     return serializedNFT;
   } catch (error) {
     logger.error('Error serializing NFT:', error, { nft });
-    return null;  // Return null instead of raw NFT to prevent invalid data propagation
+    return null;
   }
 };

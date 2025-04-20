@@ -1,18 +1,17 @@
 // src/redux/thunks/artifactThunks.js
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import { logger } from '../../../utils/logger';
-import { updateNFT, updateNFTCatalogStatus, clearWalletNFTs } from '../slices/nftSlice';
+import { updateNFT, updateNFTCatalogStatus, clearWalletNFTs, updateNFTAdditionalInfo } from '../slices/nftSlice';
 import { getImageUrl } from '../../../utils/web3Utils';
 import { updateSpamCatalog } from '../slices/catalogSlice';
 import { createSelector } from '@reduxjs/toolkit';
 
 /**
- * Add an NFT to the Supabase artifacts table
- * This is needed before adding an NFT to a catalog
+ * Add an NFT to the Supabase artifacts table with enhanced fields
  */
 export const addArtifactToSupabase = createAsyncThunk(
   'artifacts/addArtifactToSupabase',
-  async (nft, { getState }) => {
+  async (nft, { getState, dispatch }) => {
     try {
       const { services } = window;
       
@@ -25,7 +24,9 @@ export const addArtifactToSupabase = createAsyncThunk(
       
       logger.log('Adding artifact to Supabase:', { 
         tokenId: nft.id?.tokenId, 
-        contract: nft.contract?.address 
+        contract: nft.contract?.address,
+        creator: nft.creator || 'None',
+        contractName: nft.contractName || nft.contract?.name || 'None'
       });
 
       // First, resolve the image URL
@@ -39,10 +40,32 @@ export const addArtifactToSupabase = createAsyncThunk(
         logger.warn('Error resolving image URL:', imgError);
       }
       
+      // Extract creator if not provided
+      let creator = nft.creator;
+      if (!creator && nft.metadata) {
+        // Simple extraction, the service will do more complex extraction
+        if (nft.metadata.creator) {
+          creator = typeof nft.metadata.creator === 'string' 
+            ? nft.metadata.creator 
+            : typeof nft.metadata.creator === 'object' && nft.metadata.creator !== null 
+              ? JSON.stringify(nft.metadata.creator) 
+              : null;
+        }
+      }
+      
+      // Extract contract name if not provided
+      let contractName = nft.contractName || nft.contract?.name;
+      if (!contractName && nft.metadata) {
+        // Simple extraction, the service will do more complex extraction
+        if (nft.metadata.collection && typeof nft.metadata.collection === 'object' && nft.metadata.collection.name) {
+          contractName = nft.metadata.collection.name;
+        }
+      }
+      
       // Determine if the NFT is already in a catalog or is spam
       const isInCatalog = nft.isInCatalog || nft.isSpam || false;
       
-      // Add to Supabase artifacts table
+      // Add to Supabase artifacts table with new fields
       const artifact = await artifactService.addArtifact(
         nft.walletId,
         nft.id.tokenId,
@@ -53,8 +76,22 @@ export const addArtifactToSupabase = createAsyncThunk(
         nft.description || '',
         mediaUrl,
         nft.isSpam || false,
-        isInCatalog
+        isInCatalog,
+        creator,
+        contractName
       );
+      
+      // Update Redux store with additional info
+      if (creator || contractName) {
+        dispatch(updateNFTAdditionalInfo({
+          walletId: nft.walletId,
+          contractAddress: nft.contract.address,
+          tokenId: nft.id.tokenId,
+          network: nft.network,
+          creator,
+          contractName
+        }));
+      }
       
       return {
         nft,
@@ -68,11 +105,11 @@ export const addArtifactToSupabase = createAsyncThunk(
 );
 
 /**
- * Add multiple NFTs to Supabase in a batch operation
+ * Add multiple NFTs to Supabase in a batch operation with enhanced fields
  */
 export const batchAddArtifactsToSupabase = createAsyncThunk(
   'artifacts/batchAddArtifactsToSupabase',
-  async (nfts, { getState }) => {
+  async (nfts, { getState, dispatch }) => {
     try {
       const { services } = window;
       
@@ -87,6 +124,7 @@ export const batchAddArtifactsToSupabase = createAsyncThunk(
 
       // Prepare artifacts for batch insert
       const artifacts = [];
+      const additionalInfo = [];
       
       // Process each NFT
       for (const nft of nfts) {
@@ -100,6 +138,28 @@ export const batchAddArtifactsToSupabase = createAsyncThunk(
             }
           } catch (imgError) {
             logger.warn('Error resolving image URL:', imgError);
+          }
+          
+          // Extract creator if not provided
+          let creator = nft.creator;
+          if (!creator && nft.metadata) {
+            // Simple extraction, the service will do more complex extraction
+            if (nft.metadata.creator) {
+              creator = typeof nft.metadata.creator === 'string' 
+                ? nft.metadata.creator 
+                : typeof nft.metadata.creator === 'object' && nft.metadata.creator !== null 
+                  ? JSON.stringify(nft.metadata.creator) 
+                  : null;
+            }
+          }
+          
+          // Extract contract name if not provided
+          let contractName = nft.contractName || nft.contract?.name;
+          if (!contractName && nft.metadata) {
+            // Simple extraction, the service will do more complex extraction
+            if (nft.metadata.collection && typeof nft.metadata.collection === 'object' && nft.metadata.collection.name) {
+              contractName = nft.metadata.collection.name;
+            }
           }
           
           // Determine if the NFT is already in a catalog or is spam
@@ -116,8 +176,22 @@ export const batchAddArtifactsToSupabase = createAsyncThunk(
             description: nft.description || null,
             media_url: mediaUrl,
             is_spam: !!nft.isSpam,
-            is_in_catalog: isInCatalog
+            is_in_catalog: isInCatalog,
+            creator: creator || null,
+            contract_name: contractName || null
           });
+          
+          // Track additional info for Redux updates
+          if (creator || contractName) {
+            additionalInfo.push({
+              walletId: nft.walletId,
+              contractAddress: nft.contract.address,
+              tokenId: nft.id.tokenId,
+              network: nft.network,
+              creator,
+              contractName
+            });
+          }
         } catch (nftError) {
           logger.error('Error processing NFT for batch insert:', nftError, nft);
           // Continue with other NFTs
@@ -127,9 +201,67 @@ export const batchAddArtifactsToSupabase = createAsyncThunk(
       // Perform batch insert
       const count = await artifactService.addArtifacts(artifacts);
       
+      // Update Redux store with additional info
+      additionalInfo.forEach(info => {
+        dispatch(updateNFTAdditionalInfo(info));
+      });
+      
       return { count };
     } catch (error) {
       logger.error('Error batch adding artifacts to Supabase:', error);
+      throw error;
+    }
+  }
+);
+
+/**
+ * Update artifact details including creator and contract name
+ */
+export const updateArtifactDetails = createAsyncThunk(
+  'artifacts/updateArtifactDetails',
+  async ({ artifactId, updates }, { dispatch }) => {
+    try {
+      const { services } = window;
+      
+      // Check if we have services and user
+      if (!services || !services.user) {
+        throw new Error('User not authenticated or services not available');
+      }
+      
+      const { artifactService } = services;
+      
+      logger.log('Updating artifact details:', { 
+        artifactId, 
+        updates
+      });
+      
+      // Update in Supabase
+      const updatedArtifact = await artifactService.updateArtifactInfo(
+        artifactId,
+        updates
+      );
+      
+      // Get the wallet, contract, and token info to update Redux
+      const { wallet_id, token_id, contract_address, network } = updatedArtifact;
+      
+      // Extract creator and contract_name for Redux update
+      const { creator, contract_name } = updates;
+      
+      if (creator !== undefined || contract_name !== undefined) {
+        // Update Redux store
+        dispatch(updateNFTAdditionalInfo({
+          walletId: wallet_id,
+          contractAddress: contract_address,
+          tokenId: token_id,
+          network,
+          creator,
+          contractName: contract_name
+        }));
+      }
+      
+      return updatedArtifact;
+    } catch (error) {
+      logger.error('Error updating artifact details:', error);
       throw error;
     }
   }
@@ -163,30 +295,6 @@ export const toggleArtifactSpam = createAsyncThunk(
         network: nft.network,
         isInCatalog: newSpamStatus
       }));
-      
-      // Update the spam catalog in Redux
-      if (newSpamStatus) {
-        const spamNFTs = getState().nfts.byWallet;
-        const allSpamNFTs = [];
-        
-        // Collect all spam NFTs
-        Object.entries(spamNFTs).forEach(([walletId, walletNFTs]) => {
-          Object.entries(walletNFTs).forEach(([network, networkNFTs]) => {
-            const spamERC721 = (networkNFTs.ERC721 || [])
-              .filter(nft => nft.isSpam)
-              .map(nft => ({ ...nft, walletId, network }));
-              
-            const spamERC1155 = (networkNFTs.ERC1155 || [])
-              .filter(nft => nft.isSpam)
-              .map(nft => ({ ...nft, walletId, network }));
-              
-            allSpamNFTs.push(...spamERC721, ...spamERC1155);
-          });
-        });
-        
-        // Update spam catalog
-        dispatch(updateSpamCatalog(allSpamNFTs));
-      }
       
       // If we have services, update in Supabase
       if (services && services.user) {
@@ -284,11 +392,11 @@ export const updateArtifactCatalogStatus = createAsyncThunk(
 );
 
 /**
- * Fetch all artifacts for a particular wallet
+ * Fetch all artifacts for a wallet
  */
 export const fetchWalletArtifacts = createAsyncThunk(
   'artifacts/fetchWalletArtifacts',
-  async (walletId, { getState }) => {
+  async (walletId, { getState, dispatch }) => {
     try {
       const { services } = window;
       
@@ -301,6 +409,20 @@ export const fetchWalletArtifacts = createAsyncThunk(
       
       logger.log('Fetching wallet artifacts from Supabase:', { walletId });
       const artifacts = await artifactService.getWalletArtifacts(walletId);
+      
+      // Update Redux store with creator and contract_name from artifacts
+      artifacts.forEach(artifact => {
+        if (artifact.creator || artifact.contract_name) {
+          dispatch(updateNFTAdditionalInfo({
+            walletId: artifact.wallet_id,
+            contractAddress: artifact.contract_address,
+            tokenId: artifact.token_id,
+            network: artifact.network,
+            creator: artifact.creator,
+            contractName: artifact.contract_name
+          }));
+        }
+      });
       
       return {
         walletId,
@@ -364,6 +486,7 @@ export const fetchArtifactsNotInCatalog = createAsyncThunk(
       // Update Redux state for each artifact
       if (artifacts && artifacts.length > 0) {
         artifacts.forEach(artifact => {
+          // Update catalog status
           dispatch(updateNFTCatalogStatus({
             walletId: artifact.wallet_id,
             contractAddress: artifact.contract_address,
@@ -371,6 +494,18 @@ export const fetchArtifactsNotInCatalog = createAsyncThunk(
             network: artifact.network,
             isInCatalog: false
           }));
+          
+          // Update creator and contract name if available
+          if (artifact.creator || artifact.contract_name) {
+            dispatch(updateNFTAdditionalInfo({
+              walletId: artifact.wallet_id,
+              contractAddress: artifact.contract_address,
+              tokenId: artifact.token_id,
+              network: artifact.network,
+              creator: artifact.creator,
+              contractName: artifact.contract_name
+            }));
+          }
         });
       }
       
@@ -509,11 +644,27 @@ export const fetchSpamArtifacts = createAsyncThunk(
         metadata: artifact.metadata || {},
         walletId: artifact.wallet_id,
         network: artifact.network,
-        isSpam: true
+        isSpam: true,
+        creator: artifact.creator || null,
+        contractName: artifact.contract_name || null
       }));
       
       // Update spam catalog in Redux
       dispatch(updateSpamCatalog(spamNFTs));
+      
+      // Update NFT additional info (creator and contract name)
+      spamArtifacts.forEach(artifact => {
+        if (artifact.creator || artifact.contract_name) {
+          dispatch(updateNFTAdditionalInfo({
+            walletId: artifact.wallet_id,
+            contractAddress: artifact.contract_address,
+            tokenId: artifact.token_id,
+            network: artifact.network,
+            creator: artifact.creator,
+            contractName: artifact.contract_name
+          }));
+        }
+      });
       
       return spamNFTs;
     } catch (error) {
@@ -524,12 +675,11 @@ export const fetchSpamArtifacts = createAsyncThunk(
 );
 
 /**
- * Delete an artifact from Supabase
- * This is useful when removing an NFT from a wallet
+ * Fetch artifacts with specific creator
  */
-export const deleteArtifact = createAsyncThunk(
-  'artifacts/deleteArtifact',
-  async (artifactId, { dispatch }) => {
+export const fetchArtifactsByCreator = createAsyncThunk(
+  'artifacts/fetchArtifactsByCreator',
+  async (creator, { dispatch }) => {
     try {
       const { services } = window;
       
@@ -538,26 +688,63 @@ export const deleteArtifact = createAsyncThunk(
         throw new Error('User not authenticated or services not available');
       }
       
-      const { artifactService } = services;
+      const { supabase, user } = services;
       
-      logger.log('Deleting artifact from Supabase:', { artifactId });
-      await artifactService.deleteArtifact(artifactId);
+      // Get all wallets for this user
+      const { data: wallets, error: walletError } = await supabase
+        .from('wallets')
+        .select('id')
+        .eq('user_id', user.id);
+        
+      if (walletError) {
+        throw walletError;
+      }
       
-      return artifactId;
+      if (!wallets || wallets.length === 0) {
+        return [];
+      }
+      
+      const walletIds = wallets.map(wallet => wallet.id);
+      
+      // Query artifacts by creator
+      const { data: artifacts, error } = await supabase
+        .from('artifacts')
+        .select('*')
+        .in('wallet_id', walletIds)
+        .ilike('creator', `%${creator}%`);
+        
+      if (error) {
+        throw error;
+      }
+      
+      // Update Redux store with these artifacts' info
+      artifacts.forEach(artifact => {
+        if (artifact.creator || artifact.contract_name) {
+          dispatch(updateNFTAdditionalInfo({
+            walletId: artifact.wallet_id,
+            contractAddress: artifact.contract_address,
+            tokenId: artifact.token_id,
+            network: artifact.network,
+            creator: artifact.creator,
+            contractName: artifact.contract_name
+          }));
+        }
+      });
+      
+      return artifacts || [];
     } catch (error) {
-      logger.error('Error deleting artifact:', error);
+      logger.error('Error fetching artifacts by creator:', error);
       throw error;
     }
   }
 );
 
 /**
- * Clear all artifacts for a wallet
- * This is useful when removing a wallet from the app
+ * Update creators in bulk for artifacts that may not have them
  */
-export const clearWalletArtifacts = createAsyncThunk(
-  'artifacts/clearWalletArtifacts',
-  async (walletId, { dispatch }) => {
+export const updateMissingCreators = createAsyncThunk(
+  'artifacts/updateMissingCreators',
+  async (_, { dispatch, getState }) => {
     try {
       const { services } = window;
       
@@ -566,24 +753,70 @@ export const clearWalletArtifacts = createAsyncThunk(
         throw new Error('User not authenticated or services not available');
       }
       
-      const { artifactService } = services;
+      const { supabase, artifactService } = services;
       
-      // Get all artifacts for this wallet
-      const artifacts = await artifactService.getWalletArtifacts(walletId);
-      
-      // Delete each artifact
-      for (const artifact of artifacts) {
-        await artifactService.deleteArtifact(artifact.id);
+      // Get artifacts without creators
+      const { data: artifacts, error } = await supabase
+        .from('artifacts')
+        .select('*')
+        .is('creator', null)
+        .limit(100); // Process in batches
+        
+      if (error) {
+        throw error;
       }
       
-      // Clear the wallet's NFTs from Redux
-      dispatch(clearWalletNFTs({ walletId }));
+      if (!artifacts || artifacts.length === 0) {
+        return { processed: 0, updated: 0 };
+      }
       
-      logger.log('Cleared all artifacts for wallet:', { walletId, count: artifacts.length });
+      let updatedCount = 0;
       
-      return { walletId, count: artifacts.length };
+      // Process each artifact
+      for (const artifact of artifacts) {
+        try {
+          // Skip if there's no metadata
+          if (!artifact.metadata) continue;
+          
+          // Extract creator and contract name using the service's utility functions
+          const extractedInfo = {
+            creator: artifactService.extractMediaInfo(artifact.metadata).creator,
+            contract_name: artifact.contract_name
+          };
+          
+          // Update the artifact if creator was found
+          if (extractedInfo.creator) {
+            const { error: updateError } = await supabase
+              .from('artifacts')
+              .update({ creator: extractedInfo.creator })
+              .eq('id', artifact.id);
+              
+            if (updateError) {
+              logger.error('Error updating artifact creator:', updateError);
+              continue;
+            }
+            
+            // Update Redux
+            dispatch(updateNFTAdditionalInfo({
+              walletId: artifact.wallet_id,
+              contractAddress: artifact.contract_address,
+              tokenId: artifact.token_id,
+              network: artifact.network,
+              creator: extractedInfo.creator,
+              contractName: artifact.contract_name
+            }));
+            
+            updatedCount++;
+          }
+        } catch (artifactError) {
+          logger.error('Error processing artifact for creator update:', artifactError);
+          // Continue with next artifact
+        }
+      }
+      
+      return { processed: artifacts.length, updated: updatedCount };
     } catch (error) {
-      logger.error('Error clearing wallet artifacts:', error);
+      logger.error('Error updating missing creators:', error);
       throw error;
     }
   }

@@ -324,6 +324,8 @@ const fetchEVMNFTs = async (address, network, cursor = null, limit = 100, progre
             }],
             metadata: nft.metadata || {},
             isSpam: nft.possibleSpam,
+            creator: extractCreatorFromMetadata(nft.metadata),
+            contractName: extractContractNameFromMetadata(nft.metadata) || nft.name,
             network
           }));
           

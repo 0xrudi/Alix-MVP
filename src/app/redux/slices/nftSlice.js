@@ -1,3 +1,4 @@
+// src/redux/slices/nftSlice.js
 import { createSlice } from '@reduxjs/toolkit';
 import { serializeNFT, serializeAddress } from '../../../utils/serializationUtils';
 import { logger } from '../../../utils/logger';
@@ -59,8 +60,12 @@ const mergeNFTArrays = (existing = [], incoming = []) => {
         merged[existingIndex] = {
           ...merged[existingIndex],
           ...serializedNewNFT,
+          // Preserve existing fields that might be removed from the new NFT
           isSpam: merged[existingIndex].isSpam || serializedNewNFT.isSpam,
           isInCatalog: merged[existingIndex].isInCatalog || serializedNewNFT.isInCatalog || serializedNewNFT.isSpam,
+          // Handle new fields
+          creator: serializedNewNFT.creator || merged[existingIndex].creator,
+          contractName: serializedNewNFT.contractName || merged[existingIndex].contractName
         };
         updatedCount++;
       }
@@ -111,8 +116,10 @@ const nftSlice = createSlice({
         // Add to appropriate array based on token standard
         const serializedNft = serializeNFT(nft);
         
-        // Initialize isInCatalog property based on isSpam flag
+        // Initialize flags and add new fields
         serializedNft.isInCatalog = nft.isInCatalog || nft.isSpam || false;
+        serializedNft.creator = nft.creator || null;
+        serializedNft.contractName = nft.contractName || nft.contract?.name || null;
         
         state.byWallet[walletId][network][tokenStandard].push(serializedNft);
 
@@ -133,7 +140,7 @@ const nftSlice = createSlice({
       state.lastUpdated = new Date().toISOString();
     },
 
-    // Update a single NFT
+    // Update a single NFT with support for new fields
     updateNFT: (state, action) => {
       const { walletId, nft } = action.payload;
       const network = nft.network;
@@ -146,7 +153,9 @@ const nftSlice = createSlice({
         if (index !== -1) {
           state.byWallet[walletId][network][type][index] = {
             ...state.byWallet[walletId][network][type][index],
-            ...nft
+            ...nft,
+            creator: nft.creator || state.byWallet[walletId][network][type][index].creator,
+            contractName: nft.contractName || state.byWallet[walletId][network][type][index].contractName
           };
           
           logger.log('Updated NFT:', {
@@ -155,7 +164,9 @@ const nftSlice = createSlice({
             type,
             nftId: nft.id?.tokenId,
             isSpam: nft.isSpam,
-            isInCatalog: nft.isInCatalog
+            isInCatalog: nft.isInCatalog,
+            creator: nft.creator,
+            contractName: nft.contractName
           });
         }
       }
@@ -198,6 +209,46 @@ const nftSlice = createSlice({
           state.byWallet[walletId][network]['ERC1155'][indexERC1155].isInCatalog = isInCatalog;
         }
       }
+      
+      state.lastUpdated = new Date().toISOString();
+    },
+
+    // Update NFT creator and contract name
+    updateNFTAdditionalInfo: (state, action) => {
+      const { walletId, contractAddress, tokenId, network, creator, contractName } = action.payload;
+      
+      // Check both ERC721 and ERC1155 collections
+      ['ERC721', 'ERC1155'].forEach(type => {
+        if (state.byWallet[walletId]?.[network]?.[type]) {
+          const index = state.byWallet[walletId][network][type]
+            .findIndex(n => 
+              n.id?.tokenId === tokenId && 
+              safeCompareAddresses(n.contract?.address, contractAddress)
+            );
+          
+          if (index !== -1) {
+            const nft = state.byWallet[walletId][network][type][index];
+            
+            // Only update if values are provided and different
+            if (creator !== undefined) {
+              nft.creator = creator;
+            }
+            
+            if (contractName !== undefined) {
+              nft.contractName = contractName;
+            }
+            
+            logger.log('Updated NFT additional info:', {
+              walletId,
+              network,
+              tokenId,
+              contractAddress,
+              creator,
+              contractName
+            });
+          }
+        }
+      });
       
       state.lastUpdated = new Date().toISOString();
     },
@@ -261,7 +312,9 @@ const nftSlice = createSlice({
           const processedERC721 = nfts.ERC721.map(nft => ({
             ...serializeNFT(nft),
             network: networkValue,
-            isInCatalog: nft.isInCatalog || nft.isSpam || false // Initialize with appropriate value
+            isInCatalog: nft.isInCatalog || nft.isSpam || false, // Initialize with appropriate value
+            creator: nft.creator || null,
+            contractName: nft.contractName || nft.contract?.name || null
           })).filter(Boolean);
 
           state.byWallet[walletId][networkValue].ERC721 = 
@@ -273,7 +326,9 @@ const nftSlice = createSlice({
           const processedERC1155 = nfts.ERC1155.map(nft => ({
             ...serializeNFT(nft),
             network: networkValue,
-            isInCatalog: nft.isInCatalog || nft.isSpam || false // Initialize with appropriate value
+            isInCatalog: nft.isInCatalog || nft.isSpam || false, // Initialize with appropriate value
+            creator: nft.creator || null,
+            contractName: nft.contractName || nft.contract?.name || null
           })).filter(Boolean);
 
           state.byWallet[walletId][networkValue].ERC1155 = 
@@ -333,6 +388,7 @@ const nftSlice = createSlice({
 });
 
 // Selectors for accessing NFT data
+
 export const selectNFTsByWallet = (state, walletId) => 
   state.nfts.byWallet[walletId] || {};
 
@@ -370,7 +426,6 @@ export const selectTotalSpamNFTs = (state) => {
   }, 0);
 };
 
-// NEW SELECTOR: Select NFTs that are not in any catalog
 export const selectNFTsNotInCatalog = (state) => {
   const result = [];
   
@@ -408,19 +463,37 @@ export const selectNFTsNotInCatalog = (state) => {
   return result;
 };
 
-// Debug selector for development
-export const selectNFTStructure = (state) => {
-  return Object.entries(state.nfts.byWallet).reduce((acc, [walletId, walletNfts]) => {
-    acc[walletId] = Object.entries(walletNfts).reduce((networkAcc, [network, networkNfts]) => {
-      networkAcc[network] = {
-        ERC721: networkNfts.ERC721?.length || 0,
-        ERC1155: networkNfts.ERC1155?.length || 0,
-        total: (networkNfts.ERC721?.length || 0) + (networkNfts.ERC1155?.length || 0)
-      };
-      return networkAcc;
-    }, {});
-    return acc;
-  }, {});
+// Select NFTs with creators
+export const selectNFTsWithCreator = (state) => {
+  const result = [];
+  
+  Object.entries(state.nfts.byWallet).forEach(([walletId, walletNfts]) => {
+    Object.entries(walletNfts).forEach(([network, networkNfts]) => {
+      // Check ERC721 tokens
+      networkNfts.ERC721?.forEach(nft => {
+        if (nft.creator) {
+          result.push({
+            ...nft,
+            walletId,
+            network
+          });
+        }
+      });
+      
+      // Check ERC1155 tokens
+      networkNfts.ERC1155?.forEach(nft => {
+        if (nft.creator) {
+          result.push({
+            ...nft,
+            walletId,
+            network
+          });
+        }
+      });
+    });
+  });
+  
+  return result;
 };
 
 // Select all NFTs for a wallet in a flattened array
@@ -487,18 +560,6 @@ export const selectSpamNFTs = (state) => {
     return allNFTs;
 };
 
-// Select all NFTs for a specific wallet and network
-export const selectNFTsByWalletAndNetwork = (state, walletId, network) => {
-  return state.nfts.byWallet[walletId]?.[network] || { ERC721: [], ERC1155: [] };
-};
-
-// Select the loading state
-export const selectNFTsLoadingState = (state) => ({
-  isLoading: state.nfts.isLoading,
-  error: state.nfts.error,
-  lastUpdated: state.nfts.lastUpdated
-});
-
 export const { 
   fetchNFTsStart,
   fetchNFTsSuccess,
@@ -506,7 +567,8 @@ export const {
   clearWalletNFTs,
   addNFTs,
   updateNFT,
-  updateNFTCatalogStatus, // New action for updating catalog status
+  updateNFTCatalogStatus,
+  updateNFTAdditionalInfo, // New action for updating creator and contract name
   removeNFT,
   updateTotalNFTs
 } = nftSlice.actions;
