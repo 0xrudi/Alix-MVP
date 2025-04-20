@@ -28,6 +28,7 @@ import ServiceTestComponent from './app/components/ServiceTestComponent';
 import CatalogsPage from './app/components/CatalogsPage';
 import { useServices, ServiceProvider } from './services/service-provider';
 import CatalogViewPage from './app/components/CatalogViewPage';
+import NFTRawDataPage from './app/components/NFTRawDataPage';
 
 
 const PrivateRoute = ({ children }) => {
@@ -85,6 +86,7 @@ const RootRouter = () => {
           <Route path="service-test" element={<PrivateRoute><ServiceTestComponent/></PrivateRoute>} />
           <Route path="catalogs" element={<PrivateRoute><CatalogsPage /></PrivateRoute>} />
           <Route path="catalogs/:catalogId" element={<PrivateRoute><CatalogViewPage /></PrivateRoute>} />
+          <Route path = "nft-raw-data" element={<PrivateRoute><NFTRawDataPage /></PrivateRoute>} />
         </Route>
       </Routes>
     </ServiceProvider>

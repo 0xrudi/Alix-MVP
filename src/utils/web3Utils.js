@@ -94,6 +94,7 @@ export const getNetworkType = (networkValue) => {
 /**
  * Main function to fetch NFTs with improved error handling
  */
+
 export const fetchNFTs = async (address, network, cursor = null, limit = 100, progressCallback = null) => {
   try {
     const networkType = getNetworkType(network);
@@ -112,14 +113,61 @@ export const fetchNFTs = async (address, network, cursor = null, limit = 100, pr
       });
     }
 
+    // *** NEW CODE: Resolve ENS domains to addresses BEFORE calling Moralis ***
+    let resolvedAddress = address;
+    
+    // Check if this is an ENS domain
+    if (typeof address === 'string' && (address.endsWith('.eth') || address.includes('.'))) {
+      // Report progress for ENS resolution
+      if (progressCallback) {
+        progressCallback({
+          network,
+          status: 'resolving_ens',
+          progress: 5
+        });
+      }
+      
+      logger.info(`Resolving ENS domain: ${address}`);
+      
+      try {
+        // Use the ENS resolution function first
+        const ensResult = await resolveENS(address);
+        
+        if (ensResult.success) {
+          // Use the resolved address
+          resolvedAddress = ensResult.address;
+          logger.info(`Resolved ENS ${address} to ${resolvedAddress}`);
+        } else if (address.endsWith('.eth')) {
+          // Try fallback resolution for .eth domains
+          throw new Error(`Could not resolve ENS domain: ${ensResult.message}`);
+        } else {
+          // For non-.eth domains, try Unstoppable Domains
+          const udResult = await resolveUnstoppableDomain(address);
+          
+          if (udResult.success) {
+            resolvedAddress = udResult.address;
+            logger.info(`Resolved Unstoppable Domain ${address} to ${resolvedAddress}`);
+          } else {
+            throw new Error('Could not resolve domain. Please use a valid address.');
+          }
+        }
+      } catch (resolutionError) {
+        logger.error(`Failed to resolve domain: ${address}`, resolutionError);
+        throw new Error(`Could not resolve domain ${address}. Please use a valid address.`);
+      }
+    }
+    
+    // Now we have a resolved address, continue with the regular flow
+    // *** END NEW CODE ***
+
     if (networkType === 'evm') {
       if (network === 'base') {
         // Special handling for Base network
-        return await fetchBaseNFTs(address, cursor, limit, progressCallback);
+        return await fetchBaseNFTs(resolvedAddress, cursor, limit, progressCallback);
       }
-      return await fetchEVMNFTs(address, network, cursor, limit, progressCallback);
+      return await fetchEVMNFTs(resolvedAddress, network, cursor, limit, progressCallback);
     } else if (networkType === 'solana') {
-      return await fetchSolanaNFTs(address, progressCallback);
+      return await fetchSolanaNFTs(resolvedAddress, progressCallback);
     } else {
       throw new Error(`Unsupported network type: ${networkType}`);
     }
@@ -178,6 +226,15 @@ const fetchBaseNFTs = async (address, cursor = null, limit = 100, progressCallba
         normalizeMetadata: true,
       });
       
+      // Convert response to JSON to ensure it's serializable
+      const serializedResponse = response.toJSON ? response.toJSON() : JSON.parse(JSON.stringify(response));
+      
+      // Log the serialized response data
+      logger.debug('Raw Moralis response for Base network:', {
+        responseData: serializedResponse,
+        resultCount: response.result.length
+      });
+      
       // Report progress
       if (progressCallback) {
         progressCallback({
@@ -192,22 +249,27 @@ const fetchBaseNFTs = async (address, cursor = null, limit = 100, progressCallba
       logger.debug('Base network - found NFTs:', response.result.length);
 
       const nfts = response.result.map(nft => {
+        // Make sure we serialize the NFT data properly
+        const serializedNft = nft.toJSON ? nft.toJSON() : JSON.parse(JSON.stringify(nft));
+        
         return {
-          id: { tokenId: nft.tokenId },
+          id: { tokenId: serializedNft.tokenId },
           contract: { 
-            address: normalizeBaseAddress(nft.tokenAddress),
-            name: nft.name,
-            symbol: nft.symbol,
-            type: nft.contractType
+            address: normalizeBaseAddress(serializedNft.tokenAddress),
+            name: serializedNft.name,
+            symbol: serializedNft.symbol,
+            type: serializedNft.contractType
           },
-          title: nft.metadata?.name || nft.name || `Token ID: ${nft.tokenId}`,
-          description: nft.metadata?.description || '',
+          title: serializedNft.metadata?.name || serializedNft.name || `Token ID: ${serializedNft.tokenId}`,
+          description: serializedNft.metadata?.description || '',
           media: [{
-            gateway: nft.metadata?.image || nft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
+            gateway: serializedNft.metadata?.image || serializedNft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
           }],
-          metadata: nft.metadata || {},
-          isSpam: nft.possibleSpam,
-          network: 'base'
+          metadata: serializedNft.metadata || {},
+          isSpam: serializedNft.possibleSpam,
+          network: 'base',
+          // Include the raw response data in a serialized format
+          _rawData: serializedNft
         };
       });
       
@@ -250,6 +312,7 @@ const fetchBaseNFTs = async (address, cursor = null, limit = 100, progressCallba
 /**
  * Fetch EVMs NFTs with improved error handling
  */
+
 const fetchEVMNFTs = async (address, network, cursor = null, limit = 100, progressCallback = null) => {
   try {
     // Report progress
@@ -296,6 +359,16 @@ const fetchEVMNFTs = async (address, network, cursor = null, limit = 100, progre
             normalizeMetadata: true,
           });
           
+          // Convert response to JSON to ensure it's serializable
+          // Use toJSON() if available, otherwise serialize manually
+          const serializedResponse = response.toJSON ? response.toJSON() : JSON.parse(JSON.stringify(response));
+          
+          // Log the serialized response data
+          logger.debug(`Raw Moralis response for ${network}:`, {
+            responseData: serializedResponse,
+            resultCount: response.result.length
+          });
+          
           // Process the results
           logger.debug(`Found ${response.result.length} NFTs on ${network}`);
           
@@ -309,25 +382,30 @@ const fetchEVMNFTs = async (address, network, cursor = null, limit = 100, progre
             });
           }
 
-          const nfts = response.result.map(nft => ({
-            id: { tokenId: nft.tokenId },
-            contract: { 
-              address: nft.tokenAddress,
-              name: nft.name,
-              symbol: nft.symbol,
-              type: nft.contractType
-            },
-            title: nft.metadata?.name || nft.name || `Token ID: ${nft.tokenId}`,
-            description: nft.metadata?.description || '',
-            media: [{
-              gateway: nft.metadata?.image || nft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
-            }],
-            metadata: nft.metadata || {},
-            isSpam: nft.possibleSpam,
-            creator: extractCreatorFromMetadata(nft.metadata),
-            contractName: extractContractNameFromMetadata(nft.metadata) || nft.name,
-            network
-          }));
+          const nfts = response.result.map(nft => {
+            // Make sure we serialize the NFT data properly
+            const serializedNft = nft.toJSON ? nft.toJSON() : JSON.parse(JSON.stringify(nft));
+            
+            return {
+              id: { tokenId: serializedNft.tokenId },
+              contract: { 
+                address: serializedNft.tokenAddress,
+                name: serializedNft.name,
+                symbol: serializedNft.symbol,
+                type: serializedNft.contractType
+              },
+              title: serializedNft.metadata?.name || serializedNft.name || `Token ID: ${serializedNft.tokenId}`,
+              description: serializedNft.metadata?.description || '',
+              media: [{
+                gateway: serializedNft.metadata?.image || serializedNft.tokenUri || 'https://via.placeholder.com/150?text=No+Image'
+              }],
+              metadata: serializedNft.metadata || {},
+              isSpam: serializedNft.possibleSpam,
+              network,
+              // Include the raw response data in a serialized format
+              _rawData: serializedNft
+            };
+          });
           
           // Report complete progress
           if (progressCallback) {
@@ -653,6 +731,12 @@ export const resolveENS = async (ensName) => {
   const mainnetProvider = new ethers.providers.JsonRpcProvider(MAINNET_RPC_URL);
   
   try {
+    // Set a timeout for ENS resolution to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('ENS resolution timeout')), 5000)
+    );
+    
+    // Handle special case for .base.eth domains
     if (ensName.toLowerCase().endsWith('.base.eth')) {
       try {
         const baseRegistryAddress = "0x4E2883Eb808584502326B3EA7b163f9E47a68E5D";
@@ -666,7 +750,9 @@ export const resolveENS = async (ensName) => {
           mainnetProvider
         );
 
-        const rawAddress = await baseRegistry.resolve(ensName);
+        // Race against timeout
+        const rawAddressPromise = baseRegistry.resolve(ensName);
+        const rawAddress = await Promise.race([rawAddressPromise, timeoutPromise]);
         
         if (rawAddress && rawAddress !== ethers.constants.AddressZero) {
           // Use our custom normalization for Base addresses
@@ -675,11 +761,14 @@ export const resolveENS = async (ensName) => {
         }
       } catch (baseError) {
         logger.error('Error resolving Base domain:', baseError);
+        // Continue to try regular ENS resolution
       }
     }
 
-    // Try regular ENS resolution
-    const address = await mainnetProvider.resolveName(ensName);
+    // Try regular ENS resolution with timeout
+    const addressPromise = mainnetProvider.resolveName(ensName);
+    const address = await Promise.race([addressPromise, timeoutPromise]);
+    
     if (address) {
       return { success: true, address, type: 'evm' };
     }

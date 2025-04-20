@@ -13,12 +13,14 @@ import AdminPage from './components/AdminPage';
 import './global.css';
 import ArtifactDetailPage from './components/ArtifactDetailPage';
 import ServiceTestComponent from './components/ServiceTestComponent';
+import NFTRawDataPage from './components/NFTRawDataPage';
 import { AppProvider } from './context/AppContext';
 import { Analytics } from "@vercel/analytics/react";
 import { AuthProvider, useAuth } from './context/auth/AuthContext';
 import LoginPage from './website/pages/auth/LoginPage';
 import { ServiceProvider, useServices } from './services/service-provider';
 import ReduxStoreProvider from './redux/ReduxStoreProvider';
+
 
 // Create a PrivateRoute component
 const PrivateRoute = ({ children }) => {
@@ -73,6 +75,7 @@ function AppContent() {
             {/* Other routes */}
             <Route path="/artifact" element={<PrivateRoute><ArtifactDetailPage /></PrivateRoute>} />
             <Route path="/service-test" element={<PrivateRoute><ServiceTestComponent /></PrivateRoute>} />
+            <Route path="/nft-raw-data" element={<PrivateRoute><NFTRawDataPage /></PrivateRoute>} />
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
         </Box>

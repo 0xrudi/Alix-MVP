@@ -1,16 +1,16 @@
+// src/redux/thunks/walletThunks.js - with NFT Data Mapper Integration
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import { fetchNFTs } from '../../../utils/web3Utils';
-import { serializeAddress, serializeNFT } from '../../../utils/serializationUtils';
+import { serializeAddress } from '../../../utils/serializationUtils';
 import { fetchNFTsStart, fetchNFTsSuccess, fetchNFTsFailure, updateNFT, clearWalletNFTs } from '../slices/nftSlice';
 import { setWallets, updateWallet, removeWallet } from '../slices/walletSlice';
 import { logger } from '../../../utils/logger';
 import { supabase } from '../../../utils/supabase';
 import { v4 as uuidv4 } from 'uuid';
-import { extractMediaInfo, MediaType } from '../../../utils/metadataProcessor';
+import nftDataMapper from '../../../utils/nftDataMapper';
 
 /**
- * Fetch NFTs for a wallet with improved error handling
- * This separates the core fetching from metadata enhancement
+ * Fetch NFTs for a wallet with integration for nftDataMapper
  */
 export const fetchWalletNFTs = createAsyncThunk(
   'wallets/fetchWalletNFTs',
@@ -69,54 +69,69 @@ export const fetchWalletNFTs = createAsyncThunk(
             if (nfts && nfts.length > 0) {
               logger.info(`Found ${nfts.length} NFTs on network ${network}`);
               
+              // For each NFT, prepare it for the database
               const processedNFTs = {
                 ERC721: [],
                 ERC1155: []
               };
-
-              // Process each NFT - add walletId and separate by type
+              
+              // Add network info to each NFT
+              const nftsWithNetwork = nfts.map(nft => ({
+                ...nft,
+                network
+              }));
+              
+              // Process each NFT using our new nftDataMapper
+              const dbReadyNFTs = nftDataMapper.processBatchForDatabase(nftsWithNetwork, walletId);
+              
+              // Save to Supabase in the background
+              if (dbReadyNFTs.length > 0) {
+                nftDataMapper.saveBatchToSupabase(dbReadyNFTs)
+                  .then(result => {
+                    logger.info(`Saved ${result.inserted} NFTs to Supabase for ${network}`, {
+                      walletId,
+                      network,
+                      inserted: result.inserted,
+                      errors: result.errors
+                    });
+                  })
+                  .catch(err => {
+                    logger.error('Error saving NFTs to Supabase:', err);
+                  });
+              }
+              
+              // Separate by token type for Redux store
               nfts.forEach(nft => {
-                try {
-                  const processedNFT = serializeNFT({
-                    ...nft,
-                    network,
-                    walletId
-                  });
-
-                  if (processedNFT) {
-                    // Add to processed NFTs for Redux
-                    if (processedNFT.contract?.type === 'ERC1155') {
-                      processedNFTs.ERC1155.push(processedNFT);
-                    } else {
-                      processedNFTs.ERC721.push(processedNFT);
-                    }
-                  }
-                } catch (error) {
-                  logger.error('Error processing individual NFT:', error, { 
-                    tokenId: nft.id?.tokenId, 
-                    network 
-                  });
+                // Process basic info for Redux
+                const processedNFT = {
+                  ...nft,
+                  network,
+                  walletId,
+                  isInCatalog: nft.isInCatalog || nft.isSpam || false
+                };
+                
+                // Add to the appropriate array based on token type
+                if (nft.contract?.type === 'ERC1155') {
+                  processedNFTs.ERC1155.push(processedNFT);
+                } else {
+                  processedNFTs.ERC721.push(processedNFT);
                 }
               });
-
-              const totalProcessed = processedNFTs.ERC721.length + processedNFTs.ERC1155.length;
               
-              if (totalProcessed > 0) {
-                // Store in our network tracking structure
-                nftsByNetwork[network] = processedNFTs;
-                
-                // Update Redux store with these NFTs immediately
-                dispatch(fetchNFTsSuccess({ 
-                  walletId, 
-                  networkValue: network, 
-                  nfts: processedNFTs
-                }));
-                
-                activeNetworks.add(network);
-                totalNewNFTs += totalProcessed;
-                hasUpdates = true;
-                successfulNetworks++;
-              }
+              // Store in our network tracking structure
+              nftsByNetwork[network] = processedNFTs;
+              
+              // Update Redux store with these NFTs immediately
+              dispatch(fetchNFTsSuccess({ 
+                walletId, 
+                networkValue: network, 
+                nfts: processedNFTs
+              }));
+              
+              activeNetworks.add(network);
+              totalNewNFTs += processedNFTs.ERC721.length + processedNFTs.ERC1155.length;
+              hasUpdates = true;
+              successfulNetworks++;
             } else {
               logger.debug(`No NFTs found on network ${network}`);
             }
@@ -139,20 +154,6 @@ export const fetchWalletNFTs = createAsyncThunk(
         // Add a small delay between batches to avoid rate limiting
         if (i + concurrency < networks.length) {
           await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-      
-      // Now we have all NFTs in nftsByNetwork, but we haven't done metadata enhancement yet
-      // Save the artifacts to Supabase in the background without waiting
-      if (hasUpdates) {
-        try {
-          // Using setTimeout to let the UI update first
-          setTimeout(() => {
-            saveArtifactsToSupabase(walletId, nftsByNetwork)
-              .catch(err => logger.error('Background artifact save error:', err));
-          }, 100);
-        } catch (error) {
-          logger.error('Error setting up background save:', error);
         }
       }
 
@@ -213,242 +214,8 @@ export const fetchWalletNFTs = createAsyncThunk(
 );
 
 /**
- * Save artifacts to Supabase in the background with efficient batching
- * This function doesn't block the UI and runs asynchronously
- * @param {string} walletId - The wallet ID
- * @param {Object} nftsByNetwork - NFTs organized by network
- */
-async function saveArtifactsToSupabase(walletId, nftsByNetwork) {
-  logger.info(`Starting background artifact save for wallet: ${walletId}`);
-  const startTime = Date.now();
-  
-  // Flatten all NFTs into artifact format
-  const allArtifactsToSave = [];
-  
-  // For each network
-  Object.entries(nftsByNetwork).forEach(([network, networkNFTs]) => {
-    // Process ERC721 tokens
-    if (networkNFTs.ERC721 && networkNFTs.ERC721.length > 0) {
-      networkNFTs.ERC721.forEach(nft => {
-        const artifact = convertNFTToArtifactFormat(nft, walletId, network);
-        if (artifact) {
-          allArtifactsToSave.push(artifact);
-        }
-      });
-    }
-    
-    // Process ERC1155 tokens
-    if (networkNFTs.ERC1155 && networkNFTs.ERC1155.length > 0) {
-      networkNFTs.ERC1155.forEach(nft => {
-        const artifact = convertNFTToArtifactFormat(nft, walletId, network);
-        if (artifact) {
-          allArtifactsToSave.push(artifact);
-        }
-      });
-    }
-  });
-  
-  // Nothing to save
-  if (allArtifactsToSave.length === 0) {
-    logger.info(`No artifacts to save for wallet: ${walletId}`);
-    return;
-  }
-  
-  logger.info(`Saving ${allArtifactsToSave.length} artifacts for wallet: ${walletId}`);
-  
-  // Set a batch size for efficient saving
-  const BATCH_SIZE = 50;
-  const batches = [];
-  
-  // Split artifacts into batches
-  for (let i = 0; i < allArtifactsToSave.length; i += BATCH_SIZE) {
-    batches.push(allArtifactsToSave.slice(i, i + BATCH_SIZE));
-  }
-  
-  logger.info(`Processing ${batches.length} batches for wallet: ${walletId}`);
-  
-  let successCount = 0;
-  let errorCount = 0;
-  
-  // Process each batch
-  for (let i = 0; i < batches.length; i++) {
-    try {
-      const batch = batches[i];
-      
-      // Build a single upsert query for the entire batch
-      const { error } = await supabase
-        .from('artifacts')
-        .upsert(batch, { 
-          onConflict: 'wallet_id,token_id,contract_address,network',
-          ignoreDuplicates: false // Update if exists
-        });
-      
-      if (error) {
-        logger.error(`Error in batch ${i+1}/${batches.length}:`, error);
-        errorCount += batch.length;
-      } else {
-        successCount += batch.length;
-        logger.debug(`Successfully processed batch ${i+1}/${batches.length}`);
-      }
-      
-      // Wait briefly between batches to avoid overwhelming the API
-      if (i < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 150));
-      }
-    } catch (error) {
-      logger.error(`Error processing batch ${i+1}/${batches.length}:`, error);
-      errorCount += batches[i].length;
-    }
-  }
-  
-  const elapsed = Date.now() - startTime;
-  logger.info(`Completed artifact save for wallet ${walletId}`, {
-    successCount,
-    errorCount,
-    timeMs: elapsed,
-    rate: Math.round((successCount + errorCount) / (elapsed / 1000)) + ' artifacts/sec'
-  });
-}
-
-/**
- * Convert an NFT from Redux format to Supabase artifact format
- * @param {Object} nft - The NFT to convert
- * @param {string} walletId - The wallet ID
- * @param {string} network - The network
- * @returns {Object|null} Artifact format or null
- */
-function convertNFTToArtifactFormat(nft, walletId, network) {
-  try {
-    // Basic validation
-    if (!nft || !nft.id || !nft.contract) {
-      return null;
-    }
-    
-    // Convert metadata to proper format for storage
-    let metadata = nft.metadata;
-    if (typeof metadata === 'string') {
-      try {
-        metadata = JSON.parse(metadata);
-      } catch (e) {
-        logger.debug('Non-JSON metadata string', { 
-          tokenId: nft.id.tokenId,
-          error: e.message
-        });
-        // Keep as string if parse fails
-      }
-    }
-    
-    // Extract media information using our new utility
-    const mediaInfo = extractMediaInfo(metadata);
-    
-    // Create the artifact object with enhanced media information
-    return {
-      wallet_id: walletId,
-      token_id: nft.id.tokenId,
-      contract_address: nft.contract.address,
-      network: network,
-      title: nft.title || `Token ID: ${nft.id.tokenId}`,
-      description: nft.description || '',
-      
-      // Use our extracted media information
-      media_url: mediaInfo.media_url || nft.media?.[0]?.gateway || '',
-      cover_image_url: mediaInfo.cover_image_url || '',
-      media_type: mediaInfo.media_type || null,
-      additional_media: mediaInfo.additional_media || null,
-      
-      metadata: metadata,
-      is_spam: nft.isSpam || false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-  } catch (error) {
-    logger.error('Error converting NFT to artifact format:', error, nft);
-    return null;
-  }
-}
-
-/**
- * Load wallets from Supabase with error handling
- */
-export const loadWallets = createAsyncThunk(
-  'wallets/loadWallets',
-  async (_, { dispatch }) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        logger.warn('No authenticated user for wallet loading');
-        return [];
-      }
-
-      const { data: wallets, error } = await supabase
-        .from('wallets')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        logger.error('Error loading wallets:', error);
-        throw error;
-      }
-
-      logger.info(`Loaded ${wallets?.length || 0} wallets for user ${user.id}`);
-      dispatch(setWallets(wallets || []));
-      return wallets || [];
-    } catch (error) {
-      logger.error('Error in loadWallets:', error);
-      throw error;
-    }
-  }
-);
-
-/**
- * Process metadata for an NFT
- * This is a separate thunk that can be triggered after initial fetching
- */
-export const enhanceNFTMetadata = createAsyncThunk(
-  'wallets/enhanceNFTMetadata',
-  async ({ walletId, network, nft }, { dispatch }) => {
-    try {
-      // Import the metadata processor function dynamically
-      // This avoids loading it during the initial NFT fetch
-      const { processNFTMetadata } = await import('../../utils/metadataProcessor');
-      
-      logger.info(`Enhancing metadata for NFT: ${nft.id?.tokenId}`, {
-        walletId,
-        network,
-        contract: nft.contract?.address
-      });
-      
-      // Process the metadata
-      const enhancedNFT = await processNFTMetadata(nft, walletId);
-      
-      // Check if we actually got enhanced metadata
-      const wasEnhanced = 
-        enhancedNFT.metadata !== nft.metadata && 
-        enhancedNFT.metadata !== null;
-      
-      if (wasEnhanced) {
-        // Update the NFT in Redux
-        dispatch(updateNFT({
-          walletId,
-          nft: enhancedNFT
-        }));
-        
-        logger.info(`Successfully enhanced metadata for NFT: ${nft.id?.tokenId}`);
-        return { success: true, nft: enhancedNFT };
-      } else {
-        logger.info(`No metadata enhancement for NFT: ${nft.id?.tokenId}`);
-        return { success: false, nft };
-      }
-    } catch (error) {
-      logger.error(`Error enhancing NFT metadata:`, error);
-      return { success: false, error: error.message };
-    }
-  }
-);
-
-/**
  * Add a new wallet and fetch its NFTs in one operation
+ * Integrated with nftDataMapper for database storage
  */
 export const addWalletAndFetchNFTs = createAsyncThunk(
   'wallets/addWalletAndFetchNFTs',
@@ -509,6 +276,98 @@ export const addWalletAndFetchNFTs = createAsyncThunk(
       };
     } catch (error) {
       logger.error('Error in addWalletAndFetchNFTs:', error);
+      throw error;
+    }
+  }
+);
+
+/**
+ * Process metadata for an NFT
+ * This is a separate thunk that can be triggered after initial fetching
+ */
+export const enhanceNFTMetadata = createAsyncThunk(
+  'wallets/enhanceNFTMetadata',
+  async ({ walletId, network, nft }, { dispatch }) => {
+    try {
+      logger.info(`Enhancing metadata for NFT: ${nft.id?.tokenId}`, {
+        walletId,
+        network,
+        contract: nft.contract?.address
+      });
+      
+      // Use our nftDataMapper to process the NFT for database
+      const processedNFT = nftDataMapper.processNFTForDatabase({
+        ...nft,
+        network
+      }, walletId);
+      
+      if (processedNFT) {
+        // Save to Supabase
+        const saveResult = await nftDataMapper.saveNFTToSupabase(processedNFT);
+        
+        if (saveResult.success) {
+          // Get the enhanced NFT with additional data
+          const enhancedNFT = {
+            ...nft,
+            media_url: processedNFT.media_url || nft.media_url,
+            cover_image_url: processedNFT.cover_image_url || nft.cover_image_url,
+            media_type: processedNFT.media_type || nft.media_type,
+            title: processedNFT.title || nft.title,
+            description: processedNFT.description || nft.description,
+            additional_media: processedNFT.additional_media || nft.additional_media,
+            attributes: processedNFT.attributes || nft.attributes,
+            creator: processedNFT.creator || nft.creator
+          };
+          
+          // Update the NFT in Redux
+          dispatch(updateNFT({
+            walletId,
+            nft: enhancedNFT
+          }));
+          
+          logger.info(`Successfully enhanced metadata for NFT: ${nft.id?.tokenId}`);
+          return { success: true, nft: enhancedNFT };
+        }
+      }
+      
+      logger.info(`No metadata enhancement for NFT: ${nft.id?.tokenId}`);
+      return { success: false, nft };
+    } catch (error) {
+      logger.error(`Error enhancing NFT metadata:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+);
+
+/**
+ * Load wallets from Supabase with error handling
+ */
+export const loadWallets = createAsyncThunk(
+  'wallets/loadWallets',
+  async (_, { dispatch }) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        logger.warn('No authenticated user for wallet loading');
+        return [];
+      }
+
+      const { data: wallets, error } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        logger.error('Error loading wallets:', error);
+        throw error;
+      }
+
+      logger.info(`Loaded ${wallets?.length || 0} wallets for user ${user.id}`);
+      dispatch(setWallets(wallets || []));
+      return wallets || [];
+    } catch (error) {
+      logger.error('Error in loadWallets:', error);
       throw error;
     }
   }
