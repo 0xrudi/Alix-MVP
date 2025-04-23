@@ -204,21 +204,95 @@ const ProfilePage = () => {
     }
   }, [user, userService]);
   
-  // Load wallets when accounts view is activated
+  // Load wallets only when accounts view is activated and only once
   useEffect(() => {
+    // Skip if user is not available or we're not on accounts view
+    if (currentView !== 'accounts' || !user) return;
+    
+    // Track if component is mounted (to prevent state updates after unmounting)
+    let isMounted = true;
+    
+    // Load user wallets only if they're not already loaded
     const loadUserWallets = async () => {
+      // Avoid multiple simultaneous loading attempts
+      if (isLoading) return;
+      
       try {
-        await dispatch(loadWallets()).unwrap();
+        setIsLoading(true);
+        
+        // Check if we need to load wallets
+        const shouldLoadWallets = wallets.length === 0 || 
+          (location.state && location.state.forceReload);
+        
+        if (shouldLoadWallets) {
+          await dispatch(loadWallets()).unwrap();
+          
+          if (isMounted) {
+            // Reset forceReload flag if it was set
+            if (location.state && location.state.forceReload) {
+              navigate(location.pathname, { replace: true });
+            }
+          }
+        }
       } catch (err) {
-        setError('Failed to load wallets. Please try again.');
-        showErrorToast('Error', 'Failed to load wallet information');
+        if (isMounted) {
+          setError('Failed to load wallets. Please try again.');
+          showErrorToast('Error', 'Failed to load wallet information');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
-    if (currentView === 'accounts' && user) {
-      loadUserWallets();
+    loadUserWallets();
+    
+    // Cleanup function to prevent state updates after unmounting
+    return () => {
+      isMounted = false;
+    };
+    
+    // Only run when account view is activated, user changes, or wallets length changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView, user, wallets.length]);
+
+
+  const confirmWalletDelete = async () => {
+    if (!walletToDelete) return;
+    
+    try {
+      // Prevent any state updates during the operation
+      setIsLoading(true);
+      
+      // Clear NFTs for this wallet
+      dispatch({
+        type: 'nfts/clearWalletNFTs',
+        payload: { walletId: walletToDelete.id }
+      });
+
+      // Delete wallet from Supabase
+      await walletService.deleteWallet(walletToDelete.id);
+            
+      // Remove wallet from Redux state
+      dispatch({
+        type: 'wallets/removeWallet',
+        payload: walletToDelete.id
+      });
+      
+      // Reset state
+      setWalletToDelete(null);
+      closeDeleteModal();
+      
+      // Show success message
+      showSuccessToast('Success', 'Wallet has been removed from your account');
+    } catch (error) {
+      logger.error('Error deleting wallet:', error);
+      showErrorToast('Error', 'Failed to delete wallet');
+    } finally {
+      setIsLoading(false);
     }
-  }, [currentView, dispatch, user, showErrorToast]);
+  };
 
   /**
    * Initiates username edit mode 
@@ -333,36 +407,6 @@ const handleWalletNicknameSubmit = async (walletId) => {
   const handleWalletDelete = (wallet) => {
     setWalletToDelete(wallet);
     openDeleteModal();
-  };
-  
-  /**
-   * Confirm and execute wallet deletion
-   */
-  const confirmWalletDelete = async () => {
-    if (!walletToDelete) return;
-    
-    try {
-      // Delete wallet from Supabase
-      await walletService.deleteWallet(walletToDelete.id);
-      
-      // Remove wallet from Redux state
-      dispatch({
-        type: 'wallets/removeWallet',
-        payload: walletToDelete.id
-      });
-      
-      // Clear NFTs for this wallet
-      dispatch({
-        type: 'nfts/clearWalletNFTs',
-        payload: { walletId: walletToDelete.id }
-      });
-      
-      closeDeleteModal();
-      showSuccessToast('Success', 'Wallet has been removed from your account');
-    } catch (error) {
-      logger.error('Error deleting wallet:', error);
-      showErrorToast('Error', 'Failed to delete wallet');
-    }
   };
 
   /**
